@@ -1,0 +1,192 @@
+import { useState } from 'react'
+import Modal from '@components/ui/Modal'
+import EmergencyPatientPicker from './EmergencyPatientPicker'
+import { LOCATION_GROUPS } from './data/emergencyLocations'
+import { createEmergencyAlert } from '@services/emergencyAlertsService'
+import { notify } from '@services/notificationsService'
+import { addAuditLog } from '@services/auditLogsService'
+import { playEmergencySiren } from '@lib/emergencySound'
+import { AlertOctagonIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
+
+/**
+ * profile: pass the authenticated patient's profile when logged in, or
+ * null for the pre-login (login-screen SOS) case. Either way, the
+ * "affected person" search (and the reporter search, pre-login) goes
+ * through the narrow `search_patients_public` RPC rather than
+ * `listUsers()` — a logged-in PATIENT can't read other patients' rows via
+ * RLS (by design), so the full-listing approach silently returned nothing
+ * for the "For Another Person" case. This also happens to be what makes
+ * the pre-login case possible at all, since there's no session yet.
+ */
+export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess }) {
+  const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
+  const [emgType, setEmgType] = useState('myself')
+  const [affected, setAffected] = useState(null)
+  const [location, setLocation] = useState('')
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const reporterUser = profile ? { user_id: profile.user_id, name: profile.name, student_number: profile.student_number } : reporter
+
+  function reset() {
+    setReporter(null)
+    setEmgType('myself')
+    setAffected(null)
+    setLocation('')
+    setDescription('')
+  }
+
+  function handleClose() {
+    reset()
+    onClose()
+  }
+
+  async function handleSubmit() {
+    const errors = []
+    if (!reporterUser) errors.push("Reporter's details are required.")
+    if (!location) errors.push('Room / Location of Incident is required.')
+    if (!description.trim()) errors.push('Description of Emergency is required.')
+    if (emgType === 'another' && !affected) errors.push("Affected Person's details are required.")
+    if (errors.length) return onError(errors.join(' '))
+
+    const subject = emgType === 'myself' ? reporterUser : affected
+
+    setSubmitting(true)
+    try {
+      await createEmergencyAlert({
+        reportedBy: reporterUser.user_id,
+        subjectId: subject.user_id,
+        subjectStudentNum: subject.student_number,
+        subjectName: subject.name,
+        emergencyType: emgType,
+        location,
+        description: description.trim(),
+      })
+
+      const summary = `EMERGENCY: ${subject.name} at ${location} — ${description.slice(0, 60)}${description.length > 60 ? '…' : ''}`
+      try {
+        await Promise.all([
+          notify({ targetRole: 'staff', message: summary, type: 'danger', module: '/emergency-alerts' }),
+          notify({ targetRole: 'admin', message: summary, type: 'danger', module: '/emergency-alerts' }),
+        ])
+        await addAuditLog({ userId: profile?.user_id ?? null, action: 'EMERGENCY_ALERT', details: `Alert submitted for ${subject.name} at ${location}${!profile ? ' (pre-login)' : ''}` })
+      } catch {
+        // Non-critical — the alert itself was already created successfully.
+      }
+
+      playEmergencySiren()
+      reset()
+      onClose()
+      onSuccess(subject.name, location)
+    } catch (err) {
+      onError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Emergency Alert"
+      icon={<AlertOctagonIcon width={16} height={16} />}
+      actions={
+        <>
+          <button type="button" className="btn btn-outline" onClick={handleClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Sending…' : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
+          </button>
+        </>
+      }
+    >
+      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16 }}>Fill in the details below. All fields are required.</div>
+
+      <div className="emg-section-label">Emergency Type</div>
+      <div className="emg-type-row">
+        <label className={`emg-type-card${emgType === 'myself' ? ' selected' : ''}`}>
+          <input type="radio" name="emg-type" style={{ display: 'none' }} checked={emgType === 'myself'} onChange={() => setEmgType('myself')} />
+          <span className="emg-type-icon"><UserIcon width={20} height={20} /></span>
+          <span className="emg-type-text">For Myself</span>
+        </label>
+        <label className={`emg-type-card${emgType === 'another' ? ' selected' : ''}`}>
+          <input type="radio" name="emg-type" style={{ display: 'none' }} checked={emgType === 'another'} onChange={() => setEmgType('another')} />
+          <span className="emg-type-icon"><PeopleIcon width={20} height={20} /></span>
+          <span className="emg-type-text">For Another Person</span>
+        </label>
+      </div>
+
+      <div className="emg-section-label" style={{ marginTop: 14 }}>
+        Reporter Details
+      </div>
+      {profile ? (
+        <div className="emg-form-row">
+          <div className="emg-form-field">
+            <label>
+              Student Number <span className="emg-req">*</span>
+            </label>
+            <input type="text" className="emg-input" value={profile.student_number || ''} readOnly />
+          </div>
+          <div className="emg-form-field">
+            <label>
+              Full Name <span className="emg-req">*</span>
+            </label>
+            <input type="text" className="emg-input" value={profile.name || ''} readOnly />
+          </div>
+        </div>
+      ) : (
+        <div className="emg-form-field" style={{ marginBottom: 10 }}>
+          <label>
+            Select Student (that&apos;s you) <span className="emg-req">*</span>
+          </label>
+          <EmergencyPatientPicker selected={reporter} onSelect={setReporter} onClear={() => setReporter(null)} placeholder="Search by name or student number…" />
+        </div>
+      )}
+
+      {emgType === 'another' && (
+        <>
+          <div className="emg-section-label">Affected Person Details</div>
+          <div className="emg-form-field" style={{ marginBottom: 10 }}>
+            <label>
+              Select Student <span className="emg-req">*</span>
+            </label>
+            <EmergencyPatientPicker
+              selected={affected}
+              onSelect={setAffected}
+              onClear={() => setAffected(null)}
+              placeholder="Search by name or student number…"
+              excludeUserId={reporterUser?.user_id}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="emg-section-label">Incident Details</div>
+      <div className="emg-form-field" style={{ marginBottom: 12 }}>
+        <label>
+          Room / Location <span className="emg-req">*</span>
+        </label>
+        <select className="emg-input" value={location} onChange={(e) => setLocation(e.target.value)}>
+          <option value="">-- Select Room / Location --</option>
+          {LOCATION_GROUPS.map((group) => (
+            <optgroup label={group.label} key={group.label}>
+              {group.options.map((o) => (
+                <option value={o.value} key={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      <div className="emg-form-field">
+        <label>
+          Description <span className="emg-req">*</span>
+        </label>
+        <textarea className="emg-input emg-textarea" rows={3} placeholder="Briefly describe what happened…" value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
+    </Modal>
+  )
+}
