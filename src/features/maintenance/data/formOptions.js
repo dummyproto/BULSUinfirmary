@@ -2,6 +2,6 @@ export const COURSES = ['BS Computer Science', 'BS Information Technology', 'BS 
 export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
 export const PRINT_PERMISSIONS = [
   ['print_inventory', 'Inventory Reports'],
-  ['print_appointments', 'Appointment Records'],
+  ['print_documents', 'Document Requests'],
   ['print_health', 'Health Records'],
 ]

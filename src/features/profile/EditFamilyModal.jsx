@@ -50,7 +50,14 @@ export default function EditFamilyModal({ isOpen, section, initial, onClose, onS
         )}
         <div className="form-group">
           <label>CONTACT NUMBER</label>
-          <input className="form-input" placeholder="09XXXXXXXXX" value={form.phone} onChange={(e) => setField('phone')(e.target.value)} />
+          <input
+  className="form-input"
+  placeholder="09XXXXXXXXX"
+  inputMode="numeric"
+  maxLength={11}
+  value={form.phone}
+  onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
+/>
         </div>
         <div className="form-group full">
           <label>ADDRESS</label>

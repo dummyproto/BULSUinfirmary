@@ -67,7 +67,7 @@ export default function ReleaseBatchPickerModal({ isOpen, batches, onClose, onSu
           <div className="form-grid">
             <div className="form-group">
               <label>QUANTITY TO RELEASE *</label>
-              <input className="form-input" type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} />
+              <input className="form-input" type="number" min="0" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} />
             </div>
             <div className="form-group">
               <label>PURPOSE / NOTES</label>

@@ -1,6 +1,7 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
+import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail } from '@services/usersService'
 import PasswordInput from '@components/ui/PasswordInput'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
@@ -23,6 +24,44 @@ const DEV_QUICK_LOGINS = import.meta.env.DEV
       { label: 'Patient', Icon: UserIcon, email: import.meta.env.VITE_DEMO_PATIENT_EMAIL, password: import.meta.env.VITE_DEMO_PATIENT_PASSWORD },
     ].filter((a) => a.email && a.password)
   : []
+
+// Client-side login-attempt limiter. Tracked per-email in localStorage so
+// it survives a page reload — NOT a real server-side brute-force guard
+// (clearing site data resets it), just a practical deterrent in the UI.
+// Enforcement of the actual account-disable lives server-side (migration
+// 024's RPCs, called from here + checked in AuthContext.signIn), so even
+// if someone clears localStorage to reset their own local counter, an
+// already-disabled account still can't sign back in.
+//
+// Two tiers, tracked as `phase` in the stored record:
+//   Tier 1 ('tier1') — up to TIER1_ATTEMPTS (5) wrong passwords. On the
+//     5th, input locks for a LOCKOUT_MS (60s) countdown, then moves into
+//     Tier 2 with a fresh count.
+//   Tier 2 ('tier2') — up to TIER2_ATTEMPTS (10) MORE wrong passwords
+//     after the countdown. On the 10th, the account itself is disabled
+//     (server-side, via disableAccountAfterLockout) and can't sign in
+//     again until an admin re-enables it in Maintenance -> User
+//     Management (the existing Activate/Deactivate toggle).
+const TIER1_ATTEMPTS = 5
+const TIER2_ATTEMPTS = 10
+const LOCKOUT_MS = 60_000 // 1 minute
+
+function attemptsKey(email) {
+  return `loginAttempts:${email.trim().toLowerCase()}`
+}
+function getAttempts(email) {
+  try {
+    return JSON.parse(localStorage.getItem(attemptsKey(email))) || { phase: 'tier1', count: 0, lockUntil: 0 }
+  } catch {
+    return { phase: 'tier1', count: 0, lockUntil: 0 }
+  }
+}
+function setAttempts(email, data) {
+  localStorage.setItem(attemptsKey(email), JSON.stringify(data))
+}
+function clearAttempts(email) {
+  localStorage.removeItem(attemptsKey(email))
+}
 
 // Lazy — jsQR is a sizable library that most visitors (anyone signing in
 // with email/password, which is most people, most of the time) never
@@ -53,6 +92,20 @@ export default function LoginPage() {
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
+  const [lockUntil, setLockUntil] = useState(0)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+
+  useEffect(() => {
+    if (!lockUntil) return
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000))
+      setSecondsLeft(remaining)
+      if (remaining <= 0) setLockUntil(0)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [lockUntil])
 
   if (isAuthenticated) {
     const redirectTo = location.state?.from?.pathname || '/dashboard'
@@ -75,11 +128,104 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    // Checked first, before anything else. An already-disabled account
+    // must show this same message every time, no matter what password
+    // was typed — Supabase Auth itself has no concept of `is_active`, so
+    // a wrong password on a disabled account looks identical to any
+    // other wrong password unless this is checked upfront. Without this,
+    // retrying with the SAME email just falls back into ordinary
+    // "Invalid email or password, N attempts left" counting (the
+    // localStorage record was already cleared when the account got
+    // disabled), which made it look like the only way forward was to
+    // try a different email entirely — it isn't; the account is still
+    // there, it just needs an admin to re-enable it.
+    try {
+      const active = await checkAccountActive(email)
+      if (active === false) {
+        setError('Invalid email or password. Your account is disabled — contact admin.')
+        return
+      }
+    } catch {
+      // Unknown email, RPC hiccup, etc. — fall through to the normal
+      // sign-in flow below instead of blocking on an inconclusive check.
+    }
+
+    const record = getAttempts(email)
+    if (record.lockUntil && Date.now() < record.lockUntil) {
+      setLockUntil(record.lockUntil)
+      setError(`Too many failed attempts. Try again in ${Math.ceil((record.lockUntil - Date.now()) / 1000)}s.`)
+      return
+    }
+
     setSubmitting(true)
     try {
       await signIn(email, password)
-    } catch {
-      setError('Invalid email or password.')
+      clearAttempts(email)
+      setLockUntil(0)
+    } catch (err) {
+      if (err.message === 'ACCOUNT_DISABLED') {
+        clearAttempts(email)
+        setLockUntil(0)
+        setError('Invalid email or password. Your account is disabled — contact admin.')
+      } else {
+        // Admin accounts are exempt from the entire lockout/disable
+        // escalation below — see getRoleByEmail's doc comment in
+        // usersService.js for why (only an admin can undo a disable, so
+        // letting this system disable the only admin is a real
+        // denial-of-service risk). Falls through to the plain message
+        // with no attempt counting, no cooldown, and it can never reach
+        // the disable branch. If the role lookup itself fails (unknown
+        // email, network hiccup), treat it as non-admin and proceed with
+        // the normal escalation — failing open here would mean anyone
+        // could dodge the lockout just by causing the lookup to error.
+        let isAdmin = false
+        try {
+          isAdmin = (await getRoleByEmail(email)) === 'admin'
+        } catch {
+          isAdmin = false
+        }
+
+        if (isAdmin) {
+          setError('Invalid email or password.')
+          return
+        }
+
+        const phase = record.phase === 'tier2' ? 'tier2' : 'tier1'
+        const nextCount = (record.count || 0) + 1
+
+        if (phase === 'tier1') {
+          if (nextCount >= TIER1_ATTEMPTS) {
+            // 5th wrong attempt — lock input for 60s, then move into
+            // Tier 2 with a fresh count for the next round of attempts.
+            const until = Date.now() + LOCKOUT_MS
+            setAttempts(email, { phase: 'tier2', count: 0, lockUntil: until })
+            setLockUntil(until)
+            setError(`Too many failed attempts. Try again in ${Math.ceil(LOCKOUT_MS / 1000)}s.`)
+          } else {
+            setAttempts(email, { phase: 'tier1', count: nextCount, lockUntil: 0 })
+            setError(`Invalid email or password. ${TIER1_ATTEMPTS - nextCount} attempt(s) left before temporary lockout.`)
+          }
+        } else {
+          if (nextCount >= TIER2_ATTEMPTS) {
+            // 10th wrong attempt in Tier 2 — disable the account
+            // server-side. Best-effort: even if the RPC call itself
+            // fails (offline, etc.), still show the disabled message and
+            // stop counting rather than looping forever.
+            try {
+              await disableAccountAfterLockout(email)
+            } catch {
+              // ignore — see comment above
+            }
+            clearAttempts(email)
+            setLockUntil(0)
+            setError('Invalid email or password. Your account is disabled — contact admin.')
+          } else {
+            setAttempts(email, { phase: 'tier2', count: nextCount, lockUntil: 0 })
+            setError(`Invalid email or password. ${TIER2_ATTEMPTS - nextCount} attempt(s) left before your account is disabled.`)
+          }
+        }
+      }
     } finally {
       setSubmitting(false)
     }
@@ -96,6 +242,8 @@ export default function LoginPage() {
       setSubmitting(false)
     }
   }
+
+  const isLocked = lockUntil > 0
 
   return (
     <>
@@ -180,17 +328,21 @@ export default function LoginPage() {
               id="l-pass"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                if (error) setError('')
+              }}
               required
+              style={error ? { borderColor: '#EF4444' } : undefined}
             />
-            <div style={{ textAlign: 'right', marginTop: 6 }}>
-              <a onClick={() => setForgotOpen(true)} style={{ fontSize: 12.5, cursor: 'pointer' }}>
+            <div style={{ textAlign: 'right', marginTop: 12 }}>
+              <a className="login-forgot-link" onClick={() => setForgotOpen(true)} style={{ fontSize: 12.5, cursor: 'pointer' }}>
                 Forgot password?
               </a>
             </div>
           </div>
-          <button type="submit" className="login-btn" disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign In →'}
+          <button type="submit" className="login-btn" disabled={submitting || isLocked}>
+            {submitting ? 'Signing in…' : isLocked ? `Locked — ${secondsLeft}s` : 'Sign In →'}
           </button>
         </form>
       ) : (
@@ -204,8 +356,6 @@ export default function LoginPage() {
           Don&apos;t have an account? <a onClick={() => setRegisterOpen(true)}>Register here</a>
         </div>
       )}
-
-     
 
       {registerOpen && (
         <Suspense fallback={null}>

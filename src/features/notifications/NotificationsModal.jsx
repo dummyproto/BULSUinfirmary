@@ -36,14 +36,9 @@ export default function NotificationsModal({ isOpen, onClose, notifications, onM
       title="Notifications"
       icon={<BellIcon width={16} height={16} />}
       actions={
-        <>
-          <button type="button" className="btn btn-sm btn-outline" onClick={handleMarkAllRead}>
-            Mark all read
-          </button>
-          <button type="button" className="btn btn-sm" onClick={onClose}>
-            Close
-          </button>
-        </>
+        <button type="button" className="btn btn-sm btn-outline" onClick={handleMarkAllRead}>
+          Mark all read
+        </button>
       }
     >
       <div style={{ maxHeight: 420, overflowY: 'auto', margin: '-4px -4px -16px' }}>

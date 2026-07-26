@@ -1,8 +1,9 @@
+import { createPortal } from 'react-dom'
 import { AlertOctagonIcon } from '@components/ui/icons'
 
 export default function EmergencyConfirmModal({ isOpen, onCancel, onProceed }) {
   if (!isOpen) return null
-  return (
+  return createPortal(
     <div className="emg-overlay open" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="emg-confirm-box">
         <div className="emg-confirm-icon"><AlertOctagonIcon width={28} height={28} /></div>
@@ -17,6 +18,7 @@ export default function EmergencyConfirmModal({ isOpen, onCancel, onProceed }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

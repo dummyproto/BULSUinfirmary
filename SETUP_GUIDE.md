@@ -153,7 +153,36 @@ Once local dev works end-to-end (step 9 passed), see `DEPLOYMENT.md` for pushing
 
 ---
 
-## Troubleshooting Quick Reference
+## Registering via QR Code (Phase Q)
+
+In addition to typing in their details, a person can register by scanning
+their student ID's QR code (**Register → Scan my ID**). This pre-fills
+name, student number, and course, and — if the code matches a row in the
+`registration_qr_codes` table — links it to the new account so **Scan ID**
+also works at login afterward (see section 9's login flow).
+
+**This app has no admin screen yet that creates rows in
+`registration_qr_codes`.** Scanning a code that isn't in the table still
+lets registration proceed (using whatever the QR itself encoded), it just
+won't get the extra database-side validation/enrichment. To seed a row
+manually for testing, run something like this in the SQL Editor after
+applying migration `023_registration_qr_codes.sql`:
+
+```sql
+INSERT INTO registration_qr_codes (code, student_number, full_name, course, year_level)
+VALUES ('2021-00123', '2021-00123', 'Juan dela Cruz', 'BS Computer Science', '1st Year');
+```
+
+Then encode `2021-00123` (or whatever `code` you used) as a QR code — any
+online QR generator works — and scan that during registration.
+
+If someone skips Academic Info during registration ("Skip for now"), they
+can finish it later from **Profile → Edit**, which also shows a banner
+prompting them to. The same Profile edit screen has a "School ID" field
+for linking a code manually, for anyone who registered the normal way and
+wants **Scan ID** to work for their account afterward.
+
+---
 
 | Symptom | Likely Cause |
 |---|---|

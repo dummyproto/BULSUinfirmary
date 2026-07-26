@@ -66,7 +66,14 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }) {
         </div>
         <div className="form-group">
           <label>PHONE</label>
-          <input className="form-input" value={form.phone} onChange={(e) => setField('phone')(e.target.value)} />
+          <input
+  className="form-input"
+  placeholder="09XXXXXXXXX"
+  inputMode="numeric"
+  maxLength={11}
+  value={form.phone}
+  onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
+/>
         </div>
         {user.role === 'patient' ? (
           <>

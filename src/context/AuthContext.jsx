@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase } from '@services/supabaseClient'
-import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration } from '@services/usersService'
+import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
 
 export const AuthContext = createContext(undefined)
 
@@ -9,49 +9,27 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null) // flattened row from public.users + role-specific profile table
   const [loading, setLoading] = useState(true)
   // Set when Supabase's client fires the PASSWORD_RECOVERY auth event
-  // (the user arrived via a password-reset email link, detected
+  // (i.e. the person arrived via a password-reset link/OTP, resolved
   // automatically from the URL by supabaseClient's detectSessionInUrl).
-  // ResetPasswordPage uses this to tell "genuinely here via a reset
-  // link" apart from someone just navigating to /reset-password while
-  // already normally signed in, or with an expired/invalid link.
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
-  // Resolved by the Phase A migration: `users.auth_user_id` now bridges
-  // public.users <-> auth.users. New sessions are looked up by
-  // auth_user_id directly; if a row hasn't been linked yet (first login
-  // after the migration, or first login ever for a freshly-provisioned
-  // account), it's found once by email and linked automatically.
-  //
-  // A third case (Phase K): a self-registered patient whose project
-  // requires email confirmation has an auth.users row but no public.users
-  // row yet — their registration details are stashed in user_metadata.
-  // The first time such a person successfully logs in (post-confirmation),
-  // finish creating their profile rows here.
   const loadProfile = useCallback(async (authUser) => {
-    if (!authUser?.id) {
+    if (!authUser) {
       setProfile(null)
       return
     }
     try {
-      let row
-      try {
-        row = await getUserByAuthId(authUser.id)
-      } catch {
-        try {
-          row = await getUserByEmail(authUser.email)
-          row = await linkAuthUserIfNeeded(row, authUser.id)
-        } catch {
-          if (authUser.user_metadata?.role === 'patient' && authUser.user_metadata?.student_number) {
-            await finalizeSelfRegistration(authUser)
-            row = await getUserByAuthId(authUser.id)
-          } else {
-            throw new Error('No matching account found')
-          }
-        }
+      let row = await getUserByAuthId(authUser.id)
+      if (!row && authUser.email) {
+        row = await getUserByEmail(authUser.email)
+        if (row) await linkAuthUserIfNeeded(row.user_id, authUser.id)
+      }
+      if (!row && authUser.user_metadata?.role === 'patient') {
+        row = await finalizeSelfRegistration(authUser)
       }
       setProfile(row)
-    } catch (error) {
-      console.error('Failed to load user profile:', error.message)
+    } catch (err) {
+      console.error('Failed to load user profile:', err.message)
       setProfile(null)
     }
   }, [])
@@ -92,9 +70,35 @@ export function AuthProvider({ children }) {
     }
   }, [loadProfile])
 
+  // Phase R — the correct password alone is no longer enough. After
+  // Supabase Auth confirms the credentials, this also checks
+  // `public.users.is_active` (via the lookup_is_active_by_email RPC,
+  // migration 024) and immediately signs back out if the account was
+  // disabled — either by LoginPage's 10-failed-attempt lockout
+  // escalation, or by an admin's Deactivate toggle in Maintenance ->
+  // User Management. Supabase Auth itself has no concept of that column,
+  // so without this check a disabled account could still sign in
+  // normally. Checked here (not per call site) so every sign-in path —
+  // the password form, dev quick-login, QR/Scan-ID — is covered by one
+  // rule instead of duplicating it.
   const signIn = useCallback(async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+
+    let active = true
+    try {
+      active = await checkAccountActive(email)
+    } catch {
+      // If the activity check itself fails (network hiccup, RPC not yet
+      // deployed, etc.), fail open rather than locking every user out
+      // over an infrastructure issue unrelated to their own account.
+      active = true
+    }
+    if (active === false) {
+      await supabase.auth.signOut()
+      throw new Error('ACCOUNT_DISABLED')
+    }
+
     return data
   }, [])
 
@@ -117,10 +121,9 @@ export function AuthProvider({ children }) {
     [session]
   )
 
-  // Phase 1 (Forgot Password). Sends the recovery email; Supabase's own
-  // rate-limiting/enumeration-protection means this resolves the same way
-  // whether or not the email actually matches an account — the caller
-  // shows a generic "if that account exists, an email was sent" message
+  // Sends the recovery email; Supabase's own rate-limiting/enumeration
+  // protection means this resolves the same way whether or not the email
+  // actually matches an account — the caller shows a generic message
   // either way, never revealing account existence.
   const requestPasswordReset = useCallback(async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -129,10 +132,21 @@ export function AuthProvider({ children }) {
     if (error) throw error
   }, [])
 
+  // OTP-based recovery — verifies the code Supabase emailed (via
+  // requestPasswordReset above) and, on success, establishes a real
+  // session for that account. completePasswordReset() can then be called
+  // immediately after to set the new password, all inside one modal, no
+  // page navigation or email-link click required.
+  const verifyRecoveryOtp = useCallback(async (email, token) => {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' })
+    if (error) throw error
+    return data
+  }, [])
+
   // Only meaningful while isPasswordRecovery is true (a real session
-  // established from a reset-email link) — updateUser() would still work
-  // on a normal logged-in session too, but ResetPasswordPage only calls
-  // this after confirming isPasswordRecovery itself.
+  // established from a reset-email link/OTP) — updateUser() would still
+  // work on a normal logged-in session too, but ResetPasswordPage only
+  // calls this after confirming isPasswordRecovery itself.
   const completePasswordReset = useCallback(async (newPassword) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
@@ -150,6 +164,7 @@ export function AuthProvider({ children }) {
     signOut,
     changePassword,
     requestPasswordReset,
+    verifyRecoveryOtp,
     completePasswordReset,
     refreshProfile: () => loadProfile(session?.user),
   }

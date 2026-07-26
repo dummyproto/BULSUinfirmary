@@ -97,9 +97,9 @@ export default function DocumentRequestsPage() {
       }
       try {
         await notify({ targetUserId: updated.patient_id, message: notifMessages[type], type: notifTypes[type], module: '/my-requests' })
-      } catch {
-        // Non-critical — the status update itself already succeeded.
-      }
+      } catch (err) {
+     console.error('notify() failed:', err)
+   }
 
       show(messages[type], 'success')
       closeAction()

@@ -52,14 +52,19 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
         <div className="card" style={{ flex: 1, minWidth: 0 }}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardIcon width={15} height={15} /> Case List</h3>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 'auto', alignItems: 'center' }}>
+           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginLeft: 'auto', alignItems: 'flex-end' }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Search</div>
               <input
                 className="search-input"
-                placeholder="Search…"
+                placeholder="Patient or diagnosis…"
                 value={search}
                 onChange={(e) => set({ search: e.target.value })}
                 style={{ width: 150 }}
               />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Diagnosis</div>
               <select
                 className="form-select"
                 style={{ fontSize: 12, padding: '5px 8px', width: 170 }}
@@ -71,30 +76,28 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                   <option key={d}>{d}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>From Date</div>
               <input
                 className="form-input"
                 type="date"
                 value={dateFrom}
                 onChange={(e) => set({ dateFrom: e.target.value })}
                 style={{ width: 140, fontSize: 12, padding: '5px 8px' }}
-                title="From date"
               />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>To Date</div>
               <input
                 className="form-input"
                 type="date"
                 value={dateTo}
                 onChange={(e) => set({ dateTo: e.target.value })}
                 style={{ width: 140, fontSize: 12, padding: '5px 8px' }}
-                title="To date"
               />
-              <button
-                type="button"
-                className="btn btn-sm btn-outline"
-                onClick={() => onFiltersChange({ search: '', diagFilter: 'All', dateFrom: '', dateTo: '' })}
-              >
-                Reset
-              </button>
             </div>
+          </div>
           </div>
           <div className="table-wrap">
             <table>
@@ -132,7 +135,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                       <StatusBadge status={c.visit_type} />
                     </td>
                     <td>
-                      <span className="diag-pill">{c.diagnosis || c.assessment.substring(0, 35)}</span>
+                      <span className="diag-pill">{c.diagnosis || (c.assessment || '').substring(0, 35) || '—'}</span>
                     </td>
                     <td style={{ fontSize: 11, color: 'var(--text-2)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.medications || 'None'}

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { initialsFor } from '@features/maintenance/lib/userHelpers'
 
 // ── ARCHITECTURE NOTE (updated post-Phase-D) ──
 // `users.auth_user_id` bridges public.users <-> auth.users (migration 001).
@@ -38,8 +39,12 @@ export async function provisionUser({ email, name, role, mode = 'invite', tempor
  * the reasoning and the flagged information-exposure tradeoff.
  */
 export async function searchPatientsPublic(query) {
-  if (!query || query.trim().length < 2) return []
-  const { data, error } = await supabase.rpc('search_patients_public', { query: query.trim() })
+  // An empty/short query is treated as "show me everyone" (the RPC's own
+  // ILIKE '%' || query || '%' matches all patients when query is ''),
+  // not as "return nothing" — this used to hard-block any query under 2
+  // characters, which silently broke every "browse all patients" use
+  // case regardless of what the calling component did.
+  const { data, error } = await supabase.rpc('search_patients_public', { query: (query || '').trim() })
   if (error) throw error
   return data || []
 }
@@ -57,10 +62,87 @@ export async function lookupEmailBySchoolId(code) {
 }
 
 /**
- * Self-registration (Phase K). Creates a REAL Supabase Auth account via
- * `supabase.auth.signUp()` — unlike Maintenance's admin-provisioned users,
- * this is always safe to do purely client-side with the anon key, since
- * the person is only ever creating their own account.
+ * Login lockout escalation (Phase R) — called by LoginPage once a given
+ * email has reached its 10th Tier-2 failed attempt (5 attempts -> 60s
+ * cooldown, then 10 fresh attempts -> disable). Runs as `anon`
+ * (pre-login, no session yet), so it goes through the SECURITY DEFINER
+ * `disable_account_after_lockout` RPC (migration 024) rather than a
+ * direct UPDATE — `users_update` RLS (migration 001) only allows
+ * `authenticated`. Same trust model as lookupEmailBySchoolId above: a
+ * practical deterrent, not a hardened server-side brute-force guard.
+ */
+export async function disableAccountAfterLockout(email) {
+  const { error } = await supabase.rpc('disable_account_after_lockout', { p_email: email })
+  if (error) throw error
+}
+
+/**
+ * Login lockout escalation (Phase R) — checked by AuthContext.signIn()
+ * immediately after a CORRECT password, so a disabled account (whether
+ * disabled by disableAccountAfterLockout above, or by an admin's
+ * Activate/Deactivate toggle in Maintenance -> User Management) still
+ * can't complete sign-in. Supabase Auth's own signInWithPassword has no
+ * concept of `public.users.is_active` on its own. Also called upfront by
+ * LoginPage before attempting sign-in at all, so a disabled account
+ * shows the same clear message regardless of which password was typed.
+ */
+export async function checkAccountActive(email) {
+  const { data, error } = await supabase.rpc('lookup_is_active_by_email', { p_email: email })
+  if (error) throw error
+  return data
+}
+
+/**
+ * Login lockout exemption (Phase S) — checked by LoginPage before
+ * applying ANY of the Tier 1/Tier 2 lockout or auto-disable logic.
+ * Admin accounts are fully exempt: only an admin can re-enable a
+ * disabled account, so letting the lockout system disable the only
+ * admin would be a real denial-of-service risk (deliberately typing
+ * wrong passwords for a known/guessed admin email would lock everyone
+ * out of user management with no one left who could undo it).
+ */
+export async function getRoleByEmail(email) {
+  const { data, error } = await supabase.rpc('lookup_role_by_email', { p_email: email })
+  if (error) throw error
+  return data || null
+}
+
+/**
+ * Registration QR lookup (Phase Q) — resolves a scanned student-ID code
+ * against `registration_qr_codes` via the narrow `lookup_registration_qr`
+ * RPC (migration 023). Callable while signed out (registration happens
+ * before any account/session exists). Returns `null` if the code isn't in
+ * the table at all — that's expected and NOT an error: this app has no
+ * seeding flow yet (see KNOWN_ISSUES.md), so `RegisterQrScan` treats "not
+ * found" as "proceed with whatever the QR payload itself contained," not
+ * as a hard failure. Returns `{ ..., is_used: true }` if the code was
+ * already claimed by an earlier registration, which the caller uses to
+ * show a distinct "already registered" message.
+ */
+export async function lookupRegistrationQr(code) {
+  const { data, error } = await supabase.rpc('lookup_registration_qr', { p_code: code })
+  if (error) throw error
+  return data?.[0] || null
+}
+/**
+ * Registration duplicate check (Phase Q, extended) — catches the case
+ * `lookup_registration_qr`'s is_used flag can't: someone registering with
+ * a DIFFERENT QR code that happens to encode the SAME student number as
+ * an already-registered account. Checked separately from is_used so both
+ * paths are covered.
+ */
+export async function checkStudentNumberRegistered(studentNumber) {
+  const { data, error } = await supabase.rpc('check_student_number_registered', { p_student_number: studentNumber })
+  if (error) throw error
+  return !!data
+}
+
+/**
+ * Self-registration (Phase K, extended in Phase Q). Creates a REAL
+ * Supabase Auth account via `supabase.auth.signUp()` — unlike
+ * Maintenance's admin-provisioned users, this is always safe to do purely
+ * client-side with the anon key, since the person is only ever creating
+ * their own account.
  *
  * Registration data is stashed in the auth user's `user_metadata` at
  * signUp time. If the project has email confirmation OFF, signUp()
@@ -71,13 +153,36 @@ export async function lookupEmailBySchoolId(code) {
  * rows get created later — see `finalizeSelfRegistration()`, called from
  * `AuthContext.loadProfile()` the first time this person actually logs in
  * after confirming their email.
+ *
+ * Phase Q additions — both optional, both no-ops when omitted (manual
+ * registration is unaffected):
+ * - `qrCode`: the normalized code from a scanned/looked-up registration
+ *   QR (migration 023). Stashed in metadata like everything else here so
+ *   it survives the email-confirmation-pending case too, then written to
+ *   `users.school_id_barcode` and claimed via `claim_registration_qr` in
+ *   `finalizeSelfRegistration()` — this is what makes the scan-to-login
+ *   flow (`lookup_email_by_school_id`, migration 002) work for this
+ *   account immediately afterward.
+ * - `profileIncomplete`: set when the person used Step 2's "Skip for now"
+ *   path. Written to `patient_profiles.profile_incomplete`.
  */
-export async function registerPatient({ email, password, name, surname, givenName, phone, studentNumber, course, yearLevel }) {
+export async function registerPatient({ email, password, name, surname, givenName, phone, studentNumber, course, yearLevel, qrCode, profileIncomplete }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { name, role: 'patient', surname, given_name: givenName, phone, student_number: studentNumber, course, year_level: yearLevel },
+      data: {
+        name,
+        role: 'patient',
+        surname,
+        given_name: givenName,
+        phone,
+        student_number: studentNumber,
+        course,
+        year_level: yearLevel,
+        qr_code: qrCode || null,
+        profile_incomplete: !!profileIncomplete,
+      },
     },
   })
   if (error) throw error
@@ -107,6 +212,15 @@ export async function registerPatient({ email, password, name, surname, givenNam
  * registration data stashed in their `user_metadata`. Idempotent-ish: if
  * the row already exists this will throw a unique-violation, which the
  * caller can treat as "already finalized, nothing to do."
+ *
+ * Phase Q: also writes `school_id_barcode` (from `m.qr_code`, if the
+ * person registered via QR scan) and `profile_incomplete` (from
+ * `m.profile_incomplete`), then claims the scanned code via
+ * `claim_registration_qr` so it can't be reused to prefill a second
+ * registration. Claiming happens last and is treated as non-critical —
+ * failing to mark a row "used" doesn't undo an already-created account,
+ * and `school_id_barcode` (set moments earlier, in the same function) is
+ * what actually makes scan-to-login work, not the claim itself.
  */
 export async function finalizeSelfRegistration(authUser) {
   const m = authUser.user_metadata || {}
@@ -123,6 +237,7 @@ export async function finalizeSelfRegistration(authUser) {
       password_hash: 'MANAGED_BY_SUPABASE_AUTH',
       is_active: true,
       auth_user_id: authUser.id,
+      school_id_barcode: m.qr_code || null,
     })
     .select()
     .single()
@@ -135,6 +250,7 @@ export async function finalizeSelfRegistration(authUser) {
     given_name: m.given_name,
     course: m.course || null,
     year_level: m.year_level || null,
+    profile_incomplete: !!m.profile_incomplete,
   })
   if (ppError) {
     // Half-registered is worse than not-registered: the `users` row we
@@ -145,6 +261,18 @@ export async function finalizeSelfRegistration(authUser) {
     // problem). Clean it up so the person can simply try again.
     await supabase.from('users').delete().eq('user_id', user.user_id)
     throw ppError
+  }
+
+  if (m.qr_code) {
+    try {
+      const { error: claimError } = await supabase.rpc('claim_registration_qr', { p_code: m.qr_code, p_user_id: user.user_id })
+      if (claimError) throw claimError
+    } catch {
+      // Non-critical — see doc comment above. The account is fully
+      // created and scan-to-login-capable either way; a claim failure
+      // here only risks the (unlikely, and low-stakes) case of the same
+      // code prefilling a second registration attempt later.
+    }
   }
 
   return user
@@ -158,14 +286,22 @@ function flattenUser(row) {
   return {
     ...rest,
     active: is_active,
-    department: staff_profiles?.department ?? null,
+    // Fall back to computed initials from the name whenever the DB
+    // column is empty (true for most patient self-registrations, and any
+    // account older than the Maintenance "Add User" initials feature) —
+    // this is the single place every avatar-showing component reads
+    // from, so fixing it here fixes every "?" avatar across the app.
+    avatar_initials: row.avatar_initials || initialsFor(row.name || '?'),    department: staff_profiles?.department ?? null,
     position: staff_profiles?.position ?? null,
     permissions: staff_permissions
-      ? { print_inventory: staff_permissions.print_inventory, print_appointments: staff_permissions.print_appointments, print_health: staff_permissions.print_health }
-      : null,
+? { print_inventory: staff_permissions.print_inventory, print_documents: staff_permissions.print_documents, print_health: staff_permissions.print_health }      : null,
     student_number: patient_profiles?.student_number ?? null,
     course: patient_profiles?.course ?? null,
     year_level: patient_profiles?.year_level ?? null,
+    // Phase Q: surfaced so ProfilePage can show the "finish your profile"
+    // banner. `?? false` (not `?? null`) — the column is NOT NULL with a
+    // default, so `false` is the only meaningful "no row / not set" value.
+    profile_incomplete: patient_profiles?.profile_incomplete ?? false,
     parent_name: patient_profiles?.parent_name ?? null,
     parent_phone: patient_profiles?.parent_phone ?? null,
     parent_phone2: patient_profiles?.parent_phone_2 ?? null,
@@ -241,7 +377,7 @@ export async function createUserProfile({ username, email, role, name, phone, de
     if (spError) throw spError
     const { error: permError } = await supabase
       .from('staff_permissions')
-      .insert({ user_id: user.user_id, print_inventory: false, print_appointments: false, print_health: false })
+      .insert({ user_id: user.user_id, print_inventory: false, print_documents: false, print_health: false })
     if (permError) throw permError
   }
 
@@ -268,10 +404,25 @@ export async function setActive(id, active) {
   if (error) throw error
 }
 
-export async function deleteUser(id) {
-  // ON DELETE CASCADE on staff_profiles/staff_permissions/patient_profiles
-  // handles the profile-row cleanup automatically.
-  const { error } = await supabase.from('users').delete().eq('user_id', id)
+export async function deleteUser(userId) {
+  // Before deleting, backfill unregistered_patient_name on any of this
+  // person's existing consultations that don't already have one — the
+  // FK's ON DELETE SET NULL is about to null out patient_id on those
+  // rows, and the consultations_patient_identity_check CHECK constraint
+  // (added for Phase Q's unregistered-patient support) requires at least
+  // one of patient_id/unregistered_patient_name to stay non-null. Without
+  // this, deleting any patient who has consultation history fails
+  // outright with a constraint violation.
+  const { data: user } = await supabase.from('users').select('name').eq('user_id', userId).single()
+  if (user?.name) {
+    await supabase
+      .from('consultations')
+      .update({ unregistered_patient_name: user.name })
+      .eq('patient_id', userId)
+      .is('unregistered_patient_name', null)
+  }
+
+  const { error } = await supabase.from('users').delete().eq('user_id', userId)
   if (error) throw error
 }
 

@@ -4,25 +4,20 @@ import Modal from '@components/ui/Modal'
 import { QrCodeIcon, DownloadIcon } from '@components/ui/icons'
 import { formatDate } from '@lib/format'
 
-// The canonical payload every batch QR encodes — identifies medicine,
-// batch, lot number, expiration, supplier, and quantity (exactly the six
-// fields this phase requires), plus a `type: 'batch'` marker and the
-// real medicine_batch_id so scanning it can look the batch up directly
-// and open its details, instead of going through the generic "unknown
-// QR, try to match or create an item" flow that handles externally
-// printed (e.g. supplier) QR codes. Generated fresh from live batch data
-// every time this modal opens — never stored as a static image/string,
-// so it can never go stale relative to the batch's real current state.
+// Kept intentionally minimal — the app re-fetches the batch's live data
+// from the database on scan (see InventoryPage.jsx's handleProcessRaw),
+// so every extra field beyond these two does nothing but make the QR
+// code physically denser and harder for a phone camera to read
+// reliably. `medicine` is kept as a short fallback label only used if
+// the batch has since been deleted (see the 'Invalid' scan-history
+// branch) — everything else that used to be encoded here (batch code,
+// lot, expiration, supplier, quantity) was never actually read back
+// after a scan; it was pure dead weight on the QR's density.
 export function buildBatchQRPayload(batch) {
   return JSON.stringify({
     type: 'batch',
     medicine_batch_id: batch.medicine_batch_id,
     medicine: batch.item_name,
-    batch: batch.batch_code,
-    lot: batch.lot_number || null,
-    expiration: batch.expiration_date || null,
-    supplier: batch.supplier || null,
-    quantity: batch.quantity,
   })
 }
 
@@ -32,7 +27,7 @@ export default function BatchQRModal({ isOpen, batch, onClose }) {
 
   useEffect(() => {
     if (!isOpen || !batch) return
-    QRCode.toDataURL(buildBatchQRPayload(batch), { width: 260, margin: 2 })
+    QRCode.toDataURL(buildBatchQRPayload(batch), { width: 320, margin: 3 })
       .then(setDataUrl)
       .catch((err) => setError(err.message))
   }, [isOpen, batch])

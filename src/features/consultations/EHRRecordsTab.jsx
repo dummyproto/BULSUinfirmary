@@ -1,9 +1,10 @@
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
-import { FolderIcon, PrinterIcon, EyeIcon } from '@components/ui/icons'
+import { FolderIcon, EyeIcon } from '@components/ui/icons'
 
 export default function EHRRecordsTab({ consultations, search, onSearchChange, onView, onPrint }) {
+  console.log('EHRRecordsTab received:', consultations, 'search:', search)
   const q = search.toLowerCase()
   const filtered = search
     ? consultations.filter(
@@ -20,9 +21,6 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><FolderIcon width={15} height={15} /> Health Records</h3>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search records…" width={200} />
-          <button type="button" className="btn btn-sm btn-blue" onClick={onPrint}>
-            <PrinterIcon width={13} height={13} /> Print Report
-          </button>
         </div>
       </div>
       <div className="table-wrap">
@@ -60,7 +58,7 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
                   <StatusBadge status={c.visit_type} />
                 </td>
                 <td style={{ maxWidth: 160 }}>
-                  <span className="diag-pill">{c.diagnosis || c.assessment.substring(0, 40)}</span>
+                  <span className="diag-pill">{c.diagnosis || (c.assessment || '').substring(0, 40) || '—'}</span>
                 </td>
                 <td
                   style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}

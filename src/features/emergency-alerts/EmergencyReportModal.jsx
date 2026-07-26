@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import EmergencyPatientPicker from './EmergencyPatientPicker'
-import { LOCATION_GROUPS } from './data/emergencyLocations'
 import { createEmergencyAlert } from '@services/emergencyAlertsService'
 import { notify } from '@services/notificationsService'
 import { addAuditLog } from '@services/auditLogsService'
 import { playEmergencySiren } from '@lib/emergencySound'
 import { AlertOctagonIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
+import LocationPicker from './LocationPicker'
 
 /**
  * profile: pass the authenticated patient's profile when logged in, or
@@ -17,13 +17,18 @@ import { AlertOctagonIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
  * RLS (by design), so the full-listing approach silently returned nothing
  * for the "For Another Person" case. This also happens to be what makes
  * the pre-login case possible at all, since there's no session yet.
+ *
+ * initialDescription: optional pre-fill for the Description field —
+ * used by the chatbot's "sos" trigger to seed it from the recent
+ * conversation. The person can still edit/clear it before submitting;
+ * this never auto-submits anything.
  */
-export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess }) {
+export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess, initialDescription = '' }) {
   const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
   const [emgType, setEmgType] = useState('myself')
   const [affected, setAffected] = useState(null)
   const [location, setLocation] = useState('')
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(initialDescription)
   const [submitting, setSubmitting] = useState(false)
 
   const reporterUser = profile ? { user_id: profile.user_id, name: profile.name, student_number: profile.student_number } : reporter
@@ -33,7 +38,7 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
     setEmgType('myself')
     setAffected(null)
     setLocation('')
-    setDescription('')
+    setDescription(initialDescription)
   }
 
   function handleClose() {
@@ -168,18 +173,7 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
         <label>
           Room / Location <span className="emg-req">*</span>
         </label>
-        <select className="emg-input" value={location} onChange={(e) => setLocation(e.target.value)}>
-          <option value="">-- Select Room / Location --</option>
-          {LOCATION_GROUPS.map((group) => (
-            <optgroup label={group.label} key={group.label}>
-              {group.options.map((o) => (
-                <option value={o.value} key={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <LocationPicker value={location} onChange={setLocation} />
       </div>
       <div className="emg-form-field">
         <label>

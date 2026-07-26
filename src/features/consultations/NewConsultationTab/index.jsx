@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import SearchableSelect from '@components/ui/SearchableSelect'
-import { sanitizeVitals } from '@lib/vitals'
+import { maskBloodPressure, maskTemperature, capPulse, capO2Sat } from '@lib/vitals'
 import { getInventoryStatus } from '@features/inventory/lib/inventoryHelpers'
 import { getDiagnosisCategory } from '@services/diagnosesService'
 import MedRow from './MedRow'
 import { ConsultationIcon, PeopleIcon, BarChartIcon, TagIcon, PillIcon, CalendarIcon, SaveIcon, RefreshCwIcon, ClipboardIcon, PlusIcon } from '@components/ui/icons'
 
-const EMPTY_MED_ROW = () => ({ id: crypto.randomUUID(), name: '', dosage: '', frequency: '', qty: '1' })
+const EMPTY_MED_ROW = () => ({ id: crypto.randomUUID(), name: '', dosage: '', frequency: '', qty: '' })
 
 function emptyForm() {
   return {
     patientId: '',
     patientDisplay: '',
+    isUnregistered: false,
+    unregisteredName: '',
     visitType: 'Walk-in',
     date: new Date().toISOString().slice(0, 10),
     staffId: '',
@@ -76,13 +78,19 @@ export default function NewConsultationTab({
   }
 
   function handleSubmit() {
-    if (!form.patientId) return onError('Please select a patient')
-    if (!form.complaint.trim()) return onError('Please enter main complaint')
+  if (form.isUnregistered) {
+    if (!form.unregisteredName.trim()) return onError('Please enter the unregistered patient\u2019s name')
+  } else if (!form.patientId) {
+    return onError('Please select a patient')
+  }
+  if (!form.complaint.trim()) return onError('Please enter main complaint')
     if (!form.diagnosis) return onError('Please select a diagnosis')
     const diagnosis =
       form.diagnosis === 'Others' ? form.diagnosisOther.trim() || 'Others' : form.diagnosis
     if (!form.assessment.trim()) return onError('Please enter assessment/notes')
     if (!form.date) return onError('Please select a date')
+    if (form.date < new Date().toISOString().slice(0, 10)) return onError('Date cannot be in the past.')
+    if (!form.staffId) return onError('Please select who attended this consultation')
 
     const patient = patients.find((p) => String(p.user_id) === form.patientId)
     const prescribedMeds = medRows
@@ -90,8 +98,9 @@ export default function NewConsultationTab({
       .map((r) => ({ name: r.name, dosage: r.dosage, frequency: r.frequency, qty: parseInt(r.qty, 10) || 1 }))
 
     onSubmit({
-      patient,
-      visitType: form.visitType,
+  patient,
+  unregisteredPatientName: form.isUnregistered ? form.unregisteredName.trim() : null,
+  visitType: form.visitType,
       date: form.date,
       staffId: form.staffId ? Number(form.staffId) : null,
       complaint: form.complaint.trim(),
@@ -121,22 +130,47 @@ export default function NewConsultationTab({
         </div>
         <div style={{ padding: 18 }}>
           <div className="cons-section-label" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><PeopleIcon width={13} height={13} /> Patient &amp; Visit Information</div>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>PATIENT *</label>
-              <SearchableSelect
-                options={patientOptions}
-                value={form.patientId}
-                displayValue={form.patientDisplay}
-                placeholder="--Select patient by name or ID--"
-                onSelect={(val) => {
-                  const opt = patientOptions.find((o) => o.value === val)
-                  setForm((f) => ({ ...f, patientId: val, patientDisplay: opt ? `${opt.label} — ${opt.sub}` : '' }))
-                }}
-                onClear={() => setForm((f) => ({ ...f, patientId: '', patientDisplay: '' }))}
-                emptyLabel="No patients found"
-              />
-            </div>
+<div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+  <button
+    type="button"
+    className={`btn btn-sm ${!form.isUnregistered ? 'btn-blue' : 'btn-outline'}`}
+    onClick={() => setForm((f) => ({ ...f, isUnregistered: false, unregisteredName: '' }))}
+  >
+    Registered Patient
+  </button>
+  <button
+    type="button"
+    className={`btn btn-sm ${form.isUnregistered ? 'btn-blue' : 'btn-outline'}`}
+    onClick={() => setForm((f) => ({ ...f, isUnregistered: true, patientId: '', patientDisplay: '' }))}
+  >
+    Unregistered Patient
+  </button>
+</div>
+<div className="form-grid">
+  <div className="form-group">
+    <label>PATIENT *</label>
+    {form.isUnregistered ? (
+      <input
+        className="form-input"
+        placeholder="Full Name of Unregistered Patient"
+        value={form.unregisteredName}
+        onChange={(e) => setField('unregisteredName')(e.target.value)}
+      />
+    ) : (
+      <SearchableSelect
+        options={patientOptions}
+        value={form.patientId}
+        displayValue={form.patientDisplay}
+        placeholder="Search patient by name or ID"
+        onSelect={(val) => {
+          const opt = patientOptions.find((o) => o.value === val)
+          setForm((f) => ({ ...f, patientId: val, patientDisplay: opt ? `${opt.label} — ${opt.sub}` : '' }))
+        }}
+        onClear={() => setForm((f) => ({ ...f, patientId: '', patientDisplay: '' }))}
+        emptyLabel="No patients found"
+      />
+    )}
+  </div>
             <div className="form-group">
               <label>VISIT TYPE *</label>
               <select className="form-select" value={form.visitType} onChange={(e) => setField('visitType')(e.target.value)}>
@@ -146,18 +180,18 @@ export default function NewConsultationTab({
             </div>
             <div className="form-group">
               <label>DATE *</label>
-              <input className="form-input" type="date" value={form.date} onChange={(e) => setField('date')(e.target.value)} />
+            <input className="form-input" type="date" min={new Date().toISOString().slice(0, 10)} value={form.date} onChange={(e) => setField('date')(e.target.value)} />
             </div>
             <div className="form-group">
-              <label>ATTENDED BY</label>
+            <label>ATTENDED BY *</label>
               <select className="form-select" value={form.staffId} onChange={(e) => setField('staffId')(e.target.value)}>
-                <option value="">-- Select Staff --</option>
-                {staff.map((s) => (
-                  <option key={s.user_id} value={s.user_id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <option value="">-- Select Staff --</option>
+              {staff.map((s) => (
+              <option key={s.user_id} value={s.user_id}>
+              {s.name}{s.position ? ` — ${s.position}` : ''} ({s.role === 'admin' ? 'Admin' : 'Staff'})
+            </option>
+            ))}
+            </select>
             </div>
             <div className="form-group full">
               <label>MAIN COMPLAINT *</label>
@@ -177,23 +211,23 @@ export default function NewConsultationTab({
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div className="vitals-grid">
               {[
-                ['bp', 'Blood Pressure', '120/80'],
-                ['temp', 'Temp (°C)', '36.5'],
-                ['pulse', 'Pulse Rate', '72'],
-                ['o2sat', 'O₂ Sat (%)', '98'],
-              ].map(([field, label, ph]) => (
-                <div className="vital-box" key={field}>
-                  <input
-                    className="form-input"
-                    placeholder={ph}
-                    inputMode="decimal"
-                    style={{ textAlign: 'center' }}
-                    value={form[field]}
-                    onChange={(e) => setField(field)(sanitizeVitals(e.target.value))}
-                  />
-                  <div className="vlbl">{label}</div>
-                </div>
-              ))}
+              ['bp', 'Blood Pressure', '120/10', maskBloodPressure],
+              ['temp', 'Temp (°C)', '36.5', maskTemperature],
+              ['pulse', 'Pulse Rate', '72', capPulse],
+              ['o2sat', 'O₂ Sat (%)', '98', capO2Sat],
+            ].map(([field, label, ph, maskFn]) => (
+              <div className="vital-box" key={field}>
+                <input
+                  className="form-input"
+                  placeholder={ph}
+                  inputMode="decimal"
+                  style={{ textAlign: 'center' }}
+                  value={form[field]}
+                  onChange={(e) => setField(field)(maskFn(e.target.value))}
+                />
+                <div className="vlbl">{label}</div>
+              </div>
+            ))}
             </div>
           </div>
 
@@ -275,7 +309,7 @@ export default function NewConsultationTab({
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="cons-submit-row" style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-blue btn-lg" onClick={handleSubmit}>
               <SaveIcon width={13} height={13} /> Save to Health Records + Deduct Inventory
             </button>
@@ -300,7 +334,7 @@ export default function NewConsultationTab({
             {medicineInventory.map((i) => {
               const st = getInventoryStatus(i)
               return (
-                <div className="inv-quick-row" key={i.inventory_id}>
+                <div className="inv-quick-row" key={i.inventory_id ?? i._id ?? i.name}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600 }}>{i.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{i.unit}</div>

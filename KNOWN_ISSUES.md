@@ -356,3 +356,123 @@ Complete database-driven notification/alert system for Inventory: automatic Low/
 2. Monitor `run_expiration_check()`'s runtime as `medicine_batches` grows — the per-batch loop is fine at hundreds-to-low-thousands of rows; beyond that, consider rewriting the loop as a single set-based `INSERT ... SELECT` rather than row-by-row PL/pgSQL, which would be faster but harder to read.
 3. If `pg_cron` isn't available on your plan, the client-side "check on page load" path is a full fallback, not a degraded one — no further action needed unless "runs even if nobody opens the app" specifically matters for your deployment.
 
+
+---
+
+## Phase Q — QR-Code Registration
+
+### Known gap: no seeding flow for `registration_qr_codes`
+Migration 023 adds `registration_qr_codes` plus `lookup_registration_qr()` /
+`claim_registration_qr()` RPCs, but this app has **no admin UI or generation
+flow that creates rows in that table**. Until an admin "generate/print
+student ID QR" feature exists, rows must be seeded manually (e.g. a one-off
+`INSERT` run directly against the database — see `SETUP_GUIDE.md`).
+`RegisterQrScan.jsx` (Phase 2) is designed to degrade gracefully when a
+scanned code isn't in the table — it still lets registration proceed with
+whatever the QR payload itself contained, rather than hard-blocking on an
+unseeded table.
+
+### Resolved spec contradiction (Phase 1 vs Phase 2 of the prompt)
+Phase 1's original RPC spec said `lookup_registration_qr` should return
+**nothing** once a code's `is_used = true`. Phase 2's UI spec calls for a
+specific "This ID has already been registered" message when `is_used`
+comes back true — which requires the RPC to actually return the row in
+that case. Flagged to the requester, who confirmed: the RPC returns the
+row (with `is_used = true`) instead of nothing. No additional sensitive
+data is exposed by this change — same non-sensitive columns either way,
+just with the boolean populated so the caller can distinguish "already
+claimed" from "not found at all."
+
+### A real bug found and fixed — ambiguous column reference
+`registration_qr_codes` has a column literally named `code`. The original
+Phase 1 draft of `lookup_registration_qr(code TEXT)` and
+`claim_registration_qr(code TEXT, user_id INT)` referenced an unqualified
+`code` inside each function body — ambiguous to Postgres between the
+column and the parameter of the same name, which raises "column reference
+'code' is ambiguous" **at call time**, not at `CREATE FUNCTION` time. This
+wasn't visible from reading the SQL in isolation; it only surfaced while
+tracing the Phase 6 end-to-end flow. Fixed by renaming both parameters to
+`p_code` (and `user_id` to `p_user_id`, for consistency) in migration 023,
+with matching updates to both `usersService.js` call sites
+(`lookupRegistrationQr()`, `finalizeSelfRegistration()`'s claim call).
+
+### QA pass (Phase 7) — code-level trace, not a live-database test run
+No live Supabase project was available in this environment to execute
+against, so this QA pass is a careful manual trace of each scenario
+through the actual code paths (not an assumption-based checklist). Treat
+this as "should work per the code as written," and verify against a real
+project before shipping:
+
+- **Manual registration (unchanged)**: `form.qrCode`/`form.profileIncomplete`
+  stay at their empty/false defaults the whole time; `registerPatient()`
+  writes `school_id_barcode: null` and `profile_incomplete: false` — same
+  end state as before Phase Q, just via explicit columns instead of
+  nonexistent ones.
+- **QR registration, full data**: scan resolves via `lookup_registration_qr`
+  (unused row), all fields prefill, `stepNext()`'s Step 2 validation
+  passes normally since course/year are already filled, submission claims
+  the code and sets `school_id_barcode`.
+- **QR registration, missing course → skip → complete later**:
+  `matchOption()` returns `''` when the scanned course doesn't match a
+  `COURSES` entry, Step 2's Skip link clears course/year and sets
+  `profile_incomplete: true`, Profile page shows the banner afterward, and
+  saving course+year from `EditProfileModal` flips it back to `false`.
+- **QR code reused twice**: second scan's `lookup_registration_qr` call
+  returns the row with `is_used = true`, `RegisterQrScan` shows "This ID
+  has already been registered," registration via that scan is blocked.
+  (Note: this only gates the *scan* convenience path — someone who already
+  knows the raw student number could still type it into the manual Step 1
+  fields for a different account, exactly as was already possible before
+  Phase Q. `patient_profiles.student_number` has no `UNIQUE` constraint in
+  this schema, so that's a pre-existing gap, not one introduced or
+  resolved by this work.)
+- **Unseeded/unknown QR code**: `lookup_registration_qr` returns no row,
+  `RegisterQrScan` still calls `onScanned(...)` with whatever the raw QR
+  payload contained — registration is not hard-blocked.
+
+### RLS re-check (Phase 7)
+- `registration_qr_codes`: RLS enabled, **zero policies** — confirmed this
+  denies all direct table access from `anon`/`authenticated`; the only
+  access path is the two `SECURITY DEFINER` RPCs, which bypass RLS by
+  running as the function owner. No table-level grants were added.
+- `patient_profiles.profile_incomplete` / `users.school_id_barcode`: both
+  covered by the existing "own row" `FOR ALL`/`FOR UPDATE` policies from
+  migration 006 — this schema has no column-level RLS, so no new policy
+  was needed for either new/reused column.
+
+### Summary of Changes
+QR-code registration for the clinic app: scan a student ID at registration
+to pre-fill name/student number/course, an explicit "skip academic info,
+finish later" path, persisted registration QR codes (lookup + claim RPCs),
+a Profile-page banner + edit flow for finishing an incomplete profile, and
+a manual "link your school ID" field for people who registered normally —
+all while confirming the existing scan-to-login flow (Phase J) keeps
+working end-to-end for QR-registered accounts, with **no scan ever
+bypassing password entry**.
+
+### Database Modifications
+- **New table**: `registration_qr_codes` (migration 023) — `id, code
+  (unique), student_number, full_name, course, year_level, raw_payload
+  (jsonb), is_used, used_by_user_id (FK → users), created_at, used_at`. RLS
+  enabled, zero policies (RPC-only access).
+- **New functions**: `lookup_registration_qr(p_code)` (SECURITY DEFINER,
+  `anon`+`authenticated`), `claim_registration_qr(p_code, p_user_id)`
+  (SECURITY DEFINER, `authenticated` only) — migration 023.
+- **New column**: `patient_profiles.profile_incomplete BOOLEAN NOT NULL
+  DEFAULT false` — migration 023.
+- No changes to any existing table's columns/constraints beyond that one
+  addition; `users.school_id_barcode` (from migration 002) is reused, not
+  altered.
+
+### Known limitations
+- No admin UI to generate/print `registration_qr_codes` rows — seeding is
+  manual/SQL-only for now (see `SETUP_GUIDE.md`).
+- `patient_profiles.student_number` has no `UNIQUE` constraint — a
+  pre-existing gap unrelated to this feature, noted above under "QR code
+  reused twice."
+- `matchOption()`'s course/year-level matching against the fixed
+  `COURSES`/`YEAR_LEVELS` dropdown lists is exact-match-first with a
+  narrow digit fallback for year level only — a QR encoding a course name
+  that doesn't closely match an existing option will leave that field
+  blank for manual selection rather than guessing.
+

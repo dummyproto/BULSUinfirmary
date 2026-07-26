@@ -124,18 +124,18 @@ export default function HealthDetailModal({ isOpen, onClose, consultation, atten
       {deductionLogs?.length > 0 && (
         <div style={{ marginTop: 14, padding: '12px 16px', background: '#ECFDF5', border: '1px solid #86EFAC', borderRadius: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#065F46', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <InventoryIcon width={12} height={12} /> INVENTORY DEDUCTIONS ({deductionLogs.length} items)
+            <InventoryIcon width={12} height={12} /> INVENTORY RELEASE ({deductionLogs.length} items)
           </div>
           {deductionLogs.map((l, i) => (
-            <div
-              key={i}
-              style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #BBF7D0' }}
-            >
-              <span style={{ color: '#047857' }}>{l.item_name}</span>
-              <span style={{ fontWeight: 700, color: '#DC2626' }}>{l.quantity_change}</span>
-              <span style={{ color: 'var(--text-3)' }}>{formatDate(l.date)}</span>
-            </div>
-          ))}
+              <div
+                key={i}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #BBF7D0' }}
+              >
+                <span style={{ color: '#047857' }}>{l.item_name || 'Deducted item'}</span>
+                <span style={{ fontWeight: 700, color: '#DC2626' }}>{l.quantity_change}</span>
+                <span style={{ color: 'var(--text-3)', marginLeft: 'auto' }}>{formatDate(l.date)}</span>
+              </div>
+            ))}
         </div>
       )}
     </Modal>

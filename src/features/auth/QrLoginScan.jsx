@@ -7,7 +7,6 @@ import { CreditCardIcon, CameraIcon, SearchIcon, SquareIcon } from '@components/
 export default function QrLoginScan({ onIdentified, onError }) {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
-  const [manualCode, setManualCode] = useState('')
   const [scanStatus, setScanStatus] = useState('')
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -81,16 +80,11 @@ export default function QrLoginScan({ onIdentified, onError }) {
     if (!video || !canvas || video.readyState < 2) return
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
     if (code?.data) resolveCode(code.data)
-  }
-
-  function handleManualLookup() {
-    if (!manualCode.trim()) return onError('Enter your school ID / barcode value.')
-    resolveCode(manualCode.trim())
   }
 
   return (
@@ -109,7 +103,7 @@ export default function QrLoginScan({ onIdentified, onError }) {
             <div className="scan-idle-state">
               <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--text-3)' }}><CreditCardIcon width={40} height={40} /></div>
               <div className="scan-idle-label">Camera not started</div>
-              <div className="scan-idle-sub">Scan your school ID's QR code to identify your account</div>
+              <div className="scan-idle-sub">Scan your ID's QR code to identify your account</div>
             </div>
           )}
           <div className="scan-corner-tl" />
@@ -126,14 +120,6 @@ export default function QrLoginScan({ onIdentified, onError }) {
       <button type="button" className="login-btn" style={{ marginTop: 12 }} onClick={() => (cameraActive ? stopCamera() : startCamera())} disabled={cameraStarting}>
         {cameraActive ? (<><SquareIcon width={11} height={11} /> Stop Camera</>) : cameraStarting ? 'Starting…' : (<><CameraIcon width={13} height={13} /> Start Camera</>)}
       </button>
-
-      <div style={{ margin: '16px 0 8px', fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>— or enter your ID code manually —</div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input className="login-input" placeholder="e.g. 2021-00123" value={manualCode} onChange={(e) => setManualCode(e.target.value)} style={{ flex: 1 }} />
-        <button type="button" className="btn btn-blue" onClick={handleManualLookup}>
-          Look Up
-        </button>
-      </div>
     </div>
   )
 }

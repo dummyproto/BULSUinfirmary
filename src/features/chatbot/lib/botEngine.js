@@ -40,6 +40,61 @@ export function checkPastMentions(msg, pastMessages) {
   return null
 }
 
+/**
+ * Builds a plain-language SUMMARY of symptom keywords the person has
+ * mentioned across their chat history — NOT a diagnosis or medical
+ * prediction. Deliberately framed as "here's what you've told me," with
+ * counts and recency, so it's genuinely useful for noticing a recurring
+ * pattern (e.g. "you've mentioned headache 4 times this month") without
+ * ever claiming to assess, diagnose, or predict anything medically.
+ */
+function buildHealthSummary(allMessages) {
+  if (!allMessages || allMessages.length === 0) {
+    return `📊 <strong>Your Health Summary</strong><br><br>
+    I don't have any past messages to look back on yet — once you've chatted with me a bit about how you're feeling, I can summarize any patterns I notice.<br><br>${DISCLAIMER}`
+  }
+
+  const tally = {} // symptom -> { count, mostRecent }
+  for (const m of allMessages) {
+    const lower = (m.text || '').toLowerCase()
+    for (const symptom of SYMPTOM_NAMES) {
+      if (lower.includes(symptom)) {
+        if (!tally[symptom]) tally[symptom] = { count: 0, mostRecent: m.ts }
+        tally[symptom].count++
+        if (new Date(m.ts) > new Date(tally[symptom].mostRecent)) tally[symptom].mostRecent = m.ts
+      }
+    }
+  }
+
+  const entries = Object.entries(tally).sort((a, b) => b[1].count - a[1].count)
+
+  if (entries.length === 0) {
+    return `📊 <strong>Your Health Summary</strong><br><br>
+    I looked back through your chat history and didn't find any specific symptoms mentioned — that's good news! If something's bothering you, feel free to describe it anytime.<br><br>${DISCLAIMER}`
+  }
+
+  const rows = entries
+    .slice(0, 6)
+    .map(([symptom, { count, mostRecent }]) => {
+      const days = Math.round(daysBetween(new Date().toISOString(), mostRecent))
+      const when = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`
+      const label = symptom.charAt(0).toUpperCase() + symptom.slice(1)
+      return `<div class="info-row"><span>${label}</span><span>Mentioned ${count}× · last ${when}</span></div>`
+    })
+    .join('')
+
+  const flagged = entries.find(([, v]) => v.count >= 3)
+  const flagNote = flagged
+    ? `<br>💡 <strong>${flagged[0].charAt(0).toUpperCase() + flagged[0].slice(1)}</strong> has come up ${flagged[1].count} times — if this keeps recurring, it may be worth a proper check-up with clinic staff rather than just chatting about it here.`
+    : ''
+
+  return `📊 <strong>Your Health Summary</strong><br><br>
+  Based on what you've told me in our conversations, here's what's come up:<br><br>
+  <div class="chat-info-box">${rows}</div>
+  ${flagNote}<br><br>
+  ⚠️ <em>This is a simple summary of what you've mentioned to me — it is <strong>not</strong> a diagnosis, assessment, or medical prediction. Only a healthcare provider can properly evaluate your symptoms.</em>`
+}
+
 // Chips use data-reply instead of the legacy inline onclick="sendQuickReply(...)"
 // — ChatbotPage handles clicks via one delegated listener instead.
 function chip(label, reply) {
@@ -65,6 +120,34 @@ export function classifyIntent(msg) {
     }
   }
   return bestMatch
+}
+
+// Physical-symptom intent ids from knowledgeBase's INTENTS list — used
+// alongside SYMPTOM_NAMES so single-word symptom mentions AND
+// full-sentence symptom intents both count as a "health concern".
+// Deliberately excludes non-symptom intents like 'health_tips',
+// 'health_summary', 'doc_requirements', etc. — those are informational
+// questions, not a description of what's currently wrong with someone.
+const SYMPTOM_INTENT_IDS = new Set([
+  'emergency', 'symptoms', 'headache', 'fever', 'colds', 'cough',
+  'stomach', 'predict', 'symptom_check', 'dental', 'vaccine',
+])
+
+/**
+ * True if a message is actually about a health concern — a physical
+ * symptom (matches SYMPTOM_MAP's keyword list or a symptom-related
+ * intent) or emotional/mental-health distress (matches
+ * MENTAL_HEALTH_INTENTS). Small talk, clinic-hours questions, thanks,
+ * greetings, etc. all return false. Used to decide what's worth
+ * carrying into an SOS-triggered emergency description — see
+ * ChatbotPage.handleSend.
+ */
+export function isHealthConcernMessage(text) {
+  const lower = (text || '').toLowerCase()
+  if (SYMPTOM_NAMES.some((s) => lower.includes(s))) return true
+  const intent = classifyIntent(text)
+  if (!intent) return false
+  return SYMPTOM_INTENT_IDS.has(intent) || MENTAL_HEALTH_INTENTS.has(intent)
 }
 
 // NOTE: not currently called anywhere in the response flow (runSymptomAnalysis
@@ -332,17 +415,7 @@ function buildBotResponse(intent, msg, ctx) {
       </div>`
     }
 
-    case 'appointment':
-      return `📅 <strong>Appointment & Walk-in Guide</strong><br><br>
-      <div class="chat-info-box">
-        <div class="info-row"><span>🚶 Walk-in</span><span>Available Mon–Fri, 7:30 AM – 5:00 PM</span></div>
-        <div class="info-row"><span>📅 Scheduled</span><span>Call Ext. 1234 or visit the clinic</span></div>
-        <div class="info-row"><span>⏱️ Wait Time</span><span>Typically 15–30 minutes for walk-ins</span></div>
-      </div>
-      💡 <strong>Tips for faster service:</strong><br>
-      • Come early (7:30–9:00 AM is usually less crowded)<br>
-      • Bring your school/employee ID<br>
-      • Have your symptoms/concerns ready to describe clearly`
+  
 
     case 'pre_clinic':
       if (lower.includes('lab')) {
@@ -364,18 +437,7 @@ function buildBotResponse(intent, msg, ctx) {
         ${chip('📋 Physical Exam', 'prepare for physical exam')}
       </div>`
 
-    case 'fees':
-      return `💰 <strong>Clinic Service Fees</strong><br><br>
-      <div class="chat-info-box">
-        <div class="info-row"><span>🩺 Consultation</span><span style="color:#16A34A"><strong>FREE</strong></span></div>
-        <div class="info-row"><span>🩹 First Aid</span><span style="color:#16A34A"><strong>FREE</strong></span></div>
-        <div class="info-row"><span>📄 Medical Certificate</span><span style="color:#16A34A"><strong>FREE</strong></span></div>
-        <div class="info-row"><span>✅ Health Clearance</span><span style="color:#16A34A"><strong>FREE</strong></span></div>
-        <div class="info-row"><span>🔬 Laboratory</span><span>Minimal fee (by referral)</span></div>
-        <div class="info-row"><span>💉 Vaccines</span><span>Varies by vaccine type</span></div>
-      </div>
-      ✅ All basic clinic services are <strong>FREE</strong> for enrolled students and school employees.`
-
+  
     case 'emergency':
       return `🚨 <strong>EMERGENCY GUIDANCE</strong><br><br>
       <div class="chat-emergency-box">
@@ -444,15 +506,16 @@ function buildBotResponse(intent, msg, ctx) {
     case 'predict':
       return runSymptomAnalysis(msg)
 
+    case 'health_summary':
+      return buildHealthSummary([...(ctx.pastMessages || []), ...(ctx.currentMessages || [])])
+
     case 'dental':
       return `🦷 <strong>Dental Services</strong><br><br>
+      For the latest dental service posts, schedules, and updates, please visit our official Facebook page:<br><br>
       <div class="chat-info-box">
-        <div class="info-row"><span>📅 Schedule</span><span><strong>Wednesday & Friday</strong></span></div>
-        <div class="info-row"><span>🕐 Hours</span><span><strong>9:00 AM – 3:00 PM</strong></span></div>
-        <div class="info-row"><span>📋 Services</span><span>Basic dental care, tooth extraction, oral prophylaxis</span></div>
-        <div class="info-row"><span>💰 Fee</span><span>Minimal to Free (depends on procedure)</span></div>
+        <div class="info-row"><span>📘 Facebook Page</span><span><strong>Bulsu Health Services Unit-Meneses Campus</strong></span></div>
       </div>
-      💡 Walk-ins are accepted but limited slots are available. Come early to secure your slot.`
+      💡 Announcements about dental availability are posted there regularly.`
 
     case 'vaccine':
       return `💉 <strong>Vaccination Services</strong><br><br>
@@ -505,8 +568,9 @@ function buildBotResponse(intent, msg, ctx) {
 
 /**
  * Main entry point. `ctx` = { firstName, docRequests, awaitingSymptoms,
- * setAwaitingSymptoms } — replaces the legacy globals (DB.getSession(),
- * _chatContext.awaitingSymptoms) with values the React component owns.
+ * setAwaitingSymptoms, pastMessages, currentMessages } — replaces the
+ * legacy globals (DB.getSession(), _chatContext.awaitingSymptoms) with
+ * values the React component owns.
  */
 export function getBotReply(msg, ctx) {
   const lower = msg.toLowerCase().trim()

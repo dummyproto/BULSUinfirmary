@@ -1,10 +1,9 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
-import { useTheme } from '@context/ThemeContext'
 import { useToast } from '@context/ToastContext'
 import { TOPBAR_GRADIENT } from '@routes/navItems'
-import { MenuIcon, SunIcon, MoonIcon, BellIcon } from '@components/ui/icons'
+import { MenuIcon, BellIcon } from '@components/ui/icons'
 import NotificationsModal from '@features/notifications/NotificationsModal'
 import { countUnread, listForUser, markRead, markAllRead } from '@services/notificationsService'
 import {
@@ -57,7 +56,6 @@ function mergeNotifications(general, inventory) {
 
 export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const { profile, role } = useAuth()
-  const { toggleTheme } = useTheme()
   const { show } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -204,17 +202,6 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
             <span className="sos-label">SOS</span>
           </button>
         )}
-
-        <button
-          className="theme-toggle-btn"
-          onClick={toggleTheme}
-          title="Toggle dark/light mode"
-          aria-label="Toggle theme"
-          type="button"
-        >
-          <SunIcon />
-          <MoonIcon />
-        </button>
 
         <div
           className="icon-btn"

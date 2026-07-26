@@ -63,13 +63,13 @@ export default function AppRoutes() {
           <Route path="/profile" element={<LazyPage><ProfilePage /></LazyPage>} />
 
           {/* Admin + Staff only */}
-          <Route element={<ProtectedRoute roles={STAFF_ADMIN} />}>
-            <Route path="/patients" element={<LazyPage><PatientsPage /></LazyPage>} />
-            <Route path="/document-requests" element={<LazyPage><DocumentRequestsPage /></LazyPage>} />
-            <Route path="/inventory" element={<LazyPage><InventoryPage /></LazyPage>} />
-            <Route path="/reports" element={<LazyPage><ReportsPage /></LazyPage>} />
-            <Route path="/emergency-alerts" element={<LazyPage><EmergencyAlertsPage /></LazyPage>} />
-          </Route>
+<Route element={<ProtectedRoute roles={STAFF_ADMIN} />}>
+  <Route path="/patients" element={<LazyPage><PatientsPage /></LazyPage>} />
+  <Route path="/document-requests" element={<LazyPage><DocumentRequestsPage /></LazyPage>} />
+  <Route path="/inventory" element={<LazyPage><InventoryPage /></LazyPage>} />
+  <Route path="/reports" element={<LazyPage><ReportsPage /></LazyPage>} />
+  <Route path="/emergency-alerts" element={<LazyPage><EmergencyAlertsPage /></LazyPage>} />
+</Route>
 
           {/* Staff only */}
           <Route element={<ProtectedRoute roles={['staff']} />}>

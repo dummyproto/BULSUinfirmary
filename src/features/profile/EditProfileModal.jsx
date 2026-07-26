@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import { COURSES, YEAR_LEVELS, GENDERS, CIVIL_STATUSES, BLOOD_TYPES, buildFullName } from './lib/profileHelpers'
-import { EditIcon, SaveIcon, UserIcon, CreditCardIcon, PhoneIcon, MapPinIcon, GraduationCapIcon, BriefcaseIcon } from '@components/ui/icons'
+import { normalizeSchoolIdCode } from '@lib/schoolId'
+import SchoolIdScanModal from './SchoolIdScanModal'
+import { EditIcon, SaveIcon, UserIcon, CreditCardIcon, PhoneIcon, MapPinIcon, GraduationCapIcon, BriefcaseIcon, QrCodeIcon } from '@components/ui/icons'
 
 export default function EditProfileModal({ isOpen, role, profile, onClose, onSave, onError }) {
+  const [scanOpen, setScanOpen] = useState(false)
   const [form, setForm] = useState(() => ({ ...profile }))
   if (!isOpen) return null
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
@@ -16,7 +19,11 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
       const username = (form.username || '').replace(/\s/g, '').toLowerCase()
       if (!username) return onError('Username cannot be empty')
       const name = buildFullName(form, profile.name)
-      onSave({ ...form, email, username, name })
+      // Phase Q — normalized the same way a scanned code is (same helper
+      // `RegisterQrScan`/`QrLoginScan` use), so a manually-typed code
+      // matches on lookup regardless of case/whitespace differences.
+      const schoolIdBarcode = form.schoolIdBarcode ? normalizeSchoolIdCode(form.schoolIdBarcode) : ''
+      onSave({ ...form, email, username, name, schoolIdBarcode })
     } else {
       const name = (form.name || '').trim() || profile.name
       onSave({ ...form, email, name })
@@ -118,7 +125,14 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               </div>
               <div className="form-group">
                 <label>CONTACT NUMBER</label>
-                <input className="form-input" placeholder="09XXXXXXXXX" value={form.phone || ''} onChange={(e) => setField('phone')(e.target.value)} />
+                <input
+  className="form-input"
+  placeholder="09XXXXXXXXX"
+  inputMode="numeric"
+  maxLength={11}
+  value={form.phone || ''}
+  onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
+/>
               </div>
             </div>
           </FormSection>
@@ -157,6 +171,37 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               <SelectField label="YEAR LEVEL" value={form.yearLevel} options={YEAR_LEVELS} onChange={setField('yearLevel')} />
             </div>
           </FormSection>
+
+          <FormSection Icon={CreditCardIcon} title="School ID">
+            <div className="form-grid" style={{ gap: 10 }}>
+              <div className="form-group full">
+                <label>SCHOOL ID / BARCODE CODE</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. 2021-00123"
+                    autoComplete="off"
+                    style={{ flex: 1 }}
+                    value={form.schoolIdBarcode || ''}
+                    onChange={(e) => setField('schoolIdBarcode')(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ flexShrink: 0 }}
+                    onClick={() => setScanOpen(true)}
+                  >
+                    <QrCodeIcon width={14} height={14} /> Scan
+                  </button>
+                </div>
+                <small style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 3, display: 'block' }}>
+                  {form.schoolIdBarcode
+                    ? 'Linked — scanning your ID at login will identify this account (you still need your password).'
+                    : "Not linked yet. Scan your school ID's QR code or type the code here to enable Scan ID at login, or leave blank."}
+                </small>
+              </div>
+            </div>
+          </FormSection>
         </>
       ) : (
         <>
@@ -172,7 +217,14 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               </div>
               <div className="form-group">
                 <label>CONTACT NUMBER</label>
-                <input className="form-input" placeholder="09XXXXXXXXX" value={form.phone || ''} onChange={(e) => setField('phone')(e.target.value)} />
+                <input
+  className="form-input"
+  placeholder="09XXXXXXXXX"
+  inputMode="numeric"
+  maxLength={11}
+  value={form.phone || ''}
+  onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
+/>
               </div>
             </div>
           </FormSection>
@@ -190,6 +242,18 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
           </FormSection>
         </>
       )}
+
+      <SchoolIdScanModal
+        isOpen={scanOpen}
+        currentEmail={profile.email}
+        onClose={() => setScanOpen(false)}
+        onScanned={(code) => {
+          setField('schoolIdBarcode')(code)
+          setScanOpen(false)
+          onError('')
+        }}
+        onError={onError}
+      />
     </Modal>
   )
 }

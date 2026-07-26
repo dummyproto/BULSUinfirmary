@@ -18,7 +18,7 @@ import { listMedicinesAsInventoryItems, deductMedicinesForConsultation } from '@
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 
-import { PlusIcon, FolderIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
+import { PlusIcon, FolderIcon, PeopleIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
 
@@ -41,6 +41,7 @@ function groupDiagnoses(rows) {
 const TABS = [
   { key: 'new', label: <span style={tabLabelStyle}><PlusIcon width={14} height={14} /> New Consultation</span> },
   { key: 'records', label: <span style={tabLabelStyle}><FolderIcon width={14} height={14} /> Health Records</span> },
+  { key: 'unregistered', label: <span style={tabLabelStyle}><PeopleIcon width={14} height={14} /> Unregistered</span> },
   { key: 'cases', label: <span style={tabLabelStyle}><ClipboardIcon width={14} height={14} /> Case Listing</span> },
   { key: 'analytics', label: <span style={tabLabelStyle}><BarChartIcon width={14} height={14} /> Analytics</span> },
 ]
@@ -66,6 +67,7 @@ export default function ConsultationPage() {
   const [diagCategories, setDiagCategories] = useState({})
 
   const [consSearch, setConsSearch] = useState('')
+const [unregSearch, setUnregSearch] = useState('')
   const [caseFilters, setCaseFilters] = useState({ search: '', diagFilter: 'All', dateFrom: '', dateTo: '' })
 
   const [detailId, setDetailId] = useState(null)
@@ -126,11 +128,12 @@ export default function ConsultationPage() {
   }
 
   async function handleSaveConsultation(payload) {
-    const { patient, visitType, date, staffId, complaint, bp, temp, pulse, o2sat, diagnosis, assessment, followUpDate, followUpNotes, prescribedMeds } = payload
+  const { patient, unregisteredPatientName, visitType, date, staffId, complaint, bp, temp, pulse, o2sat, diagnosis, assessment, followUpDate, followUpNotes, prescribedMeds } = payload
 
-    try {
-      const created = await createConsultation({
-        patientId: patient.user_id,
+  try {
+    const created = await createConsultation({
+      patientId: patient?.user_id ?? null,
+      unregisteredPatientName,
         visitType,
         date,
         staffId,
@@ -146,16 +149,18 @@ export default function ConsultationPage() {
         prescribedMeds,
       })
       setConsultations((list) => [created, ...list])
-      try {
-        await notify({
-          targetUserId: patient.user_id,
-          message: `A consultation record was added for your visit on ${date} (${visitType}).`,
-          type: 'info',
-          module: '/dashboard',
-        })
-      } catch {
-        // Non-critical — the consultation itself already saved successfully.
-      }
+     try {
+  if (patient) {
+    await notify({
+      targetUserId: patient.user_id,
+      message: `A consultation record was added for your visit on ${date} (${visitType}).`,
+      type: 'info',
+      module: '/dashboard',
+    })
+  }
+} catch (err) {
+     console.error('notify() failed:', err)
+   }
 
       if (prescribedMeds.length > 0) {
         // New medicines table is authoritative (real FIFO batch
@@ -176,7 +181,7 @@ export default function ConsultationPage() {
         await refreshInventory()
         setDeduction({ result, consultationId: created.consultation_id })
       } else {
-        show(`Consultation saved for ${patient.name}!`, 'success')
+        show(`Consultation saved for ${patient ? patient.name : unregisteredPatientName}!`, 'success')
         setTab('records')
       }
       setFormKey((k) => k + 1)
@@ -267,14 +272,24 @@ export default function ConsultationPage() {
       )}
 
       {tab === 'records' && (
-        <EHRRecordsTab
-          consultations={consultations}
-          search={consSearch}
-          onSearchChange={setConsSearch}
-          onView={setDetailId}
-          onPrint={() => show('Printing is migrated with the Reports feature.', 'info')}
-        />
-      )}
+  <EHRRecordsTab
+    consultations={consultations.filter((c) => c.patient_id)}
+    search={consSearch}
+    onSearchChange={setConsSearch}
+    onView={setDetailId}
+    onPrint={() => show('Printing is migrated with the Reports feature.', 'info')}
+  />
+)}
+
+{tab === 'unregistered' && (
+  <EHRRecordsTab
+    consultations={consultations.filter((c) => !c.patient_id)}
+    search={unregSearch}
+    onSearchChange={setUnregSearch}
+    onView={setDetailId}
+    onPrint={() => show('Printing is migrated with the Reports feature.', 'info')}
+  />
+)}
 
       {tab === 'cases' && (
         <CaseListingTab

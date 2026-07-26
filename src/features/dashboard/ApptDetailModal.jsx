@@ -1,7 +1,7 @@
 import Modal from '@components/ui/Modal'
 import StatusBadge from '@components/ui/StatusBadge'
 import { formatDate } from '@lib/format'
-import { DOC_TYPES } from '@features/document-requests/NewRequestModal'
+import { DOC_TYPES } from '@features/document-requests/data/docTypes'
 import { CalendarIcon, DocumentIcon } from '@components/ui/icons'
 
 export default function ApptDetailModal({ isOpen, onClose, appt, docRequests, onViewDocRequests }) {

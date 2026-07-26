@@ -1,9 +1,10 @@
+import { createPortal } from 'react-dom'
 import { CheckCircleIcon } from '@components/ui/icons'
 
 export default function SmsSuccessOverlay({ result, onClose }) {
   if (!result) return null
 
-  return (
+  return createPortal(
     <div className="emg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="emg-success-box">
         <div className="sms-success-animation">
@@ -18,6 +19,7 @@ export default function SmsSuccessOverlay({ result, onClose }) {
           Done
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

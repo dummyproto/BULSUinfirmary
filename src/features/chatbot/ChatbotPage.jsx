@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { getOrCreateActiveConversation, addMessage, createConversation, getAiReply, listConversationsForUser, listRecentUserMessages, deleteAllConversationsForUser } from '@services/chatService'
-import { classifyIntent, getBotReply } from './lib/botEngine'
-import { QUICK_REPLY_SETS } from './data/knowledgeBase'
+import { classifyIntent, getBotReply, isHealthConcernMessage } from './lib/botEngine'
 import ChatMessage from './ChatMessage'
 import ChatLogModal from './ChatLogModal'
 import {
@@ -17,8 +16,6 @@ import {
   PillIcon,
   AlertOctagonIcon,
   UserIcon,
-  DollarSignIcon,
-  CalendarIcon,
   ToothIcon,
   ClipboardIcon,
   BarChartIcon,
@@ -26,8 +23,12 @@ import {
   ChatbotIcon,
   PhoneIcon,
   MailIcon,
+  InfoIcon,
+  XIcon,
   AlertTriangleIcon,
 } from '@components/ui/icons'
+
+const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
 function BotAvatar(props) {
   return <ConsultationIcon {...props} />
@@ -39,13 +40,9 @@ const TOPICS = [
   { Icon: MapPinIcon, label: 'Location', q: 'location' },
   { Icon: BuildingIcon, label: 'Services', q: 'services' },
   { Icon: DocumentIcon, label: 'Documents', q: 'documents' },
-  { Icon: ConsultationIcon, label: 'Symptoms', q: 'symptom check' },
+  { Icon: ConsultationIcon, label: 'Symptom Check', q: 'symptom check' },
   { Icon: PillIcon, label: 'Health Tips', q: 'health tips' },
   { Icon: AlertOctagonIcon, label: 'Emergency', q: 'emergency' },
-  { Icon: UserIcon, label: 'Staff Info', q: 'staff' },
-  { Icon: DollarSignIcon, label: 'Service Fees', q: 'fees' },
-  { Icon: CalendarIcon, label: 'Appointments', q: 'appointment' },
-  { Icon: ToothIcon, label: 'Dental', q: 'dental services' },
   { Icon: ClipboardIcon, label: 'Pre-Clinic', q: 'prepare for clinic visit' },
 ]
 
@@ -57,6 +54,13 @@ function greetingMessage() {
     text: `${greet}! 👋 I'm <strong>MediBot</strong>, your 24/7 intelligent clinic assistant.<br><br>I can help you with clinic information, health tips, symptom checking, document guidance, and <strong>emotional support</strong>. 💙<br><br>How are you feeling today?`,
     ts: new Date().toISOString(),
   }
+}
+
+// Matches "sos" as a standalone word (not part of another word like
+// "sostenuto"), case-insensitive — typing it anywhere in a message
+// triggers the emergency form instead of a normal bot reply.
+function isSosTrigger(text) {
+  return /\bsos\b/i.test(text)
 }
 
 export default function ChatbotPage() {
@@ -83,6 +87,15 @@ export default function ChatbotPage() {
   const [inputValue, setInputValue] = useState('')
   const [typing, setTyping] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
+  // Mobile-only — the Topic Categories / Clinic Contacts / Medical
+  // Disclaimer panel is hidden by default below 900px (no room next to
+  // the chat itself), so this toggles it open as an off-canvas drawer.
+  // Irrelevant above that breakpoint, where the panel is always visible
+  // as a static side column — see chat-panel-toggle-btn's CSS, which is
+  // only shown on mobile in the first place.
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [emgOpen, setEmgOpen] = useState(false)
+  const [emgDescription, setEmgDescription] = useState('')
   // Recent messages from the user's OTHER (past) conversations — light,
   // eager-loaded alongside the active conversation, used only for the
   // rule-based fallback's "you mentioned this before" callback
@@ -161,6 +174,34 @@ export default function ChatbotPage() {
     setInputValue('')
     const userTs = new Date().toISOString()
     setMessages((list) => [...list, { type: 'user', text: msg, ts: userTs }])
+
+    if (isSosTrigger(msg)) {
+      // Only the most recent message that was actually about a health
+      // concern (a physical symptom or emotional-distress intent) goes
+      // into the emergency description — not just whatever the person
+      // happened to type last, which could be small talk unrelated to
+      // why they're triggering SOS. Scans backward through this
+      // conversation's user messages, most recent first; the SOS message
+      // itself is checked too, since typing e.g. "chest pain sos" in one
+      // line should still count.
+      const allUserMessages = [...messages, { type: 'user', text: msg }].filter((m) => m.type === 'user')
+      const healthConcernMsg = [...allUserMessages].reverse().find((m) => isHealthConcernMessage(m.text))
+      // Falls back to the SOS message itself if nothing in the
+      // conversation matched a health-concern pattern — still better than
+      // leaving the field blank, and the person reviews/edits it anyway
+      // before submitting.
+      const emergencyDescription = healthConcernMsg ? healthConcernMsg.text : msg
+
+      addMessage({ conversationId, senderType: 'user', message: msg }).catch(() => {})
+      setMessages((list) => [
+        ...list,
+        { type: 'bot', text: "I've opened the Emergency Alert form for you with what you've told me so far — please review it and submit.", ts: new Date().toISOString(), emergency: true },
+      ])
+      setEmgDescription(emergencyDescription)
+      setEmgOpen(true)
+      return
+    }
+
     setTyping(true)
 
     // Optimistic UI first (unchanged feel from before), persistence
@@ -186,7 +227,8 @@ export default function ChatbotPage() {
       // "thinking" delay for this path only, since there's no real
       // network round-trip to provide one naturally.
       await new Promise((resolve) => setTimeout(resolve, 500 + Math.min(msg.length * 8, 800)))
-      reply = getBotReply(msg, { firstName, docRequests: myDocRequests, awaitingSymptoms, setAwaitingSymptoms, pastMessages })
+      const currentMessages = messages.filter((m) => m.type === 'user').map((m) => ({ text: m.text, ts: m.ts }))
+    reply = getBotReply(msg, { firstName, docRequests: myDocRequests, awaitingSymptoms, setAwaitingSymptoms, pastMessages, currentMessages })
     }
 
     setMessages((list) => [...list, { type: 'bot', text: reply, ts: new Date().toISOString(), emergency }])
@@ -207,6 +249,17 @@ export default function ChatbotPage() {
   function handleMessagesClick(e) {
     const target = e.target.closest('[data-reply]')
     if (target) handleSend(target.dataset.reply)
+  }
+
+  // Same as handleMessagesClick, but for the Topic Categories grid
+  // specifically — also closes the mobile drawer after sending, since
+  // picking a topic is a natural "I'm done with this panel" signal on
+  // mobile. setMobilePanelOpen(false) is a no-op on desktop (the drawer
+  // classes only affect layout below 900px), so this is safe to call
+  // unconditionally rather than needing a viewport check here.
+  function handleTopicClick(e) {
+    handleMessagesClick(e)
+    setMobilePanelOpen(false)
   }
 
   // Load the full multi-session history only when the Log modal is
@@ -312,7 +365,10 @@ export default function ChatbotPage() {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="chat-header-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="btn btn-sm btn-outline chat-panel-toggle-btn" onClick={() => setMobilePanelOpen(true)} title="View topics, contacts & disclaimer">
+              <InfoIcon width={13} height={13} /> Info
+            </button>
             <button type="button" className="btn btn-sm btn-outline" onClick={() => setLogOpen(true)} title="View chat log">
               <BarChartIcon width={13} height={13} /> Logs
             </button>
@@ -338,16 +394,6 @@ export default function ChatbotPage() {
           )}
         </div>
 
-        <div className="quick-replies-bar">
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '10px 16px 8px' }}>
-            {QUICK_REPLY_SETS.default.map((r) => (
-              <button key={r} type="button" className="btn btn-sm btn-outline quick-reply-btn" onClick={() => handleSend(r)}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="chat-input-row">
           <input
             type="text"
@@ -366,12 +412,15 @@ export default function ChatbotPage() {
         </div>
       </div>
 
-      <div className="chat-side-panels">
+      <div className={`chat-side-panels${mobilePanelOpen ? ' mobile-open' : ''}`}>
+        <button type="button" className="chat-panel-close-btn" onClick={() => setMobilePanelOpen(false)} aria-label="Close panel" title="Close">
+          <XIcon width={16} height={16} />
+        </button>
         <div className="card chat-side-card">
           <div className="card-header">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ChatbotIcon width={15} height={15} /> Topic Categories</h3>
           </div>
-          <div className="chat-topic-grid" onClick={handleMessagesClick}>
+          <div className="chat-topic-grid" onClick={handleTopicClick}>
             {TOPICS.map((t) => (
               <div key={t.label} className="topic-chip" data-reply={t.q}>
                 <span style={{ fontSize: 18, display: 'inline-flex' }}>
@@ -389,11 +438,11 @@ export default function ChatbotPage() {
           </div>
           <div style={{ padding: 12 }}>
             {[
-              [PhoneIcon, 'Phone', 'Ext. 1234'],
-              [MailIcon, 'Email', 'clinic@capstone.edu'],
-              [MapPinIcon, 'Location', 'Main Bldg, GF Rm 101'],
-              [ClockIcon, 'Hours', 'Mon–Fri 7:30–5:30PM'],
-              [AlertOctagonIcon, 'Emergency', 'Ext. 0000 (24/7)'],
+              [PhoneIcon, 'Phone', '0907-684-2769'],
+              [MailIcon, 'Email', 'infirmary.meneses@bulsu.edu.ph'],
+              [MapPinIcon, 'Location', 'Bulsu Meneses Campus (Near Gate 1)'],
+              [ClockIcon, 'Hours', 'Mon–Fri 8:00AM–5:00PM'],
+              [AlertOctagonIcon, 'Facebook', 'Bulsu Health Services Unit-Meneses Campus'],
             ].map(([ContactIcon, l, v]) => (
               <div className="detail-row" key={l}>
                 <span className="detail-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -407,8 +456,8 @@ export default function ChatbotPage() {
           </div>
         </div>
 
-        <div className="card chat-side-card" style={{ background: 'var(--warning-light)', border: '1px solid #FCD34D' }}>
-          <div style={{ padding: 12, fontSize: 11.5, color: '#92400E', lineHeight: 1.5 }}>
+        <div className="card chat-side-card" style={{ background: 'var(--warning-light)', border: '1px solid #f15757' }}>
+          <div style={{ padding: 12, fontSize: 11.5, color: '#580303', lineHeight: 1.5 }}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangleIcon width={13} height={13} /> Medical Disclaimer</strong>
             <br />
             <br />
@@ -419,6 +468,7 @@ export default function ChatbotPage() {
           </div>
         </div>
       </div>
+      {mobilePanelOpen && <div className="chat-panel-overlay" onClick={() => setMobilePanelOpen(false)} />}
 
       <ChatLogModal
         isOpen={logOpen}
@@ -428,6 +478,22 @@ export default function ChatbotPage() {
         onExport={handleExportLog}
         onDeleteAll={handleDeleteAllHistory}
       />
+
+      {emgOpen && (
+        <Suspense fallback={null}>
+          <EmergencyReportModal
+            isOpen={emgOpen}
+            profile={profile}
+            initialDescription={emgDescription}
+            onClose={() => setEmgOpen(false)}
+            onError={(msg) => show(msg, 'error')}
+            onSuccess={() => {
+              setEmgOpen(false)
+              show('Emergency alert sent.', 'success')
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

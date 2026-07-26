@@ -23,6 +23,7 @@ const STATUS_COLOR = {
   Active: 'green',
   Inactive: 'gray',
   'Walk-in': 'purple',
+  Emergency: 'red',
   Replenish: 'teal',
   Release: 'orange',
   'Remove Expired': 'red',

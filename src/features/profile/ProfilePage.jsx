@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useTheme } from '@context/ThemeContext'
 import Spinner from '@components/ui/Spinner'
 import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
 import EditProfileModal from './EditProfileModal'
@@ -21,11 +22,14 @@ import {
   KeyIcon,
   ShieldIcon,
   CheckCircleIcon,
+  AlertTriangleIcon,
+  SunIcon,
+  MoonIcon,
 } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
 
-const TABS = [{ key: 'personal', label: <span style={tabLabelStyle}><UserIcon width={14} height={14} /> Personal Information</span> }]
+const TABS = [{ key: 'personal', label: <span style={tabLabelStyle}><UserIcon width={14} height={14} /> Personal Info</span> }]
 
 function DetailRow({ label, value }) {
   return (
@@ -65,6 +69,11 @@ function toFormShape(row) {
     course: row.course || '',
     yearLevel: row.year_level || '',
     userId: row.student_number || '',
+    profileIncomplete: !!row.profile_incomplete,
+    // Phase Q — the same column scan-to-login (migration 002) reads from.
+    // Editable here so someone who registered manually can link a code
+    // after the fact; also lets them see/change one set via QR scan.
+    schoolIdBarcode: row.school_id_barcode || '',
     parentName: row.parent_name || '',
     parentRelation: row.parent_relation || '',
     parentPhone: row.parent_phone || '',
@@ -83,6 +92,7 @@ function toFormShape(row) {
 
 export default function ProfilePage() {
   const { role, profile: authProfile, refreshProfile } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const { show } = useToast()
   const fileInputRef = useRef(null)
 
@@ -156,7 +166,17 @@ export default function ProfilePage() {
       // silently never persisted the change.
       const userPatch = { name: updates.name, email: updates.email, phone: updates.phone }
       if (updates.username !== undefined) userPatch.username = updates.username
+      // Phase Q — always defined (EditProfileModal seeds the form with
+      // `{...profile}`, and toFormShape always sets a string default), so
+      // this both saves a newly-linked code AND lets someone clear an
+      // existing one by emptying the field.
+      if (updates.schoolIdBarcode !== undefined) userPatch.school_id_barcode = updates.schoolIdBarcode || null
       await updateUser(authProfile.user_id, userPatch)
+      // Phase Q — computed once, used both for the DB write below and to
+      // keep local state in sync afterward (see setUser call), so the
+      // "finish your profile" banner reflects reality immediately instead
+      // of only after the next page load.
+      const profileIncomplete = role === 'patient' ? !(updates.course && updates.yearLevel) : updates.profileIncomplete
       if (role === 'patient') {
         await updatePatientProfile(authProfile.user_id, {
           surname: updates.surname || null,
@@ -177,11 +197,17 @@ export default function ProfilePage() {
           addr_zip: updates.addrZip || null,
           course: updates.course || null,
           year_level: updates.yearLevel || null,
+          // Phase Q — a "complete set of required fields" for this app's
+          // Academic section is just course + year level (the two fields
+          // Step 2's skip path left blank). Flips back to false the
+          // moment both are present; stays true otherwise, including if
+          // only one of the two got filled in.
+          profile_incomplete: profileIncomplete,
         })
       } else {
         await updateStaffProfile(authProfile.user_id, { department: updates.department || null, position: updates.position || null })
       }
-      setUser((u) => ({ ...u, ...updates }))
+      setUser((u) => ({ ...u, ...updates, profileIncomplete }))
       setEditOpen(false)
       show('Profile updated successfully!', 'success')
       refreshProfile?.()
@@ -235,30 +261,51 @@ export default function ProfilePage() {
 
   if (loading || !user) return <Spinner label="Loading profile…" />
 
+  // Staff account info (this table's own `users` row) is now
+  // admin-managed only — see migration 025. Photo upload is a plain
+  // update to that same row, so it's gated the same way here; otherwise
+  // a staff member could still click it and get a confusing RLS
+  // rejection instead of the click simply not being offered.
+  const canEditOwnAvatar = role !== 'staff'
+
   return (
     <>
-      <div className="profile-header">
+      <div className="profile-header" style={{ background: ROLE_GRADIENTS[role] }}>
         <div
           className="profile-avatar-lg"
-          role="button"
-          tabIndex={0}
-          aria-label="Change profile photo"
-          onClick={handleAvatarClick}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleAvatarClick())}
-          title="Click to change photo"
+          role={canEditOwnAvatar ? 'button' : undefined}
+          tabIndex={canEditOwnAvatar ? 0 : undefined}
+          aria-label={canEditOwnAvatar ? 'Change profile photo' : undefined}
+          onClick={canEditOwnAvatar ? handleAvatarClick : undefined}
+          onKeyDown={canEditOwnAvatar ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleAvatarClick()) : undefined}
+          title={canEditOwnAvatar ? 'Click to change photo' : undefined}
+          style={canEditOwnAvatar ? undefined : { cursor: 'default' }}
         >
           {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
-          <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>
+          {canEditOwnAvatar && <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+        {canEditOwnAvatar && <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />}
         <div className="profile-info">
           <h2>{user.name}</h2>
           <p>{user.email || 'No email set'}</p>
-          <span className="role-tag" style={{ background: ROLE_GRADIENTS[role] }}>
-            {ROLE_LABELS[role]}
-          </span>
+          <span className="role-tag">{ROLE_LABELS[role]}</span>
         </div>
       </div>
+
+      {role === 'patient' && user.profileIncomplete && (
+        <div
+          className="alert"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', fontSize: 12.5, padding: '10px 14px', borderRadius: 6, margin: '0 0 14px' }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertTriangleIcon width={13} height={13} style={{ flexShrink: 0 }} />
+            Your profile is incomplete — add your course and year level.
+          </span>
+          <button type="button" className="btn btn-sm btn-blue" style={{ flexShrink: 0 }} onClick={() => setEditOpen(true)}>
+            Complete now
+          </button>
+        </div>
+      )}
 
       <div className="profile-tabs-container">
         <div className="profile-tabs">
@@ -364,9 +411,18 @@ export default function ProfilePage() {
                       <UserIcon width={15} height={15} />
                       <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Account Information</h3>
                     </div>
-                    <button type="button" className="btn btn-sm btn-blue" onClick={() => setEditOpen(true)}>
-                      <EditIcon width={13} height={13} /> Edit
-                    </button>
+                    {/* Staff accounts are provisioned and maintained by an
+                        admin (Maintenance -> User Management) — a staff
+                        member editing their own name/email/department/
+                        position here would bypass that oversight. Admins
+                        viewing their OWN profile still get full self-edit,
+                        same as before; this only removes the button for
+                        role === 'staff'. */}
+                    {role === 'admin' && (
+                      <button type="button" className="btn btn-sm btn-blue" onClick={() => setEditOpen(true)}>
+                        <EditIcon width={13} height={13} /> Edit
+                      </button>
+                    )}
                   </div>
                   <div style={{ padding: '14px 18px' }}>
                     <DetailRow label="User ID" value={authProfile?.user_id ? `STAFF-${String(authProfile.user_id).padStart(4, '0')}` : '—'} />
@@ -375,6 +431,15 @@ export default function ProfilePage() {
                     <DetailRow label="Phone" value={user.phone} />
                     <DetailRow label="Department" value={user.department} />
                     <DetailRow label="Position" value={user.position} />
+                    {role === 'staff' && (
+                      <div
+                        className="alert"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11.5, marginTop: 12, padding: '8px 12px', borderRadius: 6 }}
+                      >
+                        <LockIcon width={12} height={12} style={{ flexShrink: 0 }} />
+                        This information is managed by an administrator. Contact an admin to request changes.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -431,6 +496,25 @@ export default function ProfilePage() {
 
         {tab === 'settings' && (
           <div className="profile-tab-content active">
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-header">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
+                </h3>
+              </div>
+              <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                    {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
+                  </div>
+                </div>
+                <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
+                  <SunIcon />
+                  <MoonIcon />
+                </button>
+              </div>
+            </div>
             <div className="two-col-equal">
               <div className="card">
                 <div className="card-header">
@@ -495,7 +579,7 @@ export default function ProfilePage() {
       </div>
 
       <EditProfileModal
-        key={editOpen ? 'open' : 'closed'}
+        key={editOpen ? 'edit-profile-open' : 'edit-profile-closed'}
         isOpen={editOpen}
         role={role}
         profile={user}
@@ -505,7 +589,7 @@ export default function ProfilePage() {
       />
 
       <EditFamilyModal
-        key={familyEdit?.section ?? 'closed'}
+        key={familyEdit?.section ?? 'edit-family-closed'}
         isOpen={familyEdit !== null}
         section={familyEdit?.section}
         initial={familyEdit?.initial}
@@ -514,7 +598,7 @@ export default function ProfilePage() {
       />
 
       <ChangePasswordModal
-        key={pwOpen ? 'open' : 'closed'}
+        key={pwOpen ? 'change-password-open' : 'change-password-closed'}
         isOpen={pwOpen}
         onClose={() => setPwOpen(false)}
         onSuccess={() => show('Password updated successfully!', 'success')}

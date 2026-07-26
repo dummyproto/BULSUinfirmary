@@ -9,6 +9,8 @@ import { listInventory } from '@services/inventoryService'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
 import { listUsers } from '@services/usersService'
+import { listEmergencyAlerts } from '@services/emergencyAlertsService'
+import { listInventoryNotifications } from '@services/inventoryNotificationsService'
 import HealthDetailModal from '@features/consultations/HealthDetailModal'
 import {
   DocumentIcon,
@@ -19,6 +21,8 @@ import {
   PeopleIcon,
   ConsultationIcon,
   ClipboardIcon,
+  AlertOctagonIcon,
+  BellIcon,
 } from '@components/ui/icons'
 
 const QUICK_LINKS = [
@@ -40,16 +44,20 @@ export default function AdminDashboardPage() {
   const [consultations, setConsultations] = useState([])
   const [users, setUsers] = useState([])
   const [detailId, setDetailId] = useState(null)
+  const [emergencyAlerts, setEmergencyAlerts] = useState([])
+  const [invNotifications, setInvNotifications] = useState([])
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([listDocumentRequests(), listInventory(), listConsultations(), listUsers()])
-      .then(([d, i, c, u]) => {
+    Promise.all([listDocumentRequests(), listInventory(), listConsultations(), listUsers(), listEmergencyAlerts(), listInventoryNotifications({ unreadOnly: true })])
+      .then(([d, i, c, u, ea, invn]) => {
         if (cancelled) return
         setDocs(d)
         setInventory(i)
         setConsultations(c)
         setUsers(u)
+        setEmergencyAlerts(ea)
+        setInvNotifications(invn)
       })
       .catch((err) => show(`Failed to load dashboard data: ${err.message}`, 'error'))
       .finally(() => {
@@ -81,13 +89,30 @@ export default function AdminDashboardPage() {
   })
 
   const detailConsultation = consultations.find((c) => c.consultation_id === detailId) || null
+  const activeEmergencies = emergencyAlerts.filter((a) => a.status === 'Active')
 
   if (loading) return <Spinner label="Loading dashboard…" />
 
   return (
     <>
+      {activeEmergencies.length > 0 && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/emergency-alerts')}>
+          <AlertOctagonIcon width={16} height={16} style={{ flexShrink: 0 }} />
+          <span>
+            {activeEmergencies.length} active emergency alert{activeEmergencies.length === 1 ? '' : 's'} — click to view.
+          </span>
+        </div>
+      )}
+      {invNotifications.length > 0 && (
+        <div className="alert alert-warning" style={{ marginTop: activeEmergencies.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
+          <BellIcon width={16} height={16} style={{ flexShrink: 0 }} />
+          <span>
+            {invNotifications.length} unread inventory notification{invNotifications.length === 1 ? '' : 's'} — click to view.
+          </span>
+        </div>
+      )}
       {expiredInv.length > 0 && (
-        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-danger" style={{ marginTop: activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertTriangleIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>
             {expiredInv.length} inventory item(s) expired: {expiredInv.map((i) => <strong key={itemKey(i)}>{i.name}</strong>).reduce((a, b) => [a, ', ', b])}
@@ -95,7 +120,7 @@ export default function AdminDashboardPage() {
         </div>
       )}
       {lowStockCount > 0 && (
-        <div className="alert alert-warning" style={{ marginTop: expiredInv.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-warning" style={{ marginTop: expiredInv.length || activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <InventoryIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>{lowStockCount} item(s) below minimum stock level.</span>
         </div>

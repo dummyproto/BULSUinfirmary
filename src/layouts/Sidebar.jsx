@@ -6,7 +6,7 @@ import logo from '@/assets/logo.png'
 
 export default function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate }) {
   const { role, signOut } = useAuth()
-  const items = NAV_ITEMS[role] || []
+const items = NAV_ITEMS[role] || []
 
   const classes = ['sidebar', collapsed ? 'collapsed' : '', mobileOpen ? 'mobile-open' : '']
     .filter(Boolean)

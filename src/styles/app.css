@@ -48,3 +48,4 @@
 .msg-bubble.emergency :is(strong, b) {
   color: inherit;
 }
+

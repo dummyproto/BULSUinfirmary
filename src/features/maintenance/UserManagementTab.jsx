@@ -4,11 +4,18 @@ import Toggle from '@components/ui/Toggle'
 import { roleBadgeInfo } from './lib/userHelpers'
 import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon } from '@components/ui/icons'
 
+const ROLE_ORDER = { admin: 0, staff: 1, patient: 2 }
+
 export default function UserManagementTab({ users, search, onSearchChange, onAddUser, onEdit, onToggleActive, onDelete }) {
   const q = search.toLowerCase()
   const filtered = search
     ? users.filter((u) => u.name.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || u.role.toLowerCase().includes(q))
     : users
+
+  // Admin -> Staff -> Patient, stable within each group (keeps whatever
+  // relative order they already had, e.g. name or creation order, rather
+  // than re-shuffling everyone every render).
+  const sorted = [...filtered].sort((a, b) => (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99))
 
   return (
     <div className="card">
@@ -34,17 +41,21 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                   No users found
                 </td>
               </tr>
             )}
-            {filtered.map((usr) => {
+            {sorted.map((usr, idx) => {
               const badge = roleBadgeInfo(usr.role)
+              // A new role group starts whenever this row's role differs from the
+              // one right before it (or it's the very first row) — used below to
+              // draw a divider line right above that row.
+              const isNewGroup = idx === 0 || sorted[idx - 1].role !== usr.role
               return (
-                <tr key={usr.user_id}>
+                <tr key={usr.user_id} style={isNewGroup && idx > 0 ? { borderTop: '2px solid var(--border-strong, var(--border))' } : undefined}>
                   <td style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Avatar user={usr} size={26} />
                     <strong>{usr.name}</strong>

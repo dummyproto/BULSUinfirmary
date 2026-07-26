@@ -12,9 +12,12 @@ export default function ResetPasswordPage() {
   const { show } = useToast()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+const [confirm, setConfirm] = useState('')
+const [error, setError] = useState('')
+const [submitting, setSubmitting] = useState(false)
+
+const passwordValid = password ? validatePassword(password).ok : null
+const confirmValid = confirm ? confirm === password && passwordValid : null
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -111,20 +114,22 @@ export default function ResetPasswordPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             autoFocus
+            style={passwordValid === null ? undefined : { borderColor: passwordValid ? '#22C55E' : '#EF4444' }}
           />
-        </div>
+                  </div>
         <div className="login-field">
           <label htmlFor="rp-confirm">Confirm New Password</label>
           <PasswordInput
-            wrapperClassName="login-pw-wrap"
-            inputClassName="login-input"
-            toggleClassName="login-pw-toggle"
-            id="rp-confirm"
-            placeholder="••••••••"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-          />
+              wrapperClassName="login-pw-wrap"
+              inputClassName="login-input"
+              toggleClassName="login-pw-toggle"
+              id="rp-confirm"
+              placeholder="••••••••"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              style={confirmValid === null ? undefined : { borderColor: confirmValid ? '#22C55E' : '#EF4444' }}
+            />
         </div>
         <button type="submit" className="login-btn" disabled={submitting}>
           {submitting ? (

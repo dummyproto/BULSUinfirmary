@@ -7,6 +7,7 @@ import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
+import { listEmergencyAlerts } from '@services/emergencyAlertsService'
 import { DocumentIcon, ClockIcon, CheckCircleIcon, ConsultationIcon, ChatbotIcon } from '@components/ui/icons'
 
 export default function PatientDashboardPage() {
@@ -18,15 +19,21 @@ export default function PatientDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [docs, setDocs] = useState([])
   const [consultations, setConsultations] = useState([])
+  const [myAlerts, setMyAlerts] = useState([])
 
   useEffect(() => {
     if (!myId) return undefined
     let cancelled = false
-    Promise.all([listDocumentRequests({ patientId: myId }), listConsultations({ patientId: myId })])
-      .then(([d, c]) => {
+    Promise.all([listDocumentRequests({ patientId: myId }), listConsultations({ patientId: myId }), listEmergencyAlerts()])
+      .then(([d, c, alerts]) => {
         if (cancelled) return
         setDocs(d)
         setConsultations(c)
+        // listEmergencyAlerts() has no explicit filter, but RLS already
+        // scopes what a patient-role caller can see to alerts where
+        // they're the subject or the reporter — no client-side filtering
+        // needed to keep this to "my" alerts specifically.
+        setMyAlerts(alerts)
       })
       .catch((err) => show(`Failed to load dashboard data: ${err.message}`, 'error'))
       .finally(() => {
@@ -46,6 +53,14 @@ export default function PatientDashboardPage() {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5)
   const recent = consultations[0]
+  const latestAlert = [...myAlerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+  const followUpStatus = (() => {
+    if (!recent?.follow_up_date) return null
+    const today = new Date().toISOString().slice(0, 10)
+    if (recent.follow_up_date < today) return { label: 'Overdue', color: 'var(--danger)' }
+    if (recent.follow_up_date === today) return { label: 'Today', color: 'var(--warning)' }
+    return { label: 'Upcoming', color: 'var(--primary)' }
+  })()
 
   if (loading) return <Spinner label="Loading dashboard…" />
 
@@ -142,8 +157,9 @@ export default function PatientDashboardPage() {
                 {recent.follow_up_date && (
                   <div className="detail-row">
                     <span className="detail-label">Follow-up</span>
-                    <span className="detail-value" style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                      {formatDate(recent.follow_up_date)}
+                    <span className="detail-value" style={{ fontWeight: 600 }}>
+                      {formatDate(recent.follow_up_date)}{' '}
+                      <span style={{ color: followUpStatus.color, fontSize: 11 }}>({followUpStatus.label})</span>
                     </span>
                   </div>
                 )}
@@ -151,6 +167,32 @@ export default function PatientDashboardPage() {
             ) : (
               <div className="empty-state">
                 <p>No consultation records yet</p>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                Emergency Alert Status
+              </h3>
+            </div>
+            {latestAlert ? (
+              <div style={{ padding: 14 }}>
+                <div className="detail-row">
+                  <span className="detail-label">Status</span>
+                  <span className="detail-value">
+                    <StatusBadge status={latestAlert.status} />
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Reported</span>
+                  <span className="detail-value">{formatDate(latestAlert.created_at)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>No emergency alerts on file</p>
               </div>
             )}
           </div>

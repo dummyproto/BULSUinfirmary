@@ -12,6 +12,9 @@ export default function ChangePasswordModal({ isOpen, onClose, onSuccess, onErro
   const [confirm, setConfirm] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const newValid = nw ? validatePassword(nw).ok : null
+  const confirmValid = confirm ? confirm === nw && newValid : null
+
   function handleClose() {
     setCur('')
     setNw('')
@@ -28,6 +31,10 @@ export default function ChangePasswordModal({ isOpen, onClose, onSuccess, onErro
 
     setSubmitting(true)
     try {
+      // changePassword() re-authenticates with `cur` first (Supabase Auth
+      // has no separate "just verify this password" endpoint) — so if
+      // the current password is wrong, this throws "Current password is
+      // incorrect" before anything is actually changed.
       await changePassword(cur, nw)
       onSuccess()
       handleClose()
@@ -61,11 +68,21 @@ export default function ChangePasswordModal({ isOpen, onClose, onSuccess, onErro
       </div>
       <div className="form-group" style={{ marginBottom: 12 }}>
         <label>NEW PASSWORD</label>
-        <PasswordInput placeholder="••••••••" value={nw} onChange={(e) => setNw(e.target.value)} />
+        <PasswordInput
+          placeholder="••••••••"
+          value={nw}
+          onChange={(e) => setNw(e.target.value)}
+          style={newValid === null ? undefined : { borderColor: newValid ? '#22C55E' : '#EF4444' }}
+        />
       </div>
       <div className="form-group" style={{ marginBottom: 4 }}>
         <label>CONFIRM NEW PASSWORD</label>
-        <PasswordInput placeholder="••••••••" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        <PasswordInput
+          placeholder="••••••••"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          style={confirmValid === null ? undefined : { borderColor: confirmValid ? '#22C55E' : '#EF4444' }}
+        />
       </div>
     </Modal>
   )

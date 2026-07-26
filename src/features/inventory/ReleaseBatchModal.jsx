@@ -37,7 +37,7 @@ export default function ReleaseBatchModal({ isOpen, batch, onClose, onSubmit, on
       </div>
       <div className="form-group">
         <label>QUANTITY TO RELEASE *</label>
-        <input className="form-input" type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} />
+        <input className="form-input" type="number" min="0" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} />
       </div>
       <div className="form-group" style={{ marginTop: 10 }}>
         <label>PURPOSE / NOTES</label>

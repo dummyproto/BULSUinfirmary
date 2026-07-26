@@ -76,30 +76,39 @@ export default function ItemsTab({
 
   return (
     <div className="card">
-      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <InventoryIcon width={15} height={15} /> Inventory Items
-        </h3>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
-          <select className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={category} onChange={(e) => set({ category: e.target.value })}>
-            {CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <select className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={status} onChange={(e) => set({ status: e.target.value })}>
-            {STATUSES.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-          <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search items…" width={170} />
-          <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <PlusIcon width={13} height={13} /> Add Item
-          </button>
-          <button type="button" className="btn btn-sm btn-orange" onClick={onReleasePicker} title="Release stock from a non-expired item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <MinusIcon width={13} height={13} /> Release
-          </button>
-        </div>
-      </div>
+      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+  <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+    <InventoryIcon width={15} height={15} /> Inventory Items
+  </h3>
+  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginLeft: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Category</label>
+      <select className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={category} onChange={(e) => set({ category: e.target.value })}>
+        {CATEGORIES.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Status</label>
+      <select className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={status} onChange={(e) => set({ status: e.target.value })}>
+        {STATUSES.map((s) => (
+          <option key={s}>{s}</option>
+        ))}
+      </select>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Search</label>
+      <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search items…" width={170} />
+    </div>
+    <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <PlusIcon width={13} height={13} /> Add Item
+    </button>
+    <button type="button" className="btn btn-sm btn-orange" onClick={onReleasePicker} title="Release stock from a non-expired item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <MinusIcon width={13} height={13} /> Release
+    </button>
+  </div>
+</div>
       <div className="table-wrap">
         <table>
           <thead>

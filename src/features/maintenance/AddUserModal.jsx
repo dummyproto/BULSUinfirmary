@@ -9,6 +9,7 @@ const EMPTY = { name: '', email: '', password: '', role: 'patient', phone: '', s
 
 export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, onError }) {
   const [form, setForm] = useState(EMPTY)
+  const passwordValid = form.password ? validatePassword(form.password).ok : null
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
 
   function handleClose() {
@@ -47,7 +48,7 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
     } else {
       record.department = form.department.trim() || null
       record.position = form.position.trim() || null
-      record.permissions = { print_inventory: false, print_appointments: false, print_health: false }
+      record.permissions = { print_inventory: false, print_documents: false, print_health: false }
     }
     onSave(record)
     setForm(EMPTY)
@@ -81,7 +82,12 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
         </div>
         <div className="form-group">
           <label>PASSWORD *</label>
-          <PasswordInput placeholder="Min 8 characters" value={form.password} onChange={(e) => setField('password')(e.target.value)} />
+          <PasswordInput
+          placeholder="Min 8 characters"
+          value={form.password}
+          onChange={(e) => setField('password')(e.target.value)}
+          style={passwordValid === null ? undefined : { borderColor: passwordValid ? '#22C55E' : '#EF4444' }}
+        />
         </div>
         <div className="form-group">
           <label>ROLE *</label>
@@ -93,7 +99,14 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
         </div>
         <div className="form-group">
           <label>PHONE</label>
-          <input className="form-input" placeholder="09XXXXXXXXX" value={form.phone} onChange={(e) => setField('phone')(e.target.value)} />
+          <input
+  className="form-input"
+  placeholder="09XXXXXXXXX"
+  inputMode="numeric"
+  maxLength={11}
+  value={form.phone}
+  onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
+/>
         </div>
 
         {form.role === 'patient' ? (

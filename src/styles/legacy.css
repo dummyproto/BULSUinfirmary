@@ -143,6 +143,32 @@
   box-shadow: 0 0 0 3px rgba(61,191,150,.16) !important;
 }
 
+/* Dark mode date/time inputs — the native calendar/clock picker icon
+   (::-webkit-calendar-picker-indicator) renders as a dark glyph by
+   default in every Chromium/WebKit browser, regardless of the input's
+   own background or text color, which is why it goes near-invisible
+   against a dark input (see e.g. EditProfileModal's Date of Birth
+   field). Not a Supabase-styleable element — inverting it via `filter`
+   is the standard, only cross-browser way to make it white without
+   swapping in a custom icon. Firefox doesn't use this pseudo-element at
+   all and is unaffected either way. */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.8;
+  cursor: pointer;
+}
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="week"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* Dark mode icon buttons */
 [data-theme="dark"] .icon-btn {
   background: rgba(18,14,10,.9);
@@ -314,6 +340,7 @@
 [data-theme="dark"] .patient-dropdown-item:hover { background: var(--primary-light); }
 
 /* Profile tab inactive → readable warm gray */
+[data-theme="dark"] .profile-tabs         { background: rgba(24,19,15,.96); border-color: rgba(255,245,235,.07); }
 [data-theme="dark"] .profile-tab        { color: var(--text-3) !important; }
 [data-theme="dark"] .profile-tab:hover  { color: var(--text-2) !important; }
 [data-theme="dark"] .profile-tab.active { color: var(--primary) !important; }
@@ -559,9 +586,21 @@ button{font-family:'DM Sans',sans-serif}
   content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
   width:3px;height:18px;background:var(--primary);border-radius:0 3px 3px 0;
 }
-/* Logout button styling */
-.nav-item.logout-item{color:#EF4444;margin-top:2px}
-.nav-item.logout-item:hover{background:rgba(239,68,68,.12);color:#FCA5A5}
+/* Logout button — a real <button>, unlike the other NavLink-based nav
+   items, so without an explicit reset it inherits the browser's native
+   button chrome (background, border) underneath .nav-item's color/icon
+   styling, producing a half-native/half-themed look. Reset here, then
+   styled as its own deliberate "danger" action rather than a plain nav
+   link: a soft red-tinted resting background instead of fully
+   transparent, so it visually reads as "sign out of the app" and not
+   just another page link. */
+.nav-item.logout-item{
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.16);
+  color:#EF4444;font:inherit;text-align:left;width:100%;
+  cursor:pointer;margin-top:2px;font-weight:600;
+}
+.nav-item.logout-item:hover{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.3);color:#FCA5A5}
+.nav-item.logout-item:active{background:rgba(239,68,68,.22)}
 /* Notification badge on nav items */
 .nav-badge{margin-left:auto;background:var(--danger);color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:20px;text-align:center}
 .sidebar-footer{padding:10px 8px 12px;border-top:1px solid #2A211A;flex-shrink:0}
@@ -607,6 +646,13 @@ button{font-family:'DM Sans',sans-serif}
 .topbar-title{font-size:15.5px;font-weight:700;color:#1A1310;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topbar-breadcrumb{font-size:11.5px;color:#475569;white-space:nowrap;font-weight:500}
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* A little extra breathing room specifically between the SOS button and
+   the theme toggle — the base 10px gap (shared by every icon in
+   .topbar-right) reads as slightly too tight next to the SOS button's
+   larger, attention-grabbing red circle. Scoped to this one adjacent
+   pair via +, so the bell/avatar spacing elsewhere in the row is
+   untouched. */
+.emg-login-header-btn + .theme-toggle-btn{margin-left:6px}
 .icon-btn{
   width:38px;height:38px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
   background:rgba(250,248,245,.97);cursor:pointer;display:flex;align-items:center;
@@ -635,8 +681,9 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ── CARDS ── */
 .card{background:rgba(250,248,245,.96);border:1px solid rgba(208,200,188,.8);border-radius:var(--radius-lg);box-shadow:0 2px 12px rgba(0,0,0,.07),0 8px 24px rgba(0,0,0,.05)}
-.card-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.card-header h3{font-size:14px;font-weight:700;color:#1A1310}
+.card-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-header h3{font-size:14px;font-weight:700;color:#1A1310;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-header .btn{flex-shrink:0}
 .card-footer{padding:10px 18px;border-top:1px solid var(--border)}
 
 /* ── STATS ── */
@@ -863,6 +910,32 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 }
 /* Focus state with primary color border and subtle background */
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(30,123,94,.1)}
+
+/* School ID input + Scan button row (EditProfileModal). .form-input's
+   own base rule sets width:100%, which is fine as a standalone field but
+   fights for space against a sibling button once both sit in a flex
+   row — declared explicitly here (not just inline styles) with
+   !important on the parts that matter, so this exact pairing can't be
+   knocked out of shape by that width:100% rule or by any other page-wide
+   .btn sizing rule (several exist for other contexts, e.g. mobile
+   full-width buttons) accidentally matching this button too. */
+.school-id-scan-row{display:flex;gap:8px;align-items:stretch}
+.school-id-scan-row .school-id-scan-input{flex:1 1 auto!important;width:auto!important;min-width:0}
+.school-id-scan-row .school-id-scan-btn{flex:0 0 auto!important;width:auto!important;white-space:nowrap;flex-shrink:0}
+/* Even with the !important flex/width overrides above, this row was
+   still visibly losing the tug-of-war with page-wide mobile .btn sizing
+   rules (e.g. @media(max-width:520px){.btn{width:100%}}) — the input
+   ending up squeezed to a sliver while the button ballooned to fill the
+   row. Rather than keep fighting that with more specific overrides,
+   stacking the two on top of each other below 520px sidesteps the
+   conflict entirely: each gets its own full-width row, so there's no
+   width to fight over. Input on top (what you're actually filling in),
+   Scan button below, both a comfortable full-width tap target. */
+@media(max-width:520px){
+  .school-id-scan-row{flex-direction:column;gap:8px}
+  .school-id-scan-row .school-id-scan-input,
+  .school-id-scan-row .school-id-scan-btn{width:100%!important;flex:1 1 auto!important}
+}
 /* Textarea resizable with minimum height */
 .form-textarea{resize:vertical;min-height:80px}
 /* Search input with embedded icon */
@@ -876,7 +949,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .pw-wrapper{position:relative}
 .pw-wrapper .form-input{padding-right:40px}
 /* Password visibility toggle button */
-.pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-3);display:flex;align-items:center;padding:0}
+.pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-3);display:flex;align-items:center;justify-content:center;padding:0}
 .pw-toggle:hover{color:var(--text-2)}
 
 /* ========== MODAL DIALOGS: Overlay and modal container ========== */
@@ -1089,8 +1162,8 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 /* ── PROFILE ── */
 .profile-header{
   display:flex;align-items:center;gap:18px;padding:22px;
-  background:#D1D5DB;
-  border-radius:14px;margin-bottom:18px;color:#5B6A6F;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#16A34A,#059669);
+  border-radius:14px;margin-bottom:18px;color:#fff;position:relative;overflow:hidden;
 }
 .profile-header::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08)}
 .profile-avatar-lg{
@@ -1112,19 +1185,23 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 /* ── PROFILE TABS ── */
 .profile-tabs-container{margin-top:24px}
 .profile-tabs{
-  display:flex;gap:8px;margin-bottom:20px;
-  border-bottom:2px solid var(--border);padding-bottom:0;overflow-x:auto;
+  display:flex;gap:14px;margin-bottom:20px;
+  background:rgba(250,248,245,.96);
+  border:1px solid rgba(208,200,188,.8);
+  border-radius:12px 12px 0 0;
+  border-bottom:2px solid var(--border);
+  padding:6px 14px 0;overflow-x:auto;
   scrollbar-width:none;-ms-overflow-style:none;
 }
 .profile-tabs::-webkit-scrollbar{display:none}
 .profile-tab{
-  padding:12px 18px;border:none;background:none;cursor:pointer;
-  font-size:13px;font-weight:600;color:#94A3B8;
+  padding:12px 16px;border:none;background:none;cursor:pointer;
+  font-size:13px;font-weight:600;color:#5B6472;
   transition:var(--transition);position:relative;
   border-bottom:3px solid transparent;transform:translateY(2px);
-  white-space:nowrap;
+  white-space:nowrap;flex-shrink:0;
 }
-.profile-tab:hover{color:#64748B}
+.profile-tab:hover{color:#1A1310}
 .profile-tab.active{
   color:var(--primary);border-bottom-color:var(--primary);
   transform:translateY(0);
@@ -1152,7 +1229,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   font-size:14px;font-weight:600;color:var(--text);
 }
 
-.detail-row{display:flex;padding:9px 0;border-bottom:1px solid var(--border)}
+.detail-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;width:130px;flex-shrink:0}
 .detail-value{font-size:13px;color:#0A0F1E;font-weight:500}
@@ -1178,7 +1255,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 [data-theme="dark"] .print-preview-table tr:nth-child(even) td{background:#f8f9ff!important}
 
 /* ── RECORD DETAIL ── */
-.detail-row{display:flex;padding:9px 0;border-bottom:1px solid var(--border)}
+.detail-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;width:130px;flex-shrink:0}
 .detail-value{font-size:13px;color:#0A0F1E;font-weight:500}
@@ -1294,7 +1371,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 }
 #page-login::before{
   content:'';position:absolute;inset:0;
-  background:linear-gradient(135deg,rgba(210,195,178,.80) 0%,rgba(36,28,18,.74) 50%,rgba(12,8,4,.88) 100%);
+  background:linear-gradient(135deg,rgba(210,195,178,.35) 0%,rgba(36,28,18,.35) 50%,rgba(12,8,4,.45) 100%);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
 .login-card{
@@ -1389,6 +1466,16 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 }
 .login-card h2{font-size:21px;font-weight:600;color:#EDE8E0;margin-bottom:3px}
 .login-card .sub{color:#B4A89E;font-size:12.5px;margin-bottom:24px}
+/* The login card's background is always dark (rgba(14,10,6,.72)),
+   regardless of the app's light/dark theme toggle — same as .login-card
+   h2 and .sub above. Without its own color, this link fell back to
+   inherited `body` text color, which is only forced light under
+   [data-theme="dark"] (see the dark-mode body override elsewhere in this
+   file); in light mode body stays near-black, making the link
+   effectively invisible against the dark card. Fixed color here instead
+   of relying on inheritance, so it reads the same in both themes. */
+.login-forgot-link{color:#B4A89E!important;text-decoration:none;transition:color .2s}
+.login-forgot-link:hover{color:#EDE8E0!important}
 .login-field{margin-bottom:14px}
 .login-field label{display:block;font-size:11.5px;font-weight:500;color:#C8C0B8;margin-bottom:5px;letter-spacing:.05em;text-transform:uppercase}
 .login-input{width:100%;padding:11px 13px;border-radius:8px;background:rgba(255,245,230,.06);border:1px solid rgba(255,245,230,.1);color:#EDE8E0;font-family:'DM Sans',sans-serif;font-size:14px;transition:border-color .2s}
@@ -1396,7 +1483,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .login-input::placeholder{color:#9E9490}
 .login-pw-wrap{position:relative}
 .login-pw-wrap .login-input{padding-right:42px}
-.login-pw-toggle{position:absolute;right:11px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9E9490;display:flex;padding:0}
+.login-pw-toggle{position:absolute;right:11px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9E9490;display:flex;align-items:center;justify-content:center;padding:0}
 .login-pw-toggle:hover{color:#C8C0B8}
 .login-btn{width:100%;padding:12px;border-radius:8px;border:none;cursor:pointer;background:var(--primary);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;transition:var(--transition);margin-top:8px}
 .login-btn:hover{background:var(--primary-dark);transform:translateY(-1px);box-shadow:0 4px 16px rgba(30,123,94,.4)}
@@ -1556,7 +1643,29 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   .stats-row.cols-4{grid-template-columns:repeat(2,1fr)}
   .stats-row.cols-3{grid-template-columns:repeat(2,1fr)}
   .chatbot-layout{grid-template-columns:1fr}
-  .chat-side-panels{display:none}
+  /* Off-canvas drawer instead of being hidden outright — slides in from
+     the right when toggled open (ChatbotPage's mobilePanelOpen state
+     adds .mobile-open), with its own close button and backdrop. */
+  .chat-side-panels{
+    position:fixed;top:0;right:0;bottom:0;z-index:600;
+    width:85%;max-width:320px;
+    background:var(--surface,#fff);padding:16px 16px 24px;
+    box-shadow:-8px 0 28px rgba(0,0,0,.3);
+    transform:translateX(100%);transition:transform .28s ease;
+    overflow-y:auto;
+  }
+  .chat-side-panels.mobile-open{transform:translateX(0)}
+  .chat-panel-toggle-btn{display:inline-flex}
+  .chat-panel-close-btn{
+    display:flex;align-items:center;justify-content:center;
+    width:32px;height:32px;border-radius:50%;
+    background:var(--surface2,#F1F5F9);border:none;cursor:pointer;
+    color:var(--text-2);margin-bottom:12px;align-self:flex-end;flex-shrink:0;
+  }
+  .chat-panel-close-btn:hover{background:var(--border)}
+  .chat-panel-overlay{
+    position:fixed;inset:0;z-index:590;background:rgba(0,0,0,.5);
+  }
   .scan-layout{grid-template-columns:1fr}
   .topbar-breadcrumb{display:none}
   .form-grid{grid-template-columns:1fr}
@@ -1602,11 +1711,10 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   .sms-template-grid{grid-template-columns:1fr 1fr}
   .pickup-options{flex-direction:column}
   .sms-actions{flex-direction:column;align-items:stretch}
-  .reg-form-row{grid-template-columns:1fr}
+  .cons-submit-row{flex-direction:column;align-items:stretch}
   .reg-steps p{display:none}
   .scan-layout{grid-template-columns:1fr}
   .emg-log-entry [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
-  .reg-form-row{grid-template-columns:1fr}
   :root{--topbar-h:54px}
   .page-content{padding:12px}
   .stats-row.cols-4,.stats-row.cols-3,.stats-row.cols-2{grid-template-columns:1fr 1fr}
@@ -1651,6 +1759,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   .tab-btn{min-height:36px}
   .form-input,.form-select,.form-textarea,.search-input{font-size:16px!important}
   .login-input,.reg-input,.emg-input{font-size:16px!important}
+  .login-pw-wrap .login-input,.pw-wrapper .form-input{padding-right:50px}
   .emg-topbar-btn span:not(:first-child){display:none}
   .topbar-right .emg-login-header-btn{width:38px;height:38px}
   .hamburger-btn{flex-shrink:0}
@@ -2232,20 +2341,25 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 .emg-close-btn:hover{background:rgba(255,255,255,.15)!important}
 
 .emg-form-err{background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.4);border-radius:8px;padding:10px 14px;color:#FCA5A5;font-size:12.5px;margin-bottom:14px;line-height:1.7}
-.emg-section-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#94A3B8;margin-bottom:8px}
+.emg-section-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:8px}
 .emg-form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .emg-form-field{margin-bottom:0}
-.emg-form-field label{display:block;font-size:11.5px;font-weight:500;color:#C0B8B0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
+.emg-form-field label{display:block;font-size:11.5px;font-weight:500;color:var(--text-2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
 .emg-req{color:#F87171}
 .emg-input{
   width:100%;padding:10px 12px;border-radius:8px;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-  color:#F1F5F9;font-family:'DM Sans',sans-serif;font-size:13.5px;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-family:'DM Sans',sans-serif;font-size:13.5px;
   transition:border-color .2s;box-sizing:border-box;
 }
+.emg-input-locate{
+  appearance:none;cursor:text;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;
+}
 .emg-input:focus{outline:none;border-color:#DC2626;background:rgba(220,38,38,.07)}
-.emg-input::placeholder{color:#64748B}
-select.emg-input{color:#F1F5F9}
+.emg-input::placeholder{color:var(--text-3)}
+select.emg-input{color:var(--text)}
 select.emg-input option{background:#1E293B;color:#F1F5F9}
 select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .emg-input[readonly]{opacity:.6;cursor:not-allowed}
@@ -2253,13 +2367,27 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .emg-type-row{display:flex;gap:10px;margin-bottom:0}
 .emg-type-card{
   flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;
-  padding:14px 10px;border-radius:10px;border:2px solid rgba(255,255,255,.1);
-  background:rgba(255,255,255,.04);cursor:pointer;transition:var(--transition);
+  padding:14px 10px;border-radius:10px;border:2px solid var(--border);
+  background:var(--surface2);cursor:pointer;transition:var(--transition);
 }
 .emg-type-card:hover{border-color:rgba(220,38,38,.4);background:rgba(220,38,38,.07)}
 .emg-type-card.selected{border-color:#DC2626;background:rgba(220,38,38,.12)}
 .emg-type-icon{font-size:22px}
-.emg-type-text{font-size:12px;font-weight:600;color:#CBD5E1;text-align:center}
+.emg-type-text{font-size:12px;font-weight:600;color:var(--text-2);text-align:center}
+.emg-location-group-header{
+  padding:8px 14px 4px;
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--primary);
+  border-top:1px solid var(--border);
+}
+.emg-location-group-header:first-child{border-top:none}
+.emg-location-group-header{
+  padding:8px 14px 4px;
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--primary);
+  border-top:1px solid var(--border);
+}
+.emg-location-group-header:first-child{border-top:none}
 .emg-submit-btn{
   width:100%;padding:13px;border-radius:9px;border:none;cursor:pointer;
   background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;
@@ -2295,7 +2423,13 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .nav-item-emg{color:#ee0a0a!important}
 .nav-item-emg:hover,.nav-item-emg.active{background:rgba(220,38,38,.15)!important;color:#fff!important}
 .nav-badge-emg{background:#DC2626!important}
-
+.emg-log-entry{
+  padding:12px 0;
+  border-bottom:1px solid var(--border);
+}
+.emg-log-entry:last-child{
+  border-bottom:none;
+}
 /* ── Animations ── */
 @keyframes pulse-emg{
   0%,100%{transform:scale(1);opacity:1}
@@ -2317,6 +2451,14 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 .emg-live-backdrop.emg-live-open{
   background:rgba(0,0,0,.78);backdrop-filter:blur(8px);pointer-events:all;
+}
+.emg-log-entry{
+  padding:12px 0;
+  border-bottom:1px solid var(--border);
+}
+/* ── alert log ── */
+.emg-log-entry:last-child{
+  border-bottom:none;
 }
 .emg-live-modal{
   background:linear-gradient(160deg,#1A130A 0%,#0E0907 100%);
@@ -2465,16 +2607,28 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* Overlay backdrop */
 .reg-overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9800;
-  display:none;align-items:center;justify-content:center;
-  backdrop-filter:blur(6px);padding:20px;overflow-y:auto;
+  position:fixed;inset:0;background:transparent;z-index:9800;
+  display:none;align-items:flex-start;justify-content:center;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  padding:40px 20px;overflow-y:auto;
+  scrollbar-width:none;-ms-overflow-style:none;
 }
+.reg-overlay::-webkit-scrollbar{display:none}
 .reg-overlay.open{display:flex}
 
-/* Registration box */
+/* Registration box — deliberately its own size, NOT matched to
+   .login-card. The register flow has 3x the content (step indicator,
+   mode toggle, 4+ fields per step, terms, etc.) vs. the login form's 2
+   fields, so it needs more room, not the same footprint. Combined with
+   .reg-overlay's align-items:flex-start above (instead of center), the
+   box now starts flush against the top of the scrollable overlay and
+   grows downward with its content — align-items:center previously
+   clipped the top AND bottom of tall content, since a centered flex
+   child that overflows its scrollable parent becomes only partially
+   reachable by scrolling in that configuration. */
 .reg-box{
   background:rgba(15,23,42,.98);border:1px solid rgba(255,255,255,.12);
-  border-radius:20px;padding:30px 34px;width:520px;max-width:100%;
+  border-radius:20px;padding:32px 38px;width:560px;max-width:calc(100vw - 40px);
   box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s ease;
   position:relative;
 }
@@ -2520,10 +2674,24 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* Form fields */
 .reg-form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
-.reg-field{margin-bottom:0}
+.reg-field{margin-bottom:0;min-width:0}
 .reg-field label{
   display:block;font-size:11px;font-weight:600;color:#C0B8B0;
   margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;
+  overflow-wrap:break-word;
+}
+/* Stack the two-column rows on narrower screens — e.g. "Student / User
+   Number *" doesn't fit a ~200px half-width column, causing the label
+   and its required-asterisk to crowd/overlap. This used to be attempted
+   inside the @media(max-width:768px) block much earlier in this file,
+   but a same-specificity, UNCONDITIONAL `.reg-form-row` rule (right
+   above, at all widths) sits later in the cascade than that media
+   block, so the later unconditional rule always won the tie-break and
+   silently no-opped the stacking at every viewport width. Placing the
+   override here — after the base rule — is what actually makes it take
+   effect. */
+@media(max-width:768px){
+  .reg-form-row{grid-template-columns:1fr}
 }
 .reg-req{color:#F87171}
 .reg-input{
@@ -2567,6 +2735,31 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* Nav buttons */
 .reg-nav{
   display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:22px;
+}
+/* Step 1 has no Back button (nothing to go back to), so the default
+   justify-content:flex-end above already puts the lone "Next" on the
+   right — no extra class needed for it. */
+
+/* Step 2: Back + Next side by side, Back left / Next right. */
+.reg-nav.reg-nav-split{justify-content:space-between}
+
+/* Step 3: "Create Account" on top (the primary action), "Back" left-
+   aligned underneath it — NOT full width, since it's the secondary
+   action. Back renders first in the DOM (the step > 1 condition comes
+   before the step === 3 Create Account button), so column-reverse flips
+   the visual order without needing to reorder the JSX. */
+.reg-nav.reg-nav-final{
+  flex-direction:column-reverse;align-items:stretch;gap:10px;
+}
+.reg-nav.reg-nav-final .reg-submit-btn{width:100%;justify-content:center}
+.reg-nav.reg-nav-final .btn-outline{align-self:flex-start;width:auto}
+/* Step 2's Back button uses the generic .btn.btn-outline class, which
+   has slightly different padding/font-size/radius than .reg-next-btn —
+   sized here to match exactly so the two buttons sitting side by side
+   look like one consistent pair, not two different button systems. */
+.reg-nav .btn-outline{
+  padding:10px 22px;font-size:13.5px;border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-weight:600;
 }
 .reg-next-btn{
   padding:10px 22px;border-radius:8px;border:none;cursor:pointer;
@@ -2618,22 +2811,55 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .chat-side-panels{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
 .chat-side-card{flex-shrink:0}
 
+/* Mobile toggle for Topic Categories / Clinic Contacts / Medical
+   Disclaimer — hidden above 900px, where the panel already shows as a
+   static side column (see .chatbot-layout's grid-template-columns
+   collapsing to 1fr in that breakpoint) and there's nothing to toggle.
+   .chat-panel-close-btn (the × inside the drawer) is likewise mobile-
+   only, since above 900px the panel is never a drawer to begin with. */
+.chat-panel-toggle-btn,.chat-panel-close-btn{display:none}
+/* The show-on-mobile override for these two also exists inside the
+   general @media(max-width:900px) block much earlier in this file —
+   but that block sits BEFORE this unconditional hide rule, so it lost
+   the cascade tie-break and the button never actually appeared, even
+   on mobile (same bug class already fixed twice elsewhere in this file
+   for .reg-form-row and .reg-nav). Repeating it here, AFTER the hide
+   rule, is what actually makes it take effect. */
+@media(max-width:900px){
+  .chat-panel-toggle-btn{display:inline-flex}
+  .chat-panel-close-btn{display:flex}
+}
+
 /* ── BOT HEADER ── */
 .chat-main-header{
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;
   background:linear-gradient(135deg,var(--primary-light),#F0F4FA);
 }
-.bot-identity{display:flex;align-items:center;gap:12px}
+.bot-identity{display:flex;align-items:center;gap:12px;min-width:0}
 .bot-avatar-lg{
   width:42px;height:42px;border-radius:50%;background:#D1D5DB;
   display:flex;align-items:center;justify-content:center;font-size:20px;color:#5B6A6F;
   box-shadow:0 2px 8px rgba(0,0,0,.08);flex-shrink:0;
 }
 .bot-name{font-size:15px;font-weight:700;color:var(--text)}
-.bot-status{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px;margin-top:2px}
-.online-dot{width:7px;height:7px;border-radius:50%;background:#16A34A;animation:pulse-dot 2s infinite}
+.bot-status{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.online-dot{width:7px;height:7px;border-radius:50%;background:#16A34A;animation:pulse-dot 2s infinite;flex-shrink:0}
 @keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.4)}70%{box-shadow:0 0 0 5px rgba(22,163,74,0)}}
+/* On mobile, the bot name + "Online 24/7 · Clinic AI Assistant" status
+   line was eating most of the header's width, squeezing "Logs"/"Clear"
+   into so little space their own labels wrapped mid-word ("Lo/gs",
+   "Cle/ar"). chat-header-actions gets flex-shrink:0 so the buttons keep
+   their full readable size no matter what; bot-identity/bot-status get
+   min-width:0 + ellipsis truncation above so THEY give up space first
+   if the row is tight, instead of the buttons. Below 600px the header
+   wraps to two rows if it still doesn't fit, keeping the buttons intact
+   rather than forcing a shrink. */
+.chat-header-actions{flex-shrink:0}
+@media(max-width:600px){
+  .chat-main-header{flex-wrap:wrap;row-gap:8px}
+  .bot-status{max-width:220px}
+}
 
 /* ── CHAT MESSAGES ── */
 .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
@@ -2757,7 +2983,14 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* ── RESPONSIVE ── */
 @media(max-width:900px){
   .chatbot-layout{grid-template-columns:1fr}
-  .chat-side-panels{display:none}
+  /* .chat-side-panels' full mobile drawer behavior (position, width,
+     transform, .mobile-open, etc.) is already defined earlier in this
+     file within the first @media(max-width:900px) block. A bare
+     `display:none` here previously — with no accompanying override for
+     the .mobile-open state — would have permanently hidden the panel
+     even when toggled open, since .mobile-open only sets `transform`
+     and never re-enables `display`. Removed rather than duplicated, to
+     avoid the two blocks drifting out of sync again. */
 }
 @media(max-width:600px){
   .chat-topic-grid{grid-template-columns:repeat(3,1fr)}
@@ -2863,11 +3096,12 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .scan-idle-state{
   position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:12px;color:#475569;
+  text-align:center;padding:0 24px;
 }
 .scan-qr-icon{color:#334155;animation:qr-pulse 2s ease-in-out infinite}
 @keyframes qr-pulse{0%,100%{opacity:.5;transform:scale(.95)}50%{opacity:1;transform:scale(1)}}
-.scan-idle-label{font-size:15px;font-weight:600;color:#64748B}
-.scan-idle-sub{font-size:12px;color:#475569}
+.scan-idle-label{font-size:15px;font-weight:600;color:#64748B;text-align:center}
+.scan-idle-sub{font-size:12px;color:#475569;text-align:center}
 
 /* Scanning corners */
 .scan-corner-tl,.scan-corner-tr,.scan-corner-bl,.scan-corner-br{
@@ -2982,7 +3216,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 @keyframes med-row-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .med-row-grid{
   display:grid;
-  grid-template-columns:2fr 1fr 1.4fr 80px 36px;
+  grid-template-columns:2fr 1fr 1.4fr 74px 36px;
   gap:8px;align-items:center;
 }
 @media(max-width:700px){.med-row-grid{grid-template-columns:1fr 1fr}}
@@ -4599,7 +4833,16 @@ button:disabled {
     min-height: 44px;
   }
 
+  /* .btn-sm is used for compact inline actions — e.g. the "Edit" button
+     sitting next to a card title (Father's/Mother's/Guardian
+     Information, Account Information, etc). The broad .btn rule above
+     was also matching these (an element can carry both .btn and
+     .btn-sm), stretching what's supposed to be a small inline button
+     into a full-width pill taller than the card title next to it.
+     Small buttons should stay small regardless of screen width — that's
+     the point of the .btn-sm variant. */
   .btn-sm {
+    width: auto;
     min-height: 40px;
   }
 
@@ -4970,3 +5213,8 @@ td {
 }
 
 @keyframes pulse-warning{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.4)}70%{box-shadow:0 0 0 6px rgba(245,158,11,0)}}
+
+
+@media(max-width:640px){
+  .processing-info-grid{grid-template-columns:1fr!important}
+}

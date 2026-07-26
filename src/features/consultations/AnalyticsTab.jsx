@@ -132,11 +132,18 @@ export default function AnalyticsTab({ consultations, categories }) {
       : null
   )
 
+  // Keyed by visit type so a color is never accidentally assigned by
+  // array position — Object.keys(visitTypes)'s order depends on which
+  // visit_type appears first in the data, not a fixed sequence, so an
+  // index-based color array (the previous approach) could silently swap
+  // colors if Emergency happened to be encountered before Walk-in.
+  const VISIT_TYPE_COLORS = { 'Walk-in': '#1E7B5E', Emergency: '#C0392B' }
+
   useChart(visitsRef, {
     type: 'doughnut',
     data: {
       labels: Object.keys(visitTypes),
-      datasets: [{ data: Object.values(visitTypes), backgroundColor: ['#1E7B5E', '#2E7D52', '#C0392B'], borderWidth: 2 }],
+      datasets: [{ data: Object.values(visitTypes), backgroundColor: Object.keys(visitTypes).map((t) => VISIT_TYPE_COLORS[t] || '#94A3B8'), borderWidth: 2 }],
     },
     options: { responsive: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } },
   })

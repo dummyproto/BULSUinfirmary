@@ -42,10 +42,10 @@ export default function MedRow({ row, inventory, onChange, onRemove, canRemove }
           type="number"
           min="1"
           placeholder="Qty"
-          style={{ fontSize: 12, width: 70 }}
+          style={{ fontSize: 13, width: 70, textAlign: 'center' }}
           value={row.qty}
           onChange={(e) => setField('qty')(e.target.value.replace(/[^0-9]/g, ''))}
-        />
+/>
         {canRemove ? (
           <button
             type="button"

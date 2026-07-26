@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import Modal from '@components/ui/Modal'
 import StatusBadge from '@components/ui/StatusBadge'
 import { formatDateTime } from '@lib/format'
-import { ClipboardIcon, DownloadIcon, MapPinIcon } from '@components/ui/icons'
+import { ClipboardIcon, DownloadIcon, MapPinIcon, EyeIcon } from '@components/ui/icons'
 
 const STATUSES = ['All', 'Active', 'Acknowledged', 'Resolved']
 
@@ -27,6 +28,7 @@ function exportAlertsCsv(alerts) {
 
 export default function AlertLogTab({ alerts }) {
   const [status, setStatus] = useState('All')
+  const [detailAlert, setDetailAlert] = useState(null)
   const filtered = (status === 'All' ? alerts : alerts.filter((a) => a.status === status))
     .slice()
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -41,7 +43,7 @@ export default function AlertLogTab({ alerts }) {
               <option key={s}>{s}</option>
             ))}
           </select>
-          <button type="button" className="btn btn-sm btn-outline" onClick={() => exportAlertsCsv(filtered)}>
+          <button type="button" className="btn btn-sm btn-outline" onClick={() => exportAlertsCsv(filtered)} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
             <DownloadIcon width={13} height={13} /> Export CSV
           </button>
         </div>
@@ -63,11 +65,61 @@ export default function AlertLogTab({ alerts }) {
                   {a.resolved_at ? ` · Resolved ${formatDateTime(a.resolved_at)}` : ''}
                 </div>
               </div>
-              <StatusBadge status={a.status} />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                <StatusBadge status={a.status} />
+                <button type="button" className="btn btn-sm btn-outline" onClick={() => setDetailAlert(a)}>
+                  <EyeIcon width={12} height={12} /> View
+                </button>
+              </div>
             </div>
           </div>
         ))}
       </div>
+
+      <Modal isOpen={detailAlert !== null} onClose={() => setDetailAlert(null)} title="Emergency Alert Details" icon={<ClipboardIcon width={16} height={16} />}>
+        {detailAlert && (
+          <div>
+            <div className="detail-row">
+              <span className="detail-label">Subject</span>
+              <span className="detail-value">
+                {detailAlert.subject_name} ({detailAlert.subject_student_num})
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Type</span>
+              <span className="detail-value">{detailAlert.emergency_type}</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Location</span>
+              <span className="detail-value">{detailAlert.location}</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Description</span>
+              <span className="detail-value">{detailAlert.description}</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Status</span>
+              <span className="detail-value">
+                <StatusBadge status={detailAlert.status} />
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Reported</span>
+              <span className="detail-value">{formatDateTime(detailAlert.created_at)}</span>
+            </div>
+            {detailAlert.resolved_at && (
+              <div className="detail-row">
+                <span className="detail-label">Resolved</span>
+                <span className="detail-value">{formatDateTime(detailAlert.resolved_at)}</span>
+              </div>
+            )}
+            <div className="detail-row">
+              <span className="detail-label">SMS Sent</span>
+              <span className="detail-value">{detailAlert.sms_sent ? 'Yes' : 'No'}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

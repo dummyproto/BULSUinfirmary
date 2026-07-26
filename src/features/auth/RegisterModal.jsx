@@ -1,28 +1,89 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { COURSES, YEAR_LEVELS } from '@features/maintenance/data/formOptions'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
-import { registerPatient } from '@services/usersService'
+import { registerPatient, checkStudentNumberRegistered } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import PasswordInput from '@components/ui/PasswordInput'
-import { AlertTriangleIcon } from '@components/ui/icons'
+import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icons'
 
-const EMPTY = { firstName: '', lastName: '', userId: '', phone: '', course: '', year: '', email: '', password: '', confirm: '' }
+// Lazy — same reasoning as QrLoginScan's lazy import in LoginPage.jsx:
+// jsQR is a sizable library most people opening the register modal (the
+// "fill in manually" path, still the default) never need.
+const RegisterQrScan = lazy(() => import('./RegisterQrScan'))
+
+/**
+ * Best-effort match of a scanned QR value against a fixed dropdown option
+ * list (COURSES / YEAR_LEVELS). The register form binds `course`/`year` to
+ * a `<select>`, which only renders correctly for an EXACT option string —
+ * so a scanned value that doesn't match anything is left blank (forcing a
+ * manual pick) rather than silently setting an invalid/invisible selection.
+ * Case-insensitive exact match first; for year level only, also accepts a
+ * bare leading digit (e.g. "1" or "1st") matching an option that starts
+ * with the same digit, since that's a common QR encoding for year level.
+ */
+function matchOption(value, options) {
+  const v = String(value || '').trim()
+  if (!v) return ''
+  const exact = options.find((o) => o.toLowerCase() === v.toLowerCase())
+  if (exact) return exact
+  const digit = v.match(/^(\d)/)?.[1]
+  if (digit) {
+    const byDigit = options.find((o) => o.startsWith(digit))
+    if (byDigit) return byDigit
+  }
+  return ''
+}
+
+// Phase Q additions: `qrCode` is the normalized code to claim on
+// successful submission (Phase 4); `profileIncomplete` is set by the
+// Step 2 skip path; `prefilledFromQr` only controls the "double-check"
+// banner on Step 1. Bookkeeping, not fields the person types into directly.
+const EMPTY = {
+  firstName: '',
+  lastName: '',
+  userId: '',
+  phone: '',
+  course: '',
+  year: '',
+  email: '',
+  password: '',
+  confirm: '',
+  qrCode: '',
+  profileIncomplete: false,
+  prefilledFromQr: false,
+}
 
 function strengthOf(pw) {
+  if (!pw) return { w: '0%', color: 'transparent', text: '' }
+
   let score = 0
+  // Length carries the most real-world weight — each threshold crossed
+  // adds a point, so a long password scores higher even with a narrower
+  // character set.
   if (pw.length >= 8) score++
   if (pw.length >= 12) score++
+  if (pw.length >= 16) score++
+  // Character variety — each type present adds one point, so mixing
+  // types (not just length) genuinely moves the needle.
+  if (/[a-z]/.test(pw)) score++
   if (/[A-Z]/.test(pw)) score++
   if (/[0-9]/.test(pw)) score++
   if (/[^A-Za-z0-9]/.test(pw)) score++
+  // Penalize length actually being too short outright, regardless of how
+  // varied the few characters are — "Ab1!" shouldn't score well just
+  // because it hits 4 of the character-type boxes.
+  if (pw.length < 8) score = Math.min(score, 1)
+
   const levels = [
     { w: '0%', color: 'transparent', text: '' },
-    { w: '25%', color: '#EF4444', text: 'Weak' },
-    { w: '50%', color: '#F97316', text: 'Fair' },
-    { w: '75%', color: '#EAB308', text: 'Good' },
-    { w: '100%', color: '#22C55E', text: 'Strong' },
+    { w: '20%', color: '#EF4444', text: 'Weak' },
+    { w: '40%', color: '#F97316', text: 'Fair' },
+    { w: '60%', color: '#EAB308', text: 'Good' },
+    { w: '80%', color: '#84CC16', text: 'Strong' },
+    { w: '100%', color: '#22C55E', text: 'Very Strong' },
   ]
-  return levels[Math.min(score, 4)]
+  return levels[Math.min(score, 5)]
 }
 
 export default function RegisterModal({ isOpen, onClose }) {
@@ -31,6 +92,9 @@ export default function RegisterModal({ isOpen, onClose }) {
   const [err, setErr] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [entryMode, setEntryMode] = useState('manual') // 'manual' | 'scan' — Step 1 only
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+  const [duplicateBlocked, setDuplicateBlocked] = useState(false)
 
   if (!isOpen) return null
 
@@ -41,22 +105,69 @@ export default function RegisterModal({ isOpen, onClose }) {
     setForm(EMPTY)
     setErr('')
     setSuccess('')
+    setEntryMode('manual')
+    setDuplicateBlocked(false)
     onClose()
   }
 
-  function stepNext() {
+  function handleScanned({ studentNumber, fullName, course, yearLevel, rawCode }) {
+    // Split "Juan dela Cruz" -> lastName "Cruz", firstName "Juan dela" —
+    // same last-token convention `createUserProfile()` already uses
+    // elsewhere in this file's sibling service (usersService.js). Sanitize
+    // through the exact same character/length rules Step 1's own inputs
+    // use, so a prefilled value can never violate validation silently.
+    const nameParts = String(fullName || '').trim().split(/\s+/).filter(Boolean)
+    const lastName = nameParts.length > 1 ? nameParts.pop() : ''
+    const firstName = nameParts.join(' ')
+    const sanitizeName = (s) => s.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20)
+    const sanitizeId = (s) => String(s || '').replace(/\D/g, '').slice(0, 15)
+
+    setForm((f) => ({
+      ...f,
+      firstName: sanitizeName(firstName),
+      lastName: sanitizeName(lastName),
+      userId: sanitizeId(studentNumber),
+      course: matchOption(course, COURSES),
+      year: matchOption(yearLevel, YEAR_LEVELS),
+      qrCode: rawCode || '',
+      prefilledFromQr: true,
+    }))
+    setErr('')
+    setEntryMode('manual')
+    setStep(1)
+  }
+
+  async function stepNext() {
     setErr('')
     if (step === 1) {
       if (!form.firstName.trim()) return setErr('First name is required.')
       if (!form.lastName.trim()) return setErr('Last name is required.')
-      if (!form.userId.trim()) return setErr('Student / User Number is required.')
-      if (!/^\d+$/.test(form.userId.trim())) return setErr('Student / User Number must contain numbers only.')
-      if (!form.phone.trim()) return setErr('Phone number is required.')
-      if (!/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
+      if (!form.userId.trim()) return setErr('User Number is required.')
+      if (!/^\d+$/.test(form.userId.trim())) return setErr('User Number must contain numbers only.')
+      if (form.phone.trim() && !/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
+
+      setCheckingDuplicate(true)
+      try {
+        const alreadyRegistered = await checkStudentNumberRegistered(form.userId.trim())
+        if (alreadyRegistered) {
+          setForm((f) => ({ ...f, prefilledFromQr: false }))
+          setDuplicateBlocked(true)
+          return setErr('This Student / User Number is already registered. Please sign in instead, or contact the clinic if this is a mistake.')
+        }
+        setDuplicateBlocked(false)
+      } catch (err) {
+        return setErr(`Could not verify Student / User Number right now: ${err.message}`)
+      } finally {
+        setCheckingDuplicate(false)
+      }
+
       setStep(2)
     } else if (step === 2) {
       if (!form.course) return setErr('Please select your course.')
+      const matched = COURSES.find((c) => c.toLowerCase() === form.course.trim().toLowerCase())
+      if (!matched) return setErr('Please select a valid course from the list.')
       if (!form.year) return setErr('Please select your year level.')
+      setForm((f) => ({ ...f, course: matched }))
       setStep(3)
     }
   }
@@ -89,6 +200,8 @@ export default function RegisterModal({ isOpen, onClose }) {
         studentNumber: form.userId.trim(),
         course: form.course,
         yearLevel: form.year,
+        qrCode: form.qrCode || undefined,
+        profileIncomplete: form.profileIncomplete,
       })
       try {
         await notify({
@@ -123,7 +236,7 @@ export default function RegisterModal({ isOpen, onClose }) {
 
   const strength = strengthOf(form.password)
 
-  return (
+  return createPortal(
     <div className="reg-overlay open" onMouseDown={(e) => e.target === e.currentTarget && handleClose()}>
       <div className="reg-box">
         <div className="reg-header">
@@ -153,26 +266,64 @@ export default function RegisterModal({ isOpen, onClose }) {
 
         {!success && (
           <>
-            <div className="reg-steps">
-              <div className={`reg-step${step >= 1 ? ' active' : ''}${step > 1 ? ' done' : ''}`}>
-                <span>1</span>
-                <p>Personal Info</p>
+            {!duplicateBlocked && (
+              <div className="reg-steps">
+                <div className={`reg-step${step >= 1 ? ' active' : ''}${step > 1 ? ' done' : ''}`}>
+                  <span>1</span>
+                  <p>Personal Info</p>
+                </div>
+                <div className="reg-step-line" />
+                <div className={`reg-step${step >= 2 ? ' active' : ''}${step > 2 ? ' done' : ''}`}>
+                  <span>2</span>
+                  <p>Academic Info</p>
+                </div>
+                <div className="reg-step-line" />
+                <div className={`reg-step${step >= 3 ? ' active' : ''}`}>
+                  <span>3</span>
+                  <p>Account Setup</p>
+                </div>
               </div>
-              <div className="reg-step-line" />
-              <div className={`reg-step${step >= 2 ? ' active' : ''}${step > 2 ? ' done' : ''}`}>
-                <span>2</span>
-                <p>Academic Info</p>
-              </div>
-              <div className="reg-step-line" />
-              <div className={`reg-step${step >= 3 ? ' active' : ''}`}>
-                <span>3</span>
-                <p>Account Setup</p>
-              </div>
-            </div>
+            )}
 
-            {step === 1 && (
+            {step === 1 && !duplicateBlocked && (
               <div className="reg-step-content">
-                <div className="reg-form-row">
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${entryMode === 'manual' ? 'btn-blue' : 'btn-outline'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      setErr('')
+                      setEntryMode('manual')
+                    }}
+                  >
+                    <MailIcon width={13} height={13} /> Fill in manually
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${entryMode === 'scan' ? 'btn-blue' : 'btn-outline'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      setErr('')
+                      setEntryMode('scan')
+                    }}
+                  >
+                    <CreditCardIcon width={13} height={13} /> Scan my ID
+                  </button>
+                </div>
+
+                {entryMode === 'scan' ? (
+                  <Suspense fallback={<div style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)', fontSize: 12 }}>Loading scanner…</div>}>
+                    <RegisterQrScan onScanned={handleScanned} onError={setErr} />
+                  </Suspense>
+                ) : (
+                  <>
+                    {form.prefilledFromQr && (
+                      <div className="alert alert-success" style={{ marginBottom: 14, fontSize: 12.5 }}>
+                        Pulled from your ID — please double-check before continuing.
+                      </div>
+                    )}
+                    <div className="reg-form-row">
                   <div className="reg-field">
                     <label>
                       First Name <span className="reg-req">*</span>
@@ -180,13 +331,13 @@ export default function RegisterModal({ isOpen, onClose }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="Juan"
+                      placeholder="Firstname"
                       maxLength={20}
                       value={form.firstName}
                       onChange={(e) => setField('firstName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20))}
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: form.firstName.length >= 20 ? '#EF4444' : '#94A3B8' }}>{form.firstName.length}/20</span>
+                      <span style={{ fontSize: 11, color: form.firstName.length >= 20 ? '#EF4444' : 'var(--text-3)' }}>{form.firstName.length}/20</span>
                     </div>
                   </div>
                   <div className="reg-field">
@@ -196,40 +347,41 @@ export default function RegisterModal({ isOpen, onClose }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="dela Cruz"
+                      placeholder="Lastname"
                       maxLength={20}
                       value={form.lastName}
                       onChange={(e) => setField('lastName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20))}
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: form.lastName.length >= 20 ? '#EF4444' : '#94A3B8' }}>{form.lastName.length}/20</span>
+                      <span style={{ fontSize: 11, color: form.lastName.length >= 20 ? '#EF4444' : 'var(--text-3)' }}>{form.lastName.length}/20</span>
                     </div>
                   </div>
                 </div>
                 <div className="reg-form-row">
                   <div className="reg-field">
                     <label>
-                      Student / User Number <span className="reg-req">*</span>
+                      User Number <span className="reg-req">*</span>
                     </label>
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="e.g. 202400001"
+                      placeholder="e.g. 2026-0000-000"
                       inputMode="numeric"
                       autoComplete="off"
                       maxLength={15}
                       value={form.userId}
-                      onChange={(e) => setField('userId')(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                      onChange={(e) => {
+                        setDuplicateBlocked(false)
+                        setField('userId')(e.target.value.replace(/\D/g, '').slice(0, 15))
+                      }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: '#94A3B8' }}>Numbers only</span>
-                      <span style={{ fontSize: 11, color: form.userId.length >= 15 ? '#EF4444' : '#94A3B8' }}>{form.userId.length}/15</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Numbers only</span>
+                      <span style={{ fontSize: 11, color: form.userId.length >= 15 ? '#EF4444' : 'var(--text-3)' }}>{form.userId.length}/15</span>
                     </div>
                   </div>
                   <div className="reg-field">
-                    <label>
-                      Phone Number <span className="reg-req">*</span>
-                    </label>
+                    <label>Phone Number <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>
                     <input
                       type="tel"
                       className="reg-input"
@@ -240,11 +392,21 @@ export default function RegisterModal({ isOpen, onClose }) {
                       onChange={(e) => setField('phone')(e.target.value.replace(/\D/g, '').slice(0, 11))}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: '#94A3B8' }}>Numbers only · starts with 09</span>
-                      <span style={{ fontSize: 11, color: form.phone.length === 11 ? '#16A34A' : '#94A3B8' }}>{form.phone.length}/11</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Numbers only · starts with 09</span>
+                      <span style={{ fontSize: 11, color: form.phone.length === 11 ? '#16A34A' : 'var(--text-3)' }}>{form.phone.length}/11</span>
                     </div>
                   </div>
                 </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {step === 1 && duplicateBlocked && (
+              <div className="reg-step-content" style={{ textAlign: 'center', padding: '10px 0' }}>
+                <a onClick={handleClose} style={{ fontSize: 13, cursor: 'pointer' }}>
+                  Close and sign in instead
+                </a>
               </div>
             )}
 
@@ -254,14 +416,19 @@ export default function RegisterModal({ isOpen, onClose }) {
                   <label>
                     Course / Program <span className="reg-req">*</span>
                   </label>
-                  <select className="reg-input reg-select" value={form.course} onChange={(e) => setField('course')(e.target.value)}>
-                    <option value="">— Select your course —</option>
+                  <input
+                    className="reg-input"
+                    list="course-options"
+                    placeholder="Type to search your course…"
+                    autoComplete="off"
+                    value={form.course}
+                    onChange={(e) => setField('course')(e.target.value)}
+                  />
+                  <datalist id="course-options">
                     {COURSES.map((c) => (
-                      <option value={c} key={c}>
-                        {c}
-                      </option>
+                      <option value={c} key={c} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
                 <div className="reg-field">
                   <label>
@@ -285,8 +452,14 @@ export default function RegisterModal({ isOpen, onClose }) {
                   <label>
                     Email Address <span className="reg-req">*</span>
                   </label>
-                  <input type="email" className="reg-input" placeholder="you@school.edu" value={form.email} onChange={(e) => setField('email')(e.target.value)} />
-                  <span className="reg-hint-text">Use your school email address</span>
+                  <input
+                    type="email"
+                    className="reg-input"
+                    placeholder="Enter your email address"
+                    value={form.email}
+                    onChange={(e) => setField('email')(e.target.value)}
+                  />
+                  <span className="reg-hint-text">We'll send your account confirmation and reset codes here.</span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
@@ -296,7 +469,7 @@ export default function RegisterModal({ isOpen, onClose }) {
                     wrapperClassName="reg-pw-wrap"
                     inputClassName="reg-input"
                     toggleClassName="login-pw-toggle reg-eye"
-                    placeholder="Min 8 chars, uppercase, number & special char"
+                    placeholder="Enter your Password"
                     value={form.password}
                     onChange={(e) => setField('password')(e.target.value)}
                   />
@@ -326,15 +499,15 @@ export default function RegisterModal({ isOpen, onClose }) {
               </div>
             )}
 
-            <div className="reg-nav">
-              {step > 1 && (
+            <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 3 ? ' reg-nav-final' : ''}`}>
+              {step > 1 && !duplicateBlocked && (
                 <button type="button" className="btn btn-outline" onClick={stepBack}>
                   ← Back
                 </button>
               )}
-              {step < 3 && (
-                <button type="button" className="reg-next-btn" onClick={stepNext}>
-                  Next →
+              {step < 3 && !(step === 1 && entryMode === 'scan') && !duplicateBlocked && (
+                <button type="button" className="reg-next-btn" onClick={stepNext} disabled={checkingDuplicate}>
+                  {checkingDuplicate ? 'Checking…' : 'Next →'}
                 </button>
               )}
               {step === 3 && (
@@ -360,6 +533,7 @@ export default function RegisterModal({ isOpen, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -193,7 +193,7 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
           canvas.width = Math.round(baseWidth * scale)
           canvas.height = Math.round(baseHeight * scale)
           if (canvas.width < 1 || canvas.height < 1) continue
-          const ctx = canvas.getContext('2d')
+          const ctx = canvas.getContext('2d', { willReadFrequently: true })
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })

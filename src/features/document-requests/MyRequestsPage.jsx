@@ -4,11 +4,12 @@ import { useToast } from '@context/ToastContext'
 import Tabs from '@components/ui/Tabs'
 import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
+import Modal from '@components/ui/Modal'
 import { formatDate } from '@lib/format'
 import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
 import NewRequestModal from './NewRequestModal'
-import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon } from '@components/ui/icons'
+import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon } from '@components/ui/icons'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined']
 
@@ -27,14 +28,14 @@ function renderNotes(request) {
 
   if (status === 'Claimed') {
     return (
-      <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <CheckCircleIcon width={13} height={13} /> Document has been claimed. Thank you!
       </span>
     )
   }
   if (status === 'Processing') {
     return notes ? (
-      <span style={{ color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <SettingsIcon width={13} height={13} /> {notes}
       </span>
     ) : (
@@ -44,7 +45,7 @@ function renderNotes(request) {
   if (status === 'Approved') {
     if (!notes) {
       return (
-        <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
           <CheckCircleIcon width={13} height={13} /> Approved — ready for pickup.
         </span>
       )
@@ -56,7 +57,7 @@ function renderNotes(request) {
       <>
         {staffNote && <div style={{ color: 'var(--text)' }}>{staffNote}</div>}
         {approvalMsg && (
-          <div style={{ color: 'var(--success)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ color: 'var(--success)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
             <ClipboardIcon width={13} height={13} /> {approvalMsg}
           </div>
         )}
@@ -66,7 +67,7 @@ function renderNotes(request) {
   }
   if (status === 'Declined' && notes) {
     return (
-      <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <XCircleIcon width={13} height={13} /> {notes}
       </span>
     )
@@ -83,6 +84,7 @@ export default function MyRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('All')
   const [newRequestOpen, setNewRequestOpen] = useState(false)
+  const [detailId, setDetailId] = useState(null)
 
   useEffect(() => {
     if (!myPatientId) return undefined
@@ -223,25 +225,29 @@ export default function MyRequestsPage() {
                   <td>
                     <StatusBadge status={d.status} />
                   </td>
-                  <td style={{ fontSize: 12, maxWidth: 220 }}>{renderNotes(d)}</td>
+                  <td style={{ fontSize: 12, maxWidth: 220, whiteSpace: 'normal', wordBreak: 'break-word' }}>{renderNotes(d)}</td>
                   <td>
-                    {d.status === 'Approved' && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-teal"
-                        title="Confirm you have received this document"
-                        onClick={() => handleClaim(d.doc_request_id)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                      >
-                        <ClipboardIcon width={13} height={13} /> Mark as Claimed
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-sm btn-outline" title="View details" onClick={() => setDetailId(d.doc_request_id)}>
+                        <EyeIcon width={13} height={13} />
                       </button>
-                    )}
-                    {d.status === 'Claimed' && (
-                      <span style={{ color: 'var(--success)', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <CheckCircleIcon width={13} height={13} /> Claimed
-                      </span>
-                    )}
-                    {d.status !== 'Approved' && d.status !== 'Claimed' && '—'}
+                      {d.status === 'Approved' && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-teal"
+                          title="Confirm you have received this document"
+                          onClick={() => handleClaim(d.doc_request_id)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                        >
+                          <ClipboardIcon width={13} height={13} /> Mark as Claimed
+                        </button>
+                      )}
+                      {d.status === 'Claimed' && (
+                        <span style={{ color: 'var(--success)', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <CheckCircleIcon width={13} height={13} /> Claimed
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -256,11 +262,11 @@ export default function MyRequestsPage() {
             <InfoIcon width={15} height={15} /> Processing Information
           </h3>
         </div>
-        <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+        <div className="processing-info-grid" style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
           {INFO_CARDS.map(([Icon, title, desc]) => (
             <div
               key={title}
-              style={{ padding: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }}
+              style={{ padding: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 0 }}
             >
               <div style={{ marginBottom: 6, color: 'var(--primary)' }}>
                 <Icon width={22} height={22} />
@@ -279,6 +285,48 @@ export default function MyRequestsPage() {
         onSubmit={handleNewRequestSubmit}
         onError={(msg) => show(msg, 'error')}
       />
+
+      <Modal
+        isOpen={detailId !== null}
+        onClose={() => setDetailId(null)}
+        title="Request Details"
+        icon={<DocumentIcon width={16} height={16} />}
+      >
+        {(() => {
+          const d = requests.find((r) => r.doc_request_id === detailId)
+          if (!d) return null
+          return (
+            <div>
+              <div className="detail-row">
+                <span className="detail-label">Document Type</span>
+                <span className="detail-value">{d.doc_type}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Purpose</span>
+                <span className="detail-value">{d.purpose || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Date Requested</span>
+                <span className="detail-value">{formatDate(d.date_requested)}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Date Needed</span>
+                <span className="detail-value">{formatDate(d.date_needed)}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Status</span>
+                <span className="detail-value">
+                  <StatusBadge status={d.status} />
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Notes</span>
+                <span className="detail-value">{renderNotes(d)}</span>
+              </div>
+            </div>
+          )
+        })()}
+      </Modal>
     </>
   )
 }

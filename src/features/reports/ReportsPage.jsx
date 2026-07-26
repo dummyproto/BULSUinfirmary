@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useToast } from '@context/ToastContext'
+import { useAuth } from '@context/AuthContext'
 import Spinner from '@components/ui/Spinner'
 import { formatDate, formatDateTime } from '@lib/format'
 import { getInventoryStatus, daysUntil } from '@features/inventory/lib/inventoryHelpers'
@@ -10,17 +11,33 @@ import { listAuditLogs } from '@services/auditLogsService'
 import { listMedicinesAsInventoryItems, listReceivingRecordsInRange, listSuppliers, getMonthlyMovement } from '@services/medicineService'
 import { exportToPDF, exportToExcel, exportToCSV } from './lib/exportReport'
 import PrintPreviewModal from './PrintPreviewModal'
+import ReportsAccessRestricted from './ReportsAccessRestricted'
 import { BarChartIcon, RefreshCwIcon, PrinterIcon, FileTextIcon, FileSpreadsheetIcon, DownloadIcon } from '@components/ui/icons'
 
-// Clinic-wide reports (unchanged — still eagerly loaded on mount, exactly
-// as before) vs. Inventory reports (Phase 11 — loaded lazily, on demand,
-// only for the specific data a given report type actually needs; see
-// loadInventoryData below).
-const CLINIC_REPORT_TYPES = [
-  { value: 'doc', label: 'Document Requests' },
-  { value: 'consultation', label: 'Consultations / Health Records' },
-  { value: 'audit', label: 'Audit Logs' },
-]
+/**
+ * Clinic report types, filtered per-type by the signed-in staff account's
+ * own permissions (Maintenance > Staff Permissions) — an admin always
+ * sees every type; a staff account only sees the ones matching a
+ * permission they've actually been granted. This is deliberately
+ * per-report-type, not an all-or-nothing gate on the whole page: a staff
+ * account with only Health Records access still sees that one type, just
+ * not Document Requests or Audit Logs.
+ */
+function getClinicReportTypes(role, permissions) {
+  const types = []
+  if (role === 'admin' || permissions?.print_documents) types.push({ value: 'doc', label: 'Document Requests' })
+  if (role === 'admin' || permissions?.print_health) types.push({ value: 'consultation', label: 'Consultations / Health Records' })
+  if (role === 'admin') types.push({ value: 'audit', label: 'Audit Logs' })
+  return types
+}
+
+/** Same idea, for the Inventory category — gated by a single permission
+ * (print_inventory) since all seven inventory report types draw from the
+ * same underlying data a staff account either can or can't see. */
+function getInventoryReportTypes(role, permissions) {
+  return role === 'admin' || permissions?.print_inventory ? INVENTORY_REPORT_TYPES : []
+}
+
 const INVENTORY_REPORT_TYPES = [
   { value: 'daily-inventory', label: 'Daily Inventory' },
   { value: 'monthly-inventory', label: 'Monthly Inventory' },
@@ -91,6 +108,7 @@ async function loadInventorySnapshot() {
 
 export default function ReportsPage() {
   const { show } = useToast()
+  const { role, profile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [reportType, setReportType] = useState('doc')
@@ -100,6 +118,10 @@ export default function ReportsPage() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [exporting, setExporting] = useState(null)
   const [source, setSource] = useState({ docs: [], consultations: [], auditLogs: [] })
+
+  const clinicTypes = getClinicReportTypes(role, profile?.permissions)
+  const inventoryTypes = getInventoryReportTypes(role, profile?.permissions)
+  const hasAnyReportAccess = clinicTypes.length > 0 || inventoryTypes.length > 0
 
   // Inventory-only cache — populated lazily the first time it's actually
   // needed, reused across report generations within the same visit so
@@ -124,6 +146,18 @@ export default function ReportsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Keeps the selected report type valid if it's no longer in the allowed
+  // list (e.g. an admin revokes a permission while this page happens to be
+  // open, or the page loads with a type this account was never allowed to
+  // have selected in the first place).
+  useEffect(() => {
+    const allValues = [...clinicTypes, ...inventoryTypes].map((t) => t.value)
+    if (allValues.length > 0 && !allValues.includes(reportType)) {
+      setReportType(allValues[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicTypes, inventoryTypes])
 
   async function getSnapshot() {
     if (!invCache.current.snapshot) invCache.current.snapshot = await loadInventorySnapshot()
@@ -313,6 +347,10 @@ export default function ReportsPage() {
 
   return (
     <>
+      {!hasAnyReportAccess ? (
+        <ReportsAccessRestricted />
+      ) : (
+        <>
       <div className="page-header">
         <div>
           <h2>Clinic Reports</h2>
@@ -333,20 +371,24 @@ export default function ReportsPage() {
           <div className="form-group" style={{ minWidth: 200 }}>
             <label>REPORT TYPE</label>
             <select className="form-select" value={reportType} onChange={(e) => setReportType(e.target.value)}>
-              <optgroup label="Clinic">
-                {CLINIC_REPORT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Inventory">
-                {INVENTORY_REPORT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </optgroup>
+              {clinicTypes.length > 0 && (
+                <optgroup label="Clinic">
+                  {clinicTypes.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {inventoryTypes.length > 0 && (
+                <optgroup label="Inventory">
+                  {inventoryTypes.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <div className="form-group">
@@ -441,6 +483,8 @@ export default function ReportsPage() {
       )}
 
       <PrintPreviewModal isOpen={previewOpen} onClose={() => setPreviewOpen(false)} reportData={report} />
+      </>
+      )}
     </>
   )
 }

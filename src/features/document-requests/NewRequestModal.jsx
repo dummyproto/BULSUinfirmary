@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import { DocumentIcon } from '@components/ui/icons'
-
-export const DOC_TYPES = [
-  'Medical Certificate',
-  'Health Clearance',
-  'Fit to Work Certificate',
-  'Physical Exam Form',
-]
+import { DOC_TYPES } from './data/docTypes'
 
 const EMPTY_FORM = { docType: '', purpose: '', dateNeeded: '' }
 

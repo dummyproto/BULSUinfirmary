@@ -27,7 +27,7 @@ function flattenConsultation(row) {
   const { patient, consultation_medications, temp_celsius, pulse_bpm, o2_sat_pct, ...rest } = row
   return {
     ...rest,
-    patient_name: patient?.name ?? 'Deleted User', // patient_id is SET NULL on user deletion (migration 019) — falls back to a real string, not null, so existing .toLowerCase()/.includes() filters on this field never crash
+    patient_name: patient?.name ?? rest.unregistered_patient_name ?? 'Deleted User', // patient_id is SET NULL on user deletion (migration 019) — falls back to a real string, not null, so existing .toLowerCase()/.includes() filters on this field never crash
     student_number: patient?.patient_profiles?.student_number ?? null,
     temp: temp_celsius != null ? String(temp_celsius) : '',
     pulse: pulse_bpm != null ? String(pulse_bpm) : '',
@@ -62,13 +62,14 @@ export async function getConsultation(id) {
  * Postgres RPC/transaction for atomicity).
  */
 export async function createConsultation({
-  patientId, visitType, date, staffId, complaint, bp, temp, pulse, o2sat,
+  patientId, unregisteredPatientName, visitType, date, staffId, complaint, bp, temp, pulse, o2sat,
   diagnosis, assessment, followUpDate, followUpNotes, prescribedMeds,
 }) {
   const { data: consultation, error } = await supabase
     .from('consultations')
     .insert({
-      patient_id: patientId,
+      patient_id: patientId || null,
+      unregistered_patient_name: unregisteredPatientName || null,
       visit_type: visitType,
       chief_complaint: complaint,
       bp,

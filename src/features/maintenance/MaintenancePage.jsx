@@ -4,26 +4,17 @@ import { useToast } from '@context/ToastContext'
 import Spinner from '@components/ui/Spinner'
 import UserManagementTab from './UserManagementTab'
 import PermissionsTab from './PermissionsTab'
-import EmailConfigTab from './EmailConfigTab'
-import EditEmailConfigModal from './EditEmailConfigModal'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, togglePermission } from '@services/usersService'
 import { addAuditLog } from '@services/auditLogsService'
-import { getEmailConfig, updateEmailConfig } from '@services/emailConfigService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
-import { PeopleIcon, ShieldIcon, MailIcon } from '@components/ui/icons'
+import { PeopleIcon, ShieldIcon } from '@components/ui/icons'
 
-// NOTE (Phase G): the legacy "Email Configuration" tab was purely
-// read-only/decorative in the original ("cannot be modified from this
-// interface, contact IT support") — no save function existed for it at
-// all. Resurrecting it as a real feature only has value if it's actually
-// usable, so it's genuinely editable here (see EditEmailConfigModal.jsx).
 const TABS = [
   { key: 'users', label: 'User Management', Icon: PeopleIcon },
   { key: 'perms', label: 'Staff Permissions', Icon: ShieldIcon },
-  { key: 'email', label: 'Email Configuration', Icon: MailIcon },
 ]
 
 export default function MaintenancePage() {
@@ -37,16 +28,13 @@ export default function MaintenancePage() {
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [editId, setEditId] = useState(null)
-  const [emailConfig, setEmailConfig] = useState(null)
-  const [editEmailOpen, setEditEmailOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([listUsers(), getEmailConfig()])
-      .then(([userList, cfg]) => {
+    listUsers()
+      .then((userList) => {
         if (cancelled) return
         setUsers(userList)
-        setEmailConfig(cfg)
       })
       .catch((err) => show(`Failed to load maintenance data: ${err.message}`, 'error'))
       .finally(() => {
@@ -195,18 +183,6 @@ export default function MaintenancePage() {
     }
   }
 
-  async function handleSaveEmailConfig(patch) {
-    try {
-      const updated = await updateEmailConfig(patch)
-      setEmailConfig(updated)
-      await addAuditLog({ userId: currentUserId, action: 'UPDATE_EMAIL_CONFIG', details: `SMTP host set to ${patch.smtp_host}, notifications ${patch.enable_notifications ? 'enabled' : 'disabled'}` })
-      setEditEmailOpen(false)
-      show('Email configuration updated', 'success')
-    } catch (err) {
-      show(`Failed to update email configuration: ${err.message}`, 'error')
-    }
-  }
-
   if (loading) return <Spinner label="Loading users…" />
 
   return (
@@ -231,22 +207,10 @@ export default function MaintenancePage() {
         />
       )}
       {tab === 'perms' && <PermissionsTab users={users} onTogglePerm={handleTogglePerm} />}
-      {tab === 'email' && <EmailConfigTab config={emailConfig} onEdit={() => setEditEmailOpen(true)} />}
 
       <AddUserModal isOpen={addOpen} existingUsers={users} onClose={() => setAddOpen(false)} onSave={handleAddUser} onError={(msg) => show(msg, 'error')} />
 
-      <EditUserModal key={editId ?? 'closed'} isOpen={editId !== null} user={editingUser} onClose={() => setEditId(null)} onSave={handleEditSave} />
-
-      {emailConfig && (
-        <EditEmailConfigModal
-          key={editEmailOpen ? 'open' : 'closed'}
-          isOpen={editEmailOpen}
-          config={emailConfig}
-          onClose={() => setEditEmailOpen(false)}
-          onSubmit={handleSaveEmailConfig}
-          onError={(msg) => show(msg, 'error')}
-        />
-      )}
+      <EditUserModal key={editId ?? 'edit-user-closed'} isOpen={editId !== null} user={editingUser} onClose={() => setEditId(null)} onSave={handleEditSave} />
     </>
   )
 }

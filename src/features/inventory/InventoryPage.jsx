@@ -74,7 +74,6 @@ const TABS = [
   { key: 'scan', label: 'QR Scanner', Icon: CameraIcon },
   { key: 'log', label: 'Log', Icon: ClipboardIcon },
   { key: 'alerts', label: 'Alerts', Icon: BellIcon },
-  { key: 'notifications', label: 'Notifications', Icon: MailIcon },
 ]
 
 export default function InventoryPage() {
@@ -621,7 +620,6 @@ export default function InventoryPage() {
           show(`${form.name} restocked by ${form.qty} ${form.unit} (new batch)`, 'success')
         } else {
           const medicine = await createMedicine({ medicine_name: form.name, unit: form.unit, min_stock: form.minStock, active: true })
-          if (form.qty > 0) {
             await replenishMedicineAsNewBatch({
               medicineId: medicine.medicine_id,
               quantity: form.qty,
@@ -634,7 +632,7 @@ export default function InventoryPage() {
             })
           }
           show(`${form.name} added to inventory`, 'success')
-        }
+
       } else if (match) {
         await updateInventoryItem(match.inventory_id, {
           quantity: match.quantity + form.qty,
@@ -1092,7 +1090,6 @@ export default function InventoryPage() {
     if (t.key === 'suppliers') return { ...t, label: `Suppliers (${suppliers.length})` }
     if (t.key === 'log') return { ...t, label: `Log (${logs.length})` }
     if (t.key === 'alerts') return { ...t, label: `Alerts${alertCount > 0 ? ` (${alertCount})` : ''}` }
-    if (t.key === 'notifications') return { ...t, label: `Notifications${unreadNotifCount > 0 ? ` (${unreadNotifCount})` : ''}` }
     return t
   })
 
@@ -1207,30 +1204,21 @@ export default function InventoryPage() {
         <AlertsTab inventory={inventory} onRemove={handleRemove} onRestore={setRestoreItemId} onReplenish={setReplenishItemId} />
       )}
 
-      {tab === 'notifications' && (
-        <NotificationCenterTab
-          notifications={inventoryNotifications}
-          unreadCount={unreadNotifCount}
-          onMarkRead={handleMarkNotificationRead}
-          onMarkAllRead={handleMarkAllNotificationsRead}
-          onOpenRecord={handleOpenNotificationRecord}
-        />
-      )}
 
       <AddItemModal isOpen={addItemOpen} onClose={() => setAddItemOpen(false)} onSaveAll={handleSaveAllStaged} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
 
-      <EditItemModal key={editItemId ?? 'closed'} isOpen={editItemId !== null} item={editingItem} onClose={() => setEditItemId(null)} onSave={handleEditSave} suppliers={suppliers} />
+      <EditItemModal key={editItemId ?? 'edit-item-closed'} isOpen={editItemId !== null} item={editingItem} onClose={() => setEditItemId(null)} onSave={handleEditSave} suppliers={suppliers} />
 
-      <ReplenishModal key={replenishItemId ?? 'closed'} isOpen={replenishItemId !== null} item={replenishingItem} onClose={() => setReplenishItemId(null)} onSubmit={handleReplenish} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
+      <ReplenishModal key={replenishItemId ?? 'replenish-item-closed'} isOpen={replenishItemId !== null} item={replenishingItem} onClose={() => setReplenishItemId(null)} onSubmit={handleReplenish} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
 
-      <ReleaseModal key={releaseItemId ?? 'closed'} isOpen={releaseItemId !== null} item={releasingItem} onClose={() => setReleaseItemId(null)} onSubmit={handleReleaseSubmit} onError={(msg) => show(msg, 'error')} />
+      <ReleaseModal key={releaseItemId ?? 'release-item-closed'} isOpen={releaseItemId !== null} item={releasingItem} onClose={() => setReleaseItemId(null)} onSubmit={handleReleaseSubmit} onError={(msg) => show(msg, 'error')} />
 
       <ReleasePickerModal isOpen={releasePickerOpen} inventory={inventory} onClose={() => setReleasePickerOpen(false)} onSubmit={handleReleasePickerSubmit} onError={(msg) => show(msg, 'error')} />
 
-      <RestoreEquipmentModal key={restoreItemId ?? 'closed'} isOpen={restoreItemId !== null} item={restoringItem} onClose={() => setRestoreItemId(null)} onSubmit={handleRestoreSubmit} onError={(msg) => show(msg, 'error')} />
+      <RestoreEquipmentModal key={restoreItemId ?? 'restore-item-closed'} isOpen={restoreItemId !== null} item={restoringItem} onClose={() => setRestoreItemId(null)} onSubmit={handleRestoreSubmit} onError={(msg) => show(msg, 'error')} />
 
       <ScanVerifyModal
-        key={scanVerify?.rawData ?? 'closed'}
+        key={scanVerify?.rawData ?? 'scan-verify-closed'}
         isOpen={scanVerify !== null}
         rawData={scanVerify?.rawData}
         matchedItem={scanVerify?.matchedItem}
@@ -1242,7 +1230,7 @@ export default function InventoryPage() {
       <AddBatchModal isOpen={addBatchOpen} onClose={() => setAddBatchOpen(false)} onSubmit={handleAddBatch} onError={(msg) => show(msg, 'error')} inventory={inventory} suppliers={suppliers} />
 
       <EditBatchModal
-        key={editBatchId ?? 'closed'}
+        key={editBatchId ?? 'edit-batch-closed'}
         isOpen={editBatchId !== null}
         batch={editingBatch}
         onClose={() => setEditBatchId(null)}
@@ -1252,7 +1240,7 @@ export default function InventoryPage() {
       />
 
       <ReplenishBatchModal
-        key={replenishBatchId ?? 'closed'}
+        key={replenishBatchId ?? 'replenish-batch-closed'}
         isOpen={replenishBatchId !== null}
         batch={replenishingBatch}
         onClose={() => setReplenishBatchId(null)}
@@ -1277,7 +1265,7 @@ export default function InventoryPage() {
       />
 
       <ReleaseBatchModal
-        key={releaseBatchId ?? 'closed'}
+        key={releaseBatchId ?? 'release-batch-closed'}
         isOpen={releaseBatchId !== null}
         batch={batches.find((b) => batchKey(b) === releaseBatchId) || null}
         onClose={() => setReleaseBatchId(null)}
@@ -1294,7 +1282,7 @@ export default function InventoryPage() {
       />
 
       <AddEditSupplierModal
-        key={supplierModal ? supplierModal.mode + (supplierModal.supplier?.supplier_id ?? '') : 'closed'}
+        key={supplierModal ? supplierModal.mode + (supplierModal.supplier?.supplier_id ?? '') : 'supplier-closed'}
         isOpen={supplierModal !== null}
         supplier={supplierModal?.mode === 'edit' ? supplierModal.supplier : null}
         onClose={() => setSupplierModal(null)}
@@ -1302,7 +1290,7 @@ export default function InventoryPage() {
         onError={(msg) => show(msg, 'error')}
       />
 
-      <BatchQRModal key={qrBatchKey ?? 'closed'} isOpen={qrBatchKey !== null} batch={batches.find((b) => batchKey(b) === qrBatchKey) || null} onClose={() => setQrBatchKey(null)} />
+      <BatchQRModal key={qrBatchKey ?? 'batch-qr-closed'} isOpen={qrBatchKey !== null} batch={batches.find((b) => batchKey(b) === qrBatchKey) || null} onClose={() => setQrBatchKey(null)} />
 
       <BatchDetailModal
         isOpen={scannedBatch !== null}

@@ -4,12 +4,14 @@ import Toggle from '@components/ui/Toggle'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon } from '@components/ui/icons'
 
+const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
+
 const EMPTY_FORM = {
   name: '',
   category: 'Medicine',
   unit: '',
-  quantity: '0',
-  minStock: '10',
+  quantity: '',
+  minStock: '',
   batchNo: '',
   expiry: '',
   received: new Date().toISOString().slice(0, 10),
@@ -113,7 +115,14 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
           </div>
           <div className="form-group">
             <label>UNIT *</label>
-            <input className="form-input" placeholder="e.g., Tablets, Rolls, Units" value={form.unit} onChange={(e) => setField('unit')(e.target.value)} />
+            <select className="form-select" value={form.unit} onChange={(e) => setField('unit')(e.target.value)}>
+              <option value="">-- Select Unit --</option>
+              {UNITS.map((u) => (
+                <option value={u} key={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label>QUANTITY *</label>
