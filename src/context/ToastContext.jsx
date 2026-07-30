@@ -2,12 +2,20 @@ import { createContext, useContext, useCallback, useRef, useState } from 'react'
 
 const ToastContext = createContext(undefined)
 
+// Matches .toast.leaving's animation duration in legacy.css — the toast is
+// marked "leaving" (to play its exit animation) before it's actually
+// removed from state, instead of vanishing mid-transition.
+const EXIT_DURATION = 200
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const idRef = useRef(0)
 
   const dismiss = useCallback((id) => {
-    setToasts((list) => list.filter((t) => t.id !== id))
+    setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)))
+    setTimeout(() => {
+      setToasts((list) => list.filter((t) => t.id !== id))
+    }, EXIT_DURATION)
   }, [])
 
   // Mirrors the legacy Toast.show(msg, type, dur) signature so callers

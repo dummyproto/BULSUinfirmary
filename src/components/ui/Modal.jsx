@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { XIcon } from './icons'
+import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
+
+const EXIT_DURATION = 180
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -18,6 +21,7 @@ const FOCUSABLE_SELECTOR =
 export default function Modal({ isOpen, onClose, title, icon, children, actions }) {
   const dialogRef = useRef(null)
   const previouslyFocused = useRef(null)
+  const { shouldRender, closing } = useDelayedUnmount(isOpen, EXIT_DURATION)
 
   // Move focus into the dialog on open, and back to whatever triggered it
   // on close — standard modal focus-management expectation for screen
@@ -56,16 +60,16 @@ export default function Modal({ isOpen, onClose, title, icon, children, actions 
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [isOpen, onClose])
 
-  if (!isOpen) return null
+  if (!shouldRender) return null
 
   return createPortal(
     <div
-      className="modal-overlay open"
+      className={`modal-overlay open${closing ? ' closing' : ''}`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.()
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={dialogRef} tabIndex={-1}>
+      <div className={`modal${closing ? ' closing' : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={dialogRef} tabIndex={-1}>
         <div className="modal-header">
           <h3 style={icon ? { display: 'flex', alignItems: 'center', gap: 8 } : undefined}>
             {icon}

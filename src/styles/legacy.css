@@ -502,10 +502,13 @@
   transition-duration: .22s;
   transition-timing-function: cubic-bezier(.4,0,.2,1);
 }
-/* Don't slow down layout/transform transitions */
+/* Don't slow down layout/transform transitions. No !important here — a
+   more specific selector elsewhere in this file (e.g. .modal-close) is
+   meant to win over this baseline, the same way normal cascade already
+   lets it win over the (0,0,0)-specificity `*` rule above. */
 .sidebar, .modal, .modal-overlay, button, .nav-item, .icon-btn, .hamburger-btn,
 .theme-toggle-btn, .topbar-avatar, .stat-card, .card {
-  transition: var(--transition) !important;
+  transition: var(--transition);
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
@@ -2543,6 +2546,16 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   to{transform:scale(1);opacity:1}
 }
 
+/* ── Exit — driven by useDelayedUnmount's "closing" flag on .emg-overlay ── */
+.emg-overlay.closing {
+  animation: modalOverlayOut 0.16s var(--ease-out) both;
+}
+.emg-overlay.closing .emg-confirm-box,
+.emg-overlay.closing .emg-form-box,
+.emg-overlay.closing .emg-success-box {
+  animation: emgPopOut 0.16s var(--ease-out) both;
+}
+
 /* ── Live Emergency Popup Modal ── */
 #emg-live-popup{position:fixed;inset:0;z-index:99999;pointer-events:none}
 .emg-live-backdrop{
@@ -3838,6 +3851,34 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   to   { opacity: 1; transform: scale(1); }
 }
 
+/* ── EXIT ANIMATIONS — mirror an entrance above so components can play a
+   closing transition instead of vanishing mid-motion (see
+   useDelayedUnmount / the ".closing"/".leaving" classes it drives) ── */
+@keyframes modalOverlayOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes modalOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes emgPopOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.94); }
+}
+
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(40px); }
+}
+
+@keyframes dropdownFadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-4px); }
+}
+
 /* ── PAGE LOAD — App shell entrance ── */
 .sidebar {
   animation: slideInSidebar 0.38s cubic-bezier(0.22,1,0.36,1) both;
@@ -4019,6 +4060,13 @@ tbody tr:hover {
 .modal-overlay.open .modal {
   animation: scaleIn 0.28s cubic-bezier(0.34,1.4,0.64,1) both;
 }
+/* ── MODAL — scale-out exit (driven by useDelayedUnmount's "closing" flag) ── */
+.modal-overlay.closing {
+  animation: modalOverlayOut 0.18s var(--ease-out) both;
+}
+.modal-overlay.closing .modal {
+  animation: modalOut 0.18s var(--ease-out) both;
+}
 .modal-close {
   transition: background 0.18s ease, transform 0.18s ease, color 0.18s ease;
 }
@@ -4051,6 +4099,9 @@ tbody tr:hover {
 /* ── TOAST — slide from right ── */
 .toast {
   animation: toastSlide 0.28s cubic-bezier(0.22,1,0.36,1) both;
+}
+.toast.leaving {
+  animation: toastSlideOut 0.2s var(--ease-out) both;
 }
 
 /* ── CHAT MESSAGES ── */
@@ -4105,8 +4156,13 @@ tbody tr:hover {
   animation: fadeInUp 0.4s var(--ease-out) both, floatBob 3s ease-in-out 1.5s infinite;
 }
 .help-fab:hover {
-  transform: scale(1.12) rotate(10deg) !important;
-  animation: pulseRing 1s ease infinite !important;
+  /* No !important: `.help-fab:hover` and `.help-fab:not(.hidden)` share
+     specificity (0,2,0), and source order already lets this rule win in
+     normal use. Without !important, the reduced-motion rule below (which
+     is also !important) can now correctly cap this to .01ms instead of
+     being outranked by it. */
+  transform: scale(1.12) rotate(10deg);
+  animation: pulseRing 1s ease infinite;
 }
 
 /* ── EMERGENCY/DANGER — pulse red ── */
@@ -4721,6 +4777,9 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   max-height: 220px;
   overflow-y: auto;
   animation: dropdownFadeIn .15s var(--ease-out);
+}
+.patient-dropdown.closing {
+  animation: dropdownFadeOut .12s var(--ease-out) both;
 }
 
 @keyframes dropdownFadeIn {
