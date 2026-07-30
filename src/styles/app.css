@@ -1,0 +1,51 @@
+/* New, additive styles for the React shell. Everything that already existed
+   in the legacy prototype's design system lives in legacy.css, untouched —
+   this file only covers things that had no prior equivalent (route-loading
+   states, the spinner) so we never fork a class name that already means
+   something in legacy.css. */
+
+.route-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  animation: app-spin 0.7s linear infinite;
+}
+
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.page-placeholder {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-3);
+}
+
+/* AI-flagged emergency replies (chatbot) — no equivalent existed before
+   the AI integration, since the rule-based engine never needed a
+   per-message danger state like this. */
+.msg-bubble.emergency {
+  background: var(--danger-light);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.msg-bubble.emergency :is(strong, b) {
+  color: inherit;
+}
+
