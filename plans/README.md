@@ -57,9 +57,9 @@ the usual plan-file + isolated-executor flow).
 
 A commit history now exists (see "Initial commit"), so this pass ran in an isolated
 worktree rather than editing the shared checkout directly. Findings 22–26 below came from a
-fresh audit against `AUDIT.md`'s eight categories; only the HIGH-severity items were
-implemented (per user approval). The MEDIUM/LOW findings from that same audit were reported
-but not selected — see the conversation for the full table if picking those up later.
+fresh audit against `AUDIT.md`'s eight categories; the HIGH-severity items were implemented
+first (per user approval), and the MEDIUM/LOW items (27–37 below) were implemented in a
+follow-up round the same session.
 
 | # | Finding | Status |
 |---|---------|--------|
@@ -68,6 +68,16 @@ but not selected — see the conversation for the full table if picking those up
 | 24 | Toast dismiss (click or auto-timeout) removed from state instantly, no exit transition against the entrance `toastSlide` keyframe | DONE — `ToastContext.dismiss()` now marks the toast `leaving` first, removes it from state after `toastSlideOut`'s 200ms |
 | 25 | `.help-fab:hover`'s `animation: pulseRing 1s ease infinite !important` outranked the blanket `prefers-reduced-motion` rule's `!important` via higher selector specificity | DONE — removed the `!important` (normal specificity + source order already gives the hover rule priority in non-reduced-motion use) |
 | 26 | `SearchableSelect`'s dropdown (patient/medicine/diagnosis search, used constantly) faded in via keyframe but unmounted instantly on blur/select, no exit | DONE — same `useDelayedUnmount` hook, new `dropdownFadeOut` keyframe |
+| 27 | `--ease-bounce` used on high-frequency topbar chrome hover (`.icon-btn`, `.hamburger-btn`, `.sidebar-close-btn`), working against the "crisp dashboard" personality | DONE — swapped those three to `var(--ease-out)` |
+| 28 | ~16 entrance `animation:`s used bare `ease` instead of `ease-out` (login, chatbot bubbles, notifications, registration, sidebar, emergency dialogs, scroll-to-top, manual modal) + the collapsed-sidebar nav tooltip's `transition: opacity .15s ease` | DONE — mechanical swap to `var(--ease-out)` at every cited site |
+| 29 | Several entrance animations exceeded the 300ms UI budget (login logo bounceIn 700ms, `.stock-fill` progressFill 800ms, `.login-card` 550ms, `.stat-num` countUp 500ms, help-fab/sms-pop/`.reveal` 400ms, `.card` 380ms) | DONE — all trimmed to ≤300ms |
+| 30 | `.btn:active`/`.btn:hover` shared one 120ms transition duration for both press and release, most consequential on `.btn-red` destructive actions | DONE — `:active` now gets its own faster `transition-duration: 0.08s`; the base rule's 0.12s still governs the release/settle |
+| 31 | Inventory's tab body wrapper (`.tab-panel-enter`, shared with the much-less-frequent `.profile-tab-content`) re-fired a `fadeIn` on every single tab click — a many-times-per-shift action | DONE — removed the `tab-panel-enter` class from all 8 `InventoryPage.jsx` tab bodies; `.profile-tab-content`'s animation is untouched |
+| 32 | No `(hover: hover) and (pointer: fine)` gating anywhere — every `:hover` transform fired ungated on touch/tablet taps | DONE (equivalent approach) — added a `@media (hover:none),(pointer:coarse)` block mirroring the codebase's existing reduced-motion pattern (same technique, same selector list style) that neutralizes hover-transforms on coarse pointers, instead of individually wrapping ~20 scattered `:hover` rules across the file |
+| 33 | `--ease-in-out` token defined but unused; 26 of 31 hand-typed `cubic-bezier()`s exactly duplicated an existing token, plus 4 more were a consistent but untokenized "bounce-lite" `(0.34,1.4,0.64,1)` variant | DONE — all exact duplicates now reference `var(--ease-standard)`/`var(--ease-out)`/`var(--ease-bounce)`; added a new `--ease-bounce-soft` token for the bounce-lite variant and pointed its 4 sites at it. `--transition` itself now reads `all .2s var(--ease-standard)` instead of repeating the literal curve. `--ease-in-out` is still unused — left in place, not deleted (no site to safely repoint it to) |
+| 34 | `ScrollToTopButton` mounted/unmounted (restarting its keyframe) on every scroll-threshold crossing, no debounce, no exit — flickered near the 300px line | DONE — added hysteresis (once visible, only hides below `threshold - 40px`, not the raw threshold) and the same `useDelayedUnmount` exit-animation treatment as the other findings, with a new `scroll-top-out` keyframe |
+| 35 | `.chip`, `.diag-code-item`, `.qr-sample-btn` are pressable with a `:hover` state but no `:active` press feedback | DONE — added `:active{transform:scale(.97)}` to all three |
+| 36 | `.emg-live-modal`'s initial `scale(.88)` sat just under the `0.9–0.97` physicality target | DONE — bumped to `scale(.92)`; also fixed a bare `ease` on the same rule's opacity transition while touching it |
 
 ### Notes / deliberate exceptions (this pass)
 
@@ -101,3 +111,50 @@ but not selected — see the conversation for the full table if picking those up
   and dismissing a toast, opening/closing the patient/medicine search dropdown, and toggling
   `prefers-reduced-motion` on the emergency Help FAB, ideally with DevTools' Animations panel
   at 10% playback speed to see the exit motion clearly.
+
+## Third pass — 2026-07-31 (same session, MEDIUM/LOW findings 27–36)
+
+Implemented every MEDIUM/LOW finding from the same audit that produced 22–26 above, per user
+instruction to "proceed and finish." See the table above (rows 27–36) for what changed.
+
+### Notes / deliberate exceptions (this pass)
+
+- **Finding #32 (hover:hover gating)**: implemented as a single `@media (hover:none),
+  (pointer:coarse)` block that neutralizes `transform` on a fixed list of known
+  hover-transform selectors, rather than the more literal AUDIT.md pattern of wrapping each
+  individual `:hover` rule in `@media (hover:hover) and (pointer:fine)`. Wrapping ~20 rules
+  scattered across a 5,600-line file individually would have meant moving declarations out of
+  their current location, which is much higher risk of ordering/specificity mistakes than
+  adding one new block. Practically equivalent outcome (no stuck hover-transform on tap); if
+  a hover-transform selector is added to the file later, it needs to be added to this new
+  block's list too (it won't be covered automatically the way the wrap-per-rule approach
+  would have been).
+- **Finding #16 / tooltip "instant after first hover"**: only fixed the easing (bare `ease` →
+  `var(--ease-out)`) on the collapsed-sidebar nav tooltip. AUDIT.md's fuller recommendation —
+  making a toolbar's tooltip instant after the first one has shown — needs stateful JS
+  (tracking "has any tooltip shown recently" across sibling nav items), which is a bigger,
+  riskier change for a LOW-severity finding. Not implemented.
+- **Missed opportunity — table row stagger**: `rowFadeIn` keyframe exists in `legacy.css` but
+  is applied nowhere; EHR records, case listings, and inventory tables all render rows with no
+  entrance animation. Not implemented in this pass — it touches live-data list rendering in
+  several feature files without a way to visually verify the result in this environment, so
+  left as a follow-up rather than guessed at.
+- **Modal-open bounce curve**: `.modal-overlay.open .modal`'s `scaleIn` animation still uses
+  the (now-tokenized) `--ease-bounce-soft` curve. Left as-is deliberately — modals are an
+  "occasional" interaction per AUDIT.md's frequency table (not the "tens of times/day" bucket
+  that finding #6 was about), so a little personality on open is a defensible, not
+  contradictory, choice. Only the genuinely high-frequency topbar chrome (icon/hamburger/
+  sidebar-close buttons) was moved to `--ease-out`.
+
+### Verification performed (this pass)
+
+- `node` brace-balance check on `legacy.css` (0 net) after every batch of edits.
+- `npm run build` — succeeds (same pre-existing chunk-size warnings only).
+- `npx eslint` on both touched JS files (`ScrollToTopButton.jsx`, `InventoryPage.jsx`) — 0
+  errors, 0 warnings.
+- Same live-browser feel-check gap as the previous pass — not done, same reasons (no
+  browser-automation tooling available, most surfaces behind auth). Recommend additionally
+  checking: the topbar icon buttons' hover feel less bouncy, the login page loads noticeably
+  snappier, Inventory tab-switching no longer fades, destructive button presses (e.g. delete
+  in a confirm dialog) feel snappier on press, and the scroll-to-top button doesn't flicker
+  when scrolling back and forth near its show/hide threshold.

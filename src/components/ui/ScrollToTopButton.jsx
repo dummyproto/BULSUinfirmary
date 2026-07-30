@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react'
 import { ChevronUpIcon } from './icons'
+import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
+
+const EXIT_DURATION = 150
+// Hysteresis gap: once visible, stay visible until scrolled back up past
+// (threshold - HYSTERESIS), not just threshold — otherwise scroll jitter
+// right at the threshold line repeatedly mounts/unmounts (and restarts)
+// the entrance keyframe.
+const HYSTERESIS = 40
 
 /**
  * Floating "back to top" button — appears once the given scrollable
@@ -15,12 +23,16 @@ import { ChevronUpIcon } from './icons'
  */
 export default function ScrollToTopButton({ targetRef, threshold = 300 }) {
   const [visible, setVisible] = useState(false)
+  const { shouldRender, closing } = useDelayedUnmount(visible, EXIT_DURATION)
 
   useEffect(() => {
     const el = targetRef.current
     if (!el) return undefined
 
-    const onScroll = () => setVisible(el.scrollTop > threshold)
+    const onScroll = () => {
+      const top = el.scrollTop
+      setVisible((wasVisible) => (wasVisible ? top > threshold - HYSTERESIS : top > threshold))
+    }
     onScroll() // in case the page loads already scrolled (e.g. restored position)
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -30,10 +42,16 @@ export default function ScrollToTopButton({ targetRef, threshold = 300 }) {
     targetRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  if (!visible) return null
+  if (!shouldRender) return null
 
   return (
-    <button type="button" className="scroll-to-top-btn" onClick={handleClick} title="Back to top" aria-label="Scroll to top">
+    <button
+      type="button"
+      className={`scroll-to-top-btn${closing ? ' closing' : ''}`}
+      onClick={handleClick}
+      title="Back to top"
+      aria-label="Scroll to top"
+    >
       <ChevronUpIcon width={20} height={20} />
     </button>
   )

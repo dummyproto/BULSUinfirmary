@@ -1169,7 +1169,7 @@ export default function InventoryPage() {
       </div>
 
       {tab === 'dashboard' && (
-        <div className="tab-panel-enter">
+        <div>
           <InventoryDashboardTab
             inventory={inventory}
             onNavigateToStatus={(status) => {
@@ -1182,7 +1182,7 @@ export default function InventoryPage() {
       )}
 
       {tab === 'items' && (
-        <div className="tab-panel-enter">
+        <div>
           <ItemsTab
             inventory={inventory}
             filters={itemsFilters}
@@ -1198,7 +1198,7 @@ export default function InventoryPage() {
         </div>
       )}
       {tab === 'batches' && (
-        <div className="tab-panel-enter">
+        <div>
           <BatchesTab
             batches={batches}
             search={batchSearch}
@@ -1216,7 +1216,7 @@ export default function InventoryPage() {
         </div>
       )}
       {tab === 'suppliers' && (
-        <div className="tab-panel-enter">
+        <div>
           <SuppliersTab
             suppliers={suppliers}
             batches={batches}
@@ -1228,15 +1228,15 @@ export default function InventoryPage() {
           />
         </div>
       )}
-      {tab === 'scan' && <div className="tab-panel-enter"><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} /></div>}
-      {tab === 'log' && <div className="tab-panel-enter"><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} /></div>}
+      {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} /></div>}
+      {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} /></div>}
       {tab === 'alerts' && (
-        <div className="tab-panel-enter">
+        <div>
           <AlertsTab inventory={inventory} onRemove={handleRemove} onRestore={setRestoreItemId} onReplenish={setReplenishItemId} />
         </div>
       )}
       {tab === 'notifications' && (
-        <div className="tab-panel-enter">
+        <div>
           <NotificationCenterTab
             notifications={inventoryNotifications}
             unreadCount={unreadNotifCount}

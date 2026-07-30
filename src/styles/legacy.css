@@ -23,11 +23,12 @@
   --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
   --shadow-lg:0 8px 32px rgba(0,0,0,.12);
   --topbar-h:60px;
-  --transition:all .2s cubic-bezier(.4,0,.2,1);
+  --transition:all .2s var(--ease-standard);
   --ease-standard:cubic-bezier(.4,0,.2,1);
   --ease-out:cubic-bezier(.22,1,.36,1);
   --ease-in-out:cubic-bezier(.77,0,.175,1);
   --ease-bounce:cubic-bezier(.34,1.56,.64,1);
+  --ease-bounce-soft:cubic-bezier(.34,1.4,.64,1);
   --viewport-width:100vw;--viewport-height:100vh;
 }
 
@@ -489,7 +490,7 @@
 .theme-toggle-btn .icon-sun,
 .theme-toggle-btn .icon-moon {
   position: absolute;
-  transition: opacity .25s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  transition: opacity .25s ease, transform .3s var(--ease-bounce);
 }
 .theme-toggle-btn .icon-sun { opacity: 0; transform: rotate(90deg) scale(.6); }
 .theme-toggle-btn .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
@@ -500,7 +501,7 @@
 *, *::before, *::after {
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: .22s;
-  transition-timing-function: cubic-bezier(.4,0,.2,1);
+  transition-timing-function: var(--ease-standard);
 }
 /* Don't slow down layout/transform transitions. No !important here — a
    more specific selector elsewhere in this file (e.g. .modal-close) is
@@ -571,7 +572,7 @@ button{font-family:'DM Sans',sans-serif}
   background:rgba(255,255,255,.06);cursor:pointer;
   align-items:center;justify-content:center;
   color:#C0B8B0;
-  transition:background .2s ease,color .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1);
+  transition:background .2s ease,color .2s ease,transform .2s var(--ease-out);
 }
 .sidebar-close-btn:hover{background:rgba(255,255,255,.14);color:#EDE8E0;transform:rotate(90deg) scale(1.1)}
 /* Navigation items container */
@@ -636,7 +637,7 @@ button{font-family:'DM Sans',sans-serif}
   display:none; /* hidden by default; portrait rule below shows it */
   align-items:center;justify-content:center;
   color:#2E2420;flex-shrink:0;
-  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
+  transition:background .16s ease, color .16s ease, transform .12s var(--ease-out), box-shadow .16s ease;
   box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .hamburger-btn:hover{
@@ -646,7 +647,7 @@ button{font-family:'DM Sans',sans-serif}
   transform:scale(1.06);
 }
 /* Animate the three SVG lines into an X when sidebar is open */
-.hamburger-btn svg line{transition:transform .25s cubic-bezier(.4,0,.2,1), opacity .2s ease}
+.hamburger-btn svg line{transition:transform .25s var(--ease-standard), opacity .2s ease}
 .hamburger-btn.is-open svg line:nth-child(1){transform:translateY(6px) rotate(45deg);transform-origin:center}
 .hamburger-btn.is-open svg line:nth-child(2){opacity:0;transform:scaleX(0)}
 .hamburger-btn.is-open svg line:nth-child(3){transform:translateY(-6px) rotate(-45deg);transform-origin:center}
@@ -680,7 +681,7 @@ button{font-family:'DM Sans',sans-serif}
   width:38px;height:38px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
   background:rgba(250,248,245,.97);cursor:pointer;display:flex;align-items:center;
   justify-content:center;color:#2E2420;
-  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
+  transition:background .16s ease, color .16s ease, transform .12s var(--ease-out), box-shadow .16s ease;
   position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .icon-btn:hover{
@@ -794,7 +795,7 @@ td strong{color:#1A1310;font-weight:700}
   font-size:13px;
   font-weight:600;
   letter-spacing:0.01em;
-  transition:background .18s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, opacity .15s ease;
+  transition:background .18s ease, transform .12s var(--ease-bounce), box-shadow .18s ease, opacity .15s ease;
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -1015,7 +1016,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:var(--surface2);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   color:var(--text-2);font-size:18px;line-height:1;
-  transition:background .15s ease, color .15s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+  transition:background .15s ease, color .15s ease, transform .12s var(--ease-bounce);
 }
 .modal-close:hover{background:var(--danger-light);color:var(--danger);transform:scale(1.08);}
 .modal-close:active{transform:scale(.93);}
@@ -2106,6 +2107,34 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   }
 }
 
+/* Touch / coarse-pointer devices (tablets, phones): a tap leaves an
+   element in the :hover state until something else is tapped, so a
+   hover-triggered transform can appear visually "stuck" instead of a
+   one-off hover effect. Same selector list as the reduced-motion block
+   above — these are the elements with a hover transform in the first
+   place. Color/background hover feedback still applies. */
+@media (hover:none),(pointer:coarse){
+  .btn:hover:not(:disabled),
+  .login-btn:hover:not(:disabled),
+  .tab-btn:hover:not(.active),
+  .icon-btn:hover,
+  .hamburger-btn:hover,
+  .theme-toggle-btn:hover,
+  .modal-close:hover,
+  .nav-item:hover,
+  .card:hover,
+  .stat-card:hover,
+  .chip:hover,
+  .diag-code-item:hover,
+  .qr-sample-btn:hover,
+  .sidebar-close-btn:hover,
+  .topbar-avatar:hover,
+  .profile-avatar-lg:hover,
+  .help-fab:hover{
+    transform:none!important;
+  }
+}
+
 /* Dark mode preference (future enhancement) */
 @media (prefers-color-scheme:dark){
   /* Already supports dark mode by default */
@@ -2414,7 +2443,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   background:rgba(14,10,6,.97);border:1.5px solid rgba(220,38,38,.4);
   border-radius:18px;padding:36px 40px;width:380px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(220,38,38,.25);
-  animation:emg-pop .2s ease;
+  animation:emg-pop .2s var(--ease-out);
 }
 .emg-confirm-icon{font-size:44px;margin-bottom:12px;animation:pulse-emg 1.2s infinite}
 .emg-confirm-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:8px}
@@ -2432,7 +2461,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 .emg-form-box{
   background:rgba(15,23,42,.98);border:1.5px solid rgba(220,38,38,.35);
   border-radius:18px;padding:28px 32px;width:560px;max-width:100%;
-  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .2s ease;
+  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .2s var(--ease-out);
   max-height:90vh;overflow-y:auto;
 }
 .emg-form-header{
@@ -2508,7 +2537,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   background:rgba(15,23,42,.97);border:1.5px solid rgba(22,163,74,.4);
   border-radius:18px;padding:36px 40px;width:400px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(22,163,74,.2);
-  animation:emg-pop .25s ease;
+  animation:emg-pop .25s var(--ease-out);
 }
 .emg-success-icon{font-size:48px;margin-bottom:12px}
 .emg-success-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:10px}
@@ -2582,8 +2611,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   border-radius:20px;width:540px;max-width:100%;
   box-shadow:0 0 0 4px rgba(220,38,38,.15),0 32px 80px rgba(220,38,38,.35);
   overflow:hidden;
-  transform:scale(.88) translateY(30px);opacity:0;
-  transition:transform .32s cubic-bezier(.34,1.56,.64,1),opacity .25s ease;
+  transform:scale(.92) translateY(30px);opacity:0;
+  transition:transform .32s var(--ease-bounce),opacity .25s var(--ease-out);
 }
 .emg-live-backdrop.emg-live-open .emg-live-modal{
   transform:scale(1) translateY(0);opacity:1;
@@ -2745,7 +2774,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-box{
   background:rgba(15,23,42,.98);border:1px solid rgba(255,255,255,.12);
   border-radius:20px;padding:32px 38px;width:560px;max-width:calc(100vw - 40px);
-  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s ease;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s var(--ease-out);
   position:relative;
 }
 
@@ -2846,7 +2875,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 
 /* Step content */
-.reg-step-content{animation:reg-fade .2s ease}
+.reg-step-content{animation:reg-fade .2s var(--ease-out)}
 
 /* Nav buttons */
 .reg-nav{
@@ -3017,8 +3046,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
 
 /* ── MESSAGE BUBBLES (New Structure) ── */
-.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s ease}
-.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s ease}
+.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s var(--ease-out)}
+.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s var(--ease-out)}
 .msg-content-wrap{display:flex;flex-direction:column;max-width:80%}
 @keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -3083,6 +3112,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   font-size:11.5px;cursor:pointer;border:1px solid #BFDBFE;transition:var(--transition);font-weight:500;
 }
 .chip:hover{background:var(--primary);color:white}
+.chip:active{transform:scale(.97)}
 
 .chat-step{
   display:flex;align-items:flex-start;gap:10px;padding:7px 0;
@@ -3350,6 +3380,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   transition:var(--transition);
 }
 .qr-sample-btn:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
+.qr-sample-btn:active{transform:scale(.97)}
 
 /* Scan history */
 .scan-side-panel{height:100%}
@@ -3418,7 +3449,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .med-row{
   background:var(--surface2);border:1px solid var(--border);border-radius:8px;
   padding:10px 12px;margin-bottom:8px;
-  animation:med-row-in .2s ease;
+  animation:med-row-in .2s var(--ease-out);
 }
 @keyframes med-row-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .med-row-grid{
@@ -3480,6 +3511,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   margin-bottom:2px;
 }
 .diag-code-item:hover{background:var(--primary-light);color:var(--primary)}
+.diag-code-item:active{transform:scale(.97)}
 
 /* ── DEDUCTION ROWS ── */
 .deduction-row{
@@ -3660,7 +3692,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   background:linear-gradient(135deg,#16A34A,#15803D);
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 0 0 12px rgba(22,163,74,.15);
-  animation:sms-pop .4s cubic-bezier(.34,1.56,.64,1);
+  animation:sms-pop .3s var(--ease-bounce);
 }
 @keyframes sms-pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
 .sms-sent-preview{
@@ -3881,7 +3913,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 
 /* ── PAGE LOAD — App shell entrance ── */
 .sidebar {
-  animation: slideInSidebar 0.38s cubic-bezier(0.22,1,0.36,1) both;
+  animation: slideInSidebar 0.38s var(--ease-out) both;
 }
 
 /* Staggered nav items */
@@ -3900,7 +3932,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .sidebar-nav .nav-item:nth-child(10) { animation-delay: 0.50s; }
 
 .topbar {
-  animation: fadeInDown 0.35s cubic-bezier(0.22,1,0.36,1) both;
+  animation: fadeInDown 0.35s var(--ease-out) both;
   animation-delay: 0.12s;
 }
 
@@ -3908,7 +3940,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 /* ── STAT CARDS — staggered bounce-reveal ── */
 .stat-card {
   animation: statCardReveal 0.3s var(--ease-out) both;
-  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1),
+  transition: transform 0.22s var(--ease-standard),
               box-shadow 0.22s ease;
   will-change: transform;
 }
@@ -3923,13 +3955,13 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 .stat-num {
-  animation: countUp 0.5s cubic-bezier(0.22,1,0.36,1) both;
+  animation: countUp 0.28s var(--ease-out) both;
   animation-delay: 0.3s;
 }
 
 /* ── CARDS — entrance and hover ── */
 .card {
-  animation: fadeInUp 0.38s cubic-bezier(0.22,1,0.36,1) both;
+  animation: fadeInUp 0.28s var(--ease-out) both;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
 }
 .card:hover {
@@ -3946,7 +3978,7 @@ tbody tr:hover {
 
 /* ── BUTTONS — lift & press effect ── */
 .btn {
-  transition: transform 0.15s cubic-bezier(0.4,0,0.2,1),
+  transition: transform 0.15s var(--ease-standard),
               box-shadow 0.15s ease,
               background 0.15s ease,
               opacity 0.15s ease;
@@ -4020,20 +4052,20 @@ tbody tr:hover {
 
 /* ── LOGIN PAGE ── */
 .login-card {
-  animation: loginCardIn 0.55s cubic-bezier(0.22,1,0.36,1) both;
+  animation: loginCardIn 0.3s var(--ease-out) both;
   animation-delay: 0.1s;
 }
 #page-login .login-card .logo-mark {
-  animation: bounceIn 0.7s cubic-bezier(0.34,1.56,0.64,1) both;
+  animation: bounceIn 0.3s var(--ease-bounce) both;
   animation-delay: 0.4s;
 }
 #page-login label {
-  animation: fadeInLeft 0.35s ease both;
+  animation: fadeInLeft 0.35s var(--ease-out) both;
 }
 #page-login .form-group:nth-child(1) label { animation-delay: 0.35s; }
 #page-login .form-group:nth-child(2) label { animation-delay: 0.42s; }
 #page-login .btn-full {
-  animation: fadeInUp 0.38s ease both;
+  animation: fadeInUp 0.38s var(--ease-out) both;
   animation-delay: 0.55s;
 }
 
@@ -4058,7 +4090,7 @@ tbody tr:hover {
   animation: fadeIn 0.22s var(--ease-out) both;
 }
 .modal-overlay.open .modal {
-  animation: scaleIn 0.28s cubic-bezier(0.34,1.4,0.64,1) both;
+  animation: scaleIn 0.28s var(--ease-bounce-soft) both;
 }
 /* ── MODAL — scale-out exit (driven by useDelayedUnmount's "closing" flag) ── */
 .modal-overlay.closing {
@@ -4086,7 +4118,7 @@ tbody tr:hover {
 
 /* ── TOGGLE SWITCH — smooth ── */
 .toggle {
-  transition: background 0.28s cubic-bezier(0.4,0,0.2,1);
+  transition: background 0.28s var(--ease-standard);
 }
 .toggle::after {
   transition: transform 0.2s var(--ease-out),
@@ -4098,7 +4130,7 @@ tbody tr:hover {
 
 /* ── TOAST — slide from right ── */
 .toast {
-  animation: toastSlide 0.28s cubic-bezier(0.22,1,0.36,1) both;
+  animation: toastSlide 0.28s var(--ease-out) both;
 }
 .toast.leaving {
   animation: toastSlideOut 0.2s var(--ease-out) both;
@@ -4106,7 +4138,7 @@ tbody tr:hover {
 
 /* ── CHAT MESSAGES ── */
 .msg {
-  animation: chatBubblePop 0.35s cubic-bezier(0.34,1.4,0.64,1) both;
+  animation: chatBubblePop 0.35s var(--ease-bounce-soft) both;
 }
 .msg.user  { animation-name: chatBubblePop; }
 .msg.bot   { animation-name: chatBubblePop; }
@@ -4124,7 +4156,7 @@ tbody tr:hover {
 
 /* ── STOCK BAR — animated fill ── */
 .stock-fill {
-  animation: progressFill 0.8s cubic-bezier(0.22,1,0.36,1) both;
+  animation: progressFill 0.3s var(--ease-out) both;
   animation-delay: 0.2s;
 }
 
@@ -4139,9 +4171,9 @@ tbody tr:hover {
 
 /* ── PROFILE HEADER ── */
 .profile-header {
-  animation: fadeInUp 0.4s cubic-bezier(0.22,1,0.36,1) both;
+  animation: fadeInUp 0.4s var(--ease-out) both;
   background-size: 200% 200%;
-  animation: gradientShift 6s ease infinite, fadeInUp 0.4s cubic-bezier(0.22,1,0.36,1) both;
+  animation: gradientShift 6s ease infinite, fadeInUp 0.4s var(--ease-out) both;
 }
 .profile-avatar-lg {
   transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease;
@@ -4153,7 +4185,7 @@ tbody tr:hover {
 
 /* ── HELP FAB — float animation ── */
 .help-fab:not(.hidden) {
-  animation: fadeInUp 0.4s var(--ease-out) both, floatBob 3s ease-in-out 1.5s infinite;
+  animation: fadeInUp 0.28s var(--ease-out) both, floatBob 3s ease-in-out 1.5s infinite;
 }
 .help-fab:hover {
   /* No !important: `.help-fab:hover` and `.help-fab:not(.hidden)` share
@@ -4173,7 +4205,7 @@ tbody tr:hover {
 
 /* ── NOTIFICATION ITEMS ── */
 .notif-item {
-  animation: fadeInLeft 0.28s ease both;
+  animation: fadeInLeft 0.28s var(--ease-out) both;
   transition: background 0.18s ease, transform 0.18s ease, padding-left 0.2s ease;
 }
 .notif-item:hover { padding-left: 22px; }
@@ -4191,7 +4223,7 @@ tbody tr:hover {
 
 /* ── SMS TEMPLATE CARDS ── */
 .sms-template-card {
-  transition: transform 0.22s cubic-bezier(0.34,1.4,0.64,1),
+  transition: transform 0.22s var(--ease-bounce-soft),
               border-color 0.2s ease,
               box-shadow 0.2s ease,
               background 0.2s ease;
@@ -4215,7 +4247,7 @@ tbody tr:hover {
 }
 .pickup-option:hover { transform: translateY(-2px); }
 .pickup-option.selected {
-  animation: scaleIn 0.22s cubic-bezier(0.34,1.4,0.64,1) both;
+  animation: scaleIn 0.22s var(--ease-bounce-soft) both;
 }
 .pickup-radio {
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
@@ -4224,7 +4256,7 @@ tbody tr:hover {
 
 /* ── SIDEBAR LOGO ── */
 .sidebar-logo {
-  animation: fadeInDown 0.4s ease both;
+  animation: fadeInDown 0.4s var(--ease-out) both;
   animation-delay: 0.05s;
 }
 .logo-mark {
@@ -4235,7 +4267,7 @@ tbody tr:hover {
 /* ── SIDEBAR FOOTER CHIP ── */
 .user-chip {
   transition: background 0.2s ease, transform 0.2s ease;
-  animation: fadeInUp 0.35s ease both;
+  animation: fadeInUp 0.35s var(--ease-out) both;
   animation-delay: 0.55s;
 }
 .user-chip:hover { transform: translateX(4px); }
@@ -4246,13 +4278,13 @@ tbody tr:hover {
 }
 .chat-session:hover { padding-left: 18px; }
 .chat-session.active {
-  animation: fadeInLeft 0.25s ease both;
+  animation: fadeInLeft 0.25s var(--ease-out) both;
   padding-left: 17px;
 }
 
 /* ── SMS SUCCESS CIRCLE ── */
 .sms-success-circle {
-  animation: sms-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both,
+  animation: sms-pop 0.3s var(--ease-bounce) both,
              pulseRing 2s ease 0.5s infinite;
 }
 
@@ -4268,7 +4300,7 @@ tbody tr:hover {
 .reveal {
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22,1,0.36,1);
+  transition: opacity 0.3s var(--ease-out), transform 0.3s var(--ease-out);
 }
 .reveal.visible {
   opacity: 1;
@@ -4469,7 +4501,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity .15s ease;
+    transition: opacity .15s var(--ease-out);
     z-index: 300;
     box-shadow: 0 4px 14px rgba(0,0,0,.35);
     border: 1px solid rgba(255,255,255,.07);
@@ -4670,7 +4702,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 /* Chevron arrow inside the tab */
 .sidebar-toggle-tab svg {
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  transition: transform .28s var(--ease-standard);
   flex-shrink: 0;
   color: #C0B8B0;
 }
@@ -4967,6 +4999,11 @@ button,
 .login-btn:active:not(:disabled),
 .tab-btn:active:not(.active) {
   transform: translateY(0) scale(.98);
+  /* Asymmetric timing: the press itself should read as an instant,
+     snappy response; the base .btn rule's 0.12s transform transition
+     still governs the slightly more deliberate release/settle back to
+     resting position. Matters most on .btn-red destructive actions. */
+  transition-duration: 0.08s;
 }
 
 .btn-blue:hover:not(:disabled) {
@@ -5436,11 +5473,13 @@ td {
   background:var(--primary);color:#fff;border:none;cursor:pointer;
   box-shadow:0 4px 14px rgba(0,0,0,.22);
   transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
-  animation:scroll-top-in .2s ease;
+  animation:scroll-top-in .2s var(--ease-out);
 }
 .scroll-to-top-btn:hover{background:var(--primary-dark);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
 .scroll-to-top-btn:active{transform:scale(.93)}
 @keyframes scroll-top-in{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+.scroll-to-top-btn.closing{animation:scroll-top-out .15s var(--ease-out) both}
+@keyframes scroll-top-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(8px) scale(.9)}}
 @media(max-width:768px){
   .scroll-to-top-btn{right:16px;bottom:16px;width:40px;height:40px}
 }
@@ -5458,7 +5497,7 @@ td {
   width:820px;max-width:100%;height:82vh;max-height:640px;
   display:flex;flex-direction:column;overflow:hidden;
   box-shadow:0 24px 60px rgba(0,0,0,.35);
-  animation:manual-pop .18s ease;
+  animation:manual-pop .18s var(--ease-out);
 }
 @keyframes manual-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
 .manual-header{
