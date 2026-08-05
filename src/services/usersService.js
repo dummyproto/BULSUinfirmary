@@ -6,6 +6,9 @@ import { initialsFor } from '@features/maintenance/lib/userHelpers'
 // Creating a *new* login-capable user now goes through the `create-user`
 // Edge Function (supabase/functions/create-user/), which is the only place
 // the service-role key is allowed to exist — see provisionUser() below.
+// Removing one goes through the matching `delete-user` Edge Function
+// (supabase/functions/delete-user/) for the same reason — see
+// deleteUser() below, which calls it before removing the public.users row.
 // createUserProfile() itself still only ever writes public.users + profile
 // rows; it accepts an optional `authUserId` so the caller (Maintenance's
 // Add User flow) can pass in the UUID that provisionUser() just created,
@@ -413,13 +416,30 @@ export async function deleteUser(userId) {
   // one of patient_id/unregistered_patient_name to stay non-null. Without
   // this, deleting any patient who has consultation history fails
   // outright with a constraint violation.
-  const { data: user } = await supabase.from('users').select('name').eq('user_id', userId).single()
+  const { data: user } = await supabase.from('users').select('name, auth_user_id').eq('user_id', userId).single()
   if (user?.name) {
     await supabase
       .from('consultations')
       .update({ unregistered_patient_name: user.name })
       .eq('patient_id', userId)
       .is('unregistered_patient_name', null)
+  }
+
+  // Removing only the public.users row left the person's actual
+  // Supabase Auth account untouched — "deleted" in Maintenance, but
+  // still able to log in, since nothing had actually revoked their
+  // credentials. Calling delete-user/ FIRST (before touching
+  // public.users) removes the real auth.users account with the
+  // service-role key the browser can never hold directly; only once
+  // that succeeds does the public.users row get removed, so a failure
+  // here leaves both intact rather than deleting the profile while
+  // leaving a live, now-orphaned login behind.
+  if (user?.auth_user_id) {
+    const { data, error: fnError } = await supabase.functions.invoke('delete-user', {
+      body: { authUserId: user.auth_user_id },
+    })
+    if (fnError) throw fnError
+    if (data?.error) throw new Error(data.error)
   }
 
   const { error } = await supabase.from('users').delete().eq('user_id', userId)

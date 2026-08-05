@@ -7,9 +7,9 @@ export const RELATIONS = ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Unc
 
 export const ROLE_LABELS = { admin: 'System Administrator', staff: 'Clinic Personnel', patient: 'Patient' }
 export const ROLE_GRADIENTS = {
-  admin: 'linear-gradient(135deg,#DC2626,#991B1B)',
-  staff: 'linear-gradient(135deg,#1E7B5E,#6A3FA0)',
-  patient: 'linear-gradient(135deg,#16A34A,#059669)',
+  admin: 'linear-gradient(135deg,rgba(220,38,38,.38),rgba(153,27,27,.38))',
+  staff: 'linear-gradient(135deg,rgba(30,123,94,.38),rgba(106,63,160,.38))',
+  patient: 'linear-gradient(135deg,rgba(22,163,74,.38),rgba(5,150,105,.38))',
 }
 
 export function buildFullName({ surname, givenName, mi, ext }, fallback) {

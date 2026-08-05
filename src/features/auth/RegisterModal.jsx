@@ -12,6 +12,18 @@ import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icon
 // "fill in manually" path, still the default) never need.
 const RegisterQrScan = lazy(() => import('./RegisterQrScan'))
 
+// Display-only formatting for the User Number field — inserts dashes as
+// 4-3-3 (matching the field's own "e.g. 2023-000-000" placeholder) while
+// the underlying form.userId state stays plain digits. Kept separate from
+// state deliberately: validation (`/^\d+$/`), the duplicate-number check,
+// and the final registerPatient() payload all already expect a plain
+// digit string — formatting only the input's rendered value avoids
+// touching any of that.
+function formatUserNumber(digits) {
+  const parts = [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 10)].filter(Boolean)
+  return parts.join('-')
+}
+
 /**
  * Best-effort match of a scanned QR value against a fixed dropdown option
  * list (COURSES / YEAR_LEVELS). The register form binds `course`/`year` to
@@ -120,7 +132,7 @@ export default function RegisterModal({ isOpen, onClose }) {
     const lastName = nameParts.length > 1 ? nameParts.pop() : ''
     const firstName = nameParts.join(' ')
     const sanitizeName = (s) => s.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20)
-    const sanitizeId = (s) => String(s || '').replace(/\D/g, '').slice(0, 15)
+    const sanitizeId = (s) => String(s || '').replace(/\D/g, '').slice(0, 10)
 
     setForm((f) => ({
       ...f,
@@ -365,19 +377,19 @@ export default function RegisterModal({ isOpen, onClose }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="e.g. 2026-0000-000"
+                      placeholder="e.g. 2023-000-000"
                       inputMode="numeric"
                       autoComplete="off"
-                      maxLength={15}
-                      value={form.userId}
+                      maxLength={12}
+                      value={formatUserNumber(form.userId)}
                       onChange={(e) => {
                         setDuplicateBlocked(false)
-                        setField('userId')(e.target.value.replace(/\D/g, '').slice(0, 15))
+                        setField('userId')(e.target.value.replace(/\D/g, '').slice(0, 10))
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
                       <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Numbers only</span>
-                      <span style={{ fontSize: 11, color: form.userId.length >= 15 ? '#EF4444' : 'var(--text-3)' }}>{form.userId.length}/15</span>
+                      <span style={{ fontSize: 11, color: form.userId.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.userId.length}/10</span>
                     </div>
                   </div>
                   <div className="reg-field">

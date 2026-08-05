@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
-import { ConsultationIcon, AlertOctagonIcon } from '@components/ui/icons'
+import { AlertOctagonIcon } from '@components/ui/icons'
+import BotFace from './BotFace'
 
 // Bot messages can come from two places: our own trusted rule-engine
 // template strings (botEngine.js — deliberately use <strong>/<br> for
@@ -24,7 +25,7 @@ export default function ChatMessage({ message, userInitials, userAvatarUrl }) {
     return (
       <div className="msg msg-bot-wrap">
         <div className="msg-avatar bot-av">
-          {message.emergency ? <AlertOctagonIcon width={16} height={16} /> : <ConsultationIcon width={16} height={16} />}
+          {message.emergency ? <AlertOctagonIcon width={16} height={16} /> : <BotFace size={32} />}
         </div>
         <div className="msg-content-wrap">
           <div className={bubbleClass} dangerouslySetInnerHTML={{ __html: sanitizeBotHtml(message.text) }} />

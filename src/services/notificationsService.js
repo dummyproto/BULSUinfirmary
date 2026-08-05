@@ -3,21 +3,42 @@ import { supabase } from './supabaseClient'
 // Notifications target either a specific user OR a whole role (never both
 // required — see the schema's CHECK (user_id IS NOT NULL OR target_role
 // IS NOT NULL)). listForUser() fetches both kinds relevant to one person.
+
+// Builds the "belongs to this user or this role" OR-filter used by all
+// three functions below. Only includes a clause for whichever of
+// userId/role is actually present — string-interpolating a missing value
+// straight into the filter (e.g. `target_role.eq.${role}` when role is
+// null) produces the literal text "target_role.eq.null", which PostgREST
+// rejects with a 400 (it requires "is.null" for null comparisons, not
+// "eq.null"). Returns null if neither value is usable, so callers can
+// skip the query entirely instead of sending a filter that would match
+// nothing (or error).
+function userOrRoleFilter(userId, role) {
+  const clauses = []
+  if (userId != null) clauses.push(`user_id.eq.${userId}`)
+  if (role != null) clauses.push(`target_role.eq.${role}`)
+  return clauses.length ? clauses.join(',') : null
+}
+
 export async function listForUser(userId, role) {
+  const filter = userOrRoleFilter(userId, role)
+  if (!filter) return []
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .or(`user_id.eq.${userId},target_role.eq.${role}`)
+    .or(filter)
     .order('created_at', { ascending: false })
   if (error) throw error
   return data
 }
 
 export async function countUnread(userId, role) {
+  const filter = userOrRoleFilter(userId, role)
+  if (!filter) return 0
   const { count, error } = await supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
-    .or(`user_id.eq.${userId},target_role.eq.${role}`)
+    .or(filter)
     .eq('is_read', false)
   if (error) throw error
   return count ?? 0
@@ -29,7 +50,9 @@ export async function markRead(id) {
 }
 
 export async function markAllRead(userId, role) {
-  const { error } = await supabase.from('notifications').update({ is_read: true }).or(`user_id.eq.${userId},target_role.eq.${role}`)
+  const filter = userOrRoleFilter(userId, role)
+  if (!filter) return
+  const { error } = await supabase.from('notifications').update({ is_read: true }).or(filter)
   if (error) throw error
 }
 

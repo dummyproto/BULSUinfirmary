@@ -4,6 +4,7 @@ import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { TOPBAR_GRADIENT } from '@routes/navItems'
 import { MenuIcon, BellIcon, HelpCircleIcon } from '@components/ui/icons'
+import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
 import UserManualModal from '@components/ui/UserManualModal'
 import NotificationsModal from '@features/notifications/NotificationsModal'
 import { countUnread, listForUser, markRead, markAllRead } from '@services/notificationsService'
@@ -240,16 +241,21 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
         </div>
 
         <div
-          className="topbar-avatar"
+          className="topbar-profile"
           role="button"
           tabIndex={0}
           aria-label="My Profile"
-          style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}
           title="My Profile"
           onClick={() => navigate('/profile')}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate('/profile'))}
         >
-          {avatarContent}
+          <div className="topbar-avatar" style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}>
+            {avatarContent}
+          </div>
+          <div className="topbar-profile-info">
+            <span className="topbar-profile-name">{profile?.name || 'My Profile'}</span>
+            <span className="topbar-profile-role">{ROLE_LABELS[role] || role}</span>
+          </div>
         </div>
       </div>
 

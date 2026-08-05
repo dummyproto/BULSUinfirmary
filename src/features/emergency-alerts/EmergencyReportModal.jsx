@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Modal from '@components/ui/Modal'
 import EmergencyPatientPicker from './EmergencyPatientPicker'
 import { createEmergencyAlert } from '@services/emergencyAlertsService'
@@ -7,6 +7,31 @@ import { addAuditLog } from '@services/auditLogsService'
 import { playEmergencySiren } from '@lib/emergencySound'
 import { AlertOctagonIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
 import LocationPicker from './LocationPicker'
+
+// Rate limit on SOS submissions — same reasoning and same client-side-only
+// caveat as LoginPage's login-attempt lockout: this is a practical
+// deterrent against someone repeatedly mashing "Send Emergency Alert"
+// (accidental double-submits, or deliberate spam), tracked in
+// localStorage per reporter so it survives a page reload. It is
+// deliberately short (60s, not minutes) — this is a safety feature, not
+// a security one, and must never meaningfully delay a genuine follow-up
+// report of a second, different emergency. It's also NOT a real
+// server-side guard (clearing localStorage resets it) — a determined
+// spammer isn't stopped by this, only accidental/casual repeat
+// submissions are. A proper server-side rate limit would need a
+// dedicated counting table + RPC, which is a larger change than this
+// deterrent.
+const EMERGENCY_COOLDOWN_MS = 60_000
+const EMERGENCY_COOLDOWN_KEY_PREFIX = 'emg_last_submit_'
+
+function lastSubmitAt(reporterId) {
+  const raw = localStorage.getItem(`${EMERGENCY_COOLDOWN_KEY_PREFIX}${reporterId}`)
+  return raw ? Number(raw) : 0
+}
+
+function markSubmitted(reporterId) {
+  localStorage.setItem(`${EMERGENCY_COOLDOWN_KEY_PREFIX}${reporterId}`, String(Date.now()))
+}
 
 /**
  * profile: pass the authenticated patient's profile when logged in, or
@@ -30,8 +55,27 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
   const [location, setLocation] = useState('')
   const [description, setDescription] = useState(initialDescription)
   const [submitting, setSubmitting] = useState(false)
+  const [cooldownLeft, setCooldownLeft] = useState(0)
 
   const reporterUser = profile ? { user_id: profile.user_id, name: profile.name, student_number: profile.student_number } : reporter
+
+  // Re-checks the cooldown whenever the modal opens or the identified
+  // reporter changes (pre-login: only known once they've picked
+  // themselves from EmergencyPatientPicker) — covers reopening the modal
+  // shortly after a previous submission, not just mid-session countdown.
+  useEffect(() => {
+    if (!isOpen || !reporterUser) {
+      setCooldownLeft(0)
+      return undefined
+    }
+    const tick = () => {
+      const remaining = Math.max(0, EMERGENCY_COOLDOWN_MS - (Date.now() - lastSubmitAt(reporterUser.user_id)))
+      setCooldownLeft(Math.ceil(remaining / 1000))
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [isOpen, reporterUser?.user_id])
 
   function reset() {
     setReporter(null)
@@ -54,6 +98,13 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
     if (emgType === 'another' && !affected) errors.push("Affected Person's details are required.")
     if (errors.length) return onError(errors.join(' '))
 
+    if (reporterUser) {
+      const remaining = Math.max(0, EMERGENCY_COOLDOWN_MS - (Date.now() - lastSubmitAt(reporterUser.user_id)))
+      if (remaining > 0) {
+        return onError(`Please wait ${Math.ceil(remaining / 1000)}s before sending another emergency alert.`)
+      }
+    }
+
     const subject = emgType === 'myself' ? reporterUser : affected
 
     setSubmitting(true)
@@ -67,6 +118,7 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
         location,
         description: description.trim(),
       })
+      markSubmitted(reporterUser.user_id)
 
       const summary = `EMERGENCY: ${subject.name} at ${location} — ${description.slice(0, 60)}${description.length > 60 ? '…' : ''}`
       try {
@@ -101,8 +153,8 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
           <button type="button" className="btn btn-outline" onClick={handleClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Sending…' : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
+          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting || cooldownLeft > 0}>
+            {submitting ? 'Sending…' : cooldownLeft > 0 ? `Wait ${cooldownLeft}s…` : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
           </button>
         </>
       }

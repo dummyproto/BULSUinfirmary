@@ -524,25 +524,6 @@ export default function ProfilePage() {
 
         {tab === 'settings' && (
           <div className="profile-tab-content active">
-            <div className="card" style={{ marginBottom: 14 }}>
-              <div className="card-header">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
-                </h3>
-              </div>
-              <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                    {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
-                  </div>
-                </div>
-                <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
-                  <SunIcon />
-                  <MoonIcon />
-                </button>
-              </div>
-            </div>
             <div className="two-col-equal">
               <div className="card">
                 <div className="card-header">
@@ -582,21 +563,43 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="card" style={{ alignSelf: 'start' }}>
-                <div className="card-header">
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Account Status</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Account Status</h3>
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', fontSize: 11.5 }}><CheckCircleIcon width={11} height={11} /> Account is active and secure</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-3)' }}>Role</span>
+                        <strong>{ROLE_LABELS[role]}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-3)' }}>Session</span>
+                        <strong style={{ color: 'var(--success)' }}>● Active</strong>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ padding: 14 }}>
-                  <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircleIcon width={13} height={13} /> Account is active and secure</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-3)' }}>Role</span>
-                      <strong>{ROLE_LABELS[role]}</strong>
+
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
+                    </h3>
+                  </div>
+                  <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-3)' }}>Session</span>
-                      <strong style={{ color: 'var(--success)' }}>● Active</strong>
-                    </div>
+                    <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
+                      <SunIcon />
+                      <MoonIcon />
+                    </button>
                   </div>
                 </div>
               </div>

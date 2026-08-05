@@ -23,12 +23,7 @@
   --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
   --shadow-lg:0 8px 32px rgba(0,0,0,.12);
   --topbar-h:60px;
-  --transition:all .2s var(--ease-standard);
-  --ease-standard:cubic-bezier(.4,0,.2,1);
-  --ease-out:cubic-bezier(.22,1,.36,1);
-  --ease-in-out:cubic-bezier(.77,0,.175,1);
-  --ease-bounce:cubic-bezier(.34,1.56,.64,1);
-  --ease-bounce-soft:cubic-bezier(.34,1.4,.64,1);
+  --transition:all .2s cubic-bezier(.4,0,.2,1);
   --viewport-width:100vw;--viewport-height:100vh;
 }
 
@@ -100,7 +95,7 @@
 
 /* Dark mode topbar */
 [data-theme="dark"] .topbar {
-  background: rgba(16,12,9,.97);
+  background: rgba(16,12,9,.55);
   border-bottom-color: rgba(255,245,235,.07);
 }
 
@@ -344,18 +339,6 @@
 [data-theme="dark"] .patient-item-sub         { color: var(--text-3); }
 [data-theme="dark"] .patient-dropdown-item:hover { background: var(--primary-light); }
 
-/* Profile tab inactive → readable warm gray */
-[data-theme="dark"] .profile-tabs         { background: rgba(24,19,15,.96); border-color: rgba(255,245,235,.07); }
-[data-theme="dark"] .profile-tab        { color: var(--text-3) !important; }
-[data-theme="dark"] .profile-tab:hover  { color: var(--text-2) !important; }
-[data-theme="dark"] .profile-tab.active { color: var(--primary) !important; }
-
-/* ── DARK MODE: Sidebar logo subtitle ── */
-[data-theme="dark"] .sidebar-logo-text p { color: var(--text-3); }
-
-/* ── DARK MODE: Nav section label ── */
-[data-theme="dark"] .nav-section-label { color: var(--text-3); }
-
 /* ── DARK MODE: SVG icons inside buttons/nav inherit light color ── */
 [data-theme="dark"] .icon-btn svg,
 [data-theme="dark"] .hamburger-btn svg,
@@ -453,8 +436,6 @@
 [data-theme="dark"] .hamburger-btn { color: var(--text-2); }
 
 /* ── DARK MODE: Sidebar close button ── */
-[data-theme="dark"] .sidebar-close-btn { color: var(--text-2); }
-[data-theme="dark"] .sidebar-close-btn:hover { color: var(--text); }
 
 /* ── DARK MODE: Notif dot border ── */
 [data-theme="dark"] .notif-dot { border-color: rgba(16,12,9,.97); }
@@ -490,7 +471,7 @@
 .theme-toggle-btn .icon-sun,
 .theme-toggle-btn .icon-moon {
   position: absolute;
-  transition: opacity .25s ease, transform .3s var(--ease-bounce);
+  transition: opacity .25s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
 }
 .theme-toggle-btn .icon-sun { opacity: 0; transform: rotate(90deg) scale(.6); }
 .theme-toggle-btn .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
@@ -501,15 +482,12 @@
 *, *::before, *::after {
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: .22s;
-  transition-timing-function: var(--ease-standard);
+  transition-timing-function: cubic-bezier(.4,0,.2,1);
 }
-/* Don't slow down layout/transform transitions. No !important here — a
-   more specific selector elsewhere in this file (e.g. .modal-close) is
-   meant to win over this baseline, the same way normal cascade already
-   lets it win over the (0,0,0)-specificity `*` rule above. */
+/* Don't slow down layout/transform transitions */
 .sidebar, .modal, .modal-overlay, button, .nav-item, .icon-btn, .hamburger-btn,
 .theme-toggle-btn, .topbar-avatar, .stat-card, .card {
-  transition: var(--transition);
+  transition: var(--transition) !important;
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
@@ -539,13 +517,21 @@ button{font-family:'DM Sans',sans-serif}
 .page-content{flex:1;overflow-y:auto;padding:24px;position:relative;z-index:2}
 
 /* ========== SIDEBAR: Navigation and user info ========== */
-/* Main sidebar container: dark theme, full height */
+/* Main sidebar container: dark theme, full height. Near-black base tone
+   at .72 opacity — high enough that the dark color actually dominates
+   over whatever's blended in behind it (at lower opacity, a light page
+   behind the sidebar was diluting the near-black tone into a washed-out
+   medium gray instead of reading as dark) — combined with a strong
+   blur so it still reads as glass, not a flat opaque panel. Text colors
+   throughout are unconditionally light in both app themes (see the
+   removed-override note further down), so this stays readable
+   regardless of what's blended in behind it. */
 .sidebar{
   width:var(--sidebar-w);min-width:var(--sidebar-w);
-  background:rgba(22,18,13,.88);display:flex;flex-direction:column;
-  height:100%;border-right:1px solid rgba(255,255,255,.06);
+  background:rgba(6,5,4,.72);display:flex;flex-direction:column;
+  height:100%;border-right:1px solid rgba(255,255,255,.08);
   transition:var(--transition);position:relative;z-index:100;
-  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(38px);backdrop-filter:blur(38px);
   overflow:hidden;
 }
 /* Collapsed state: hide sidebar on desktop */
@@ -563,7 +549,7 @@ button{font-family:'DM Sans',sans-serif}
 /* Logo text: constrain so it doesn't push close button off screen */
 .sidebar-logo-text{min-width:0;flex:1;overflow:hidden;}
 .sidebar-logo-text h2{font-size:13.5px;font-weight:700;color:#F5F0EC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-logo-text p{font-size:10px;color:#6E6358;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-logo-text p{font-size:10px;color:#B8AFA5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Close/burger button inside sidebar header — portrait only */
 .sidebar-close-btn{
   display:none;margin-left:auto;flex-shrink:0;
@@ -572,14 +558,14 @@ button{font-family:'DM Sans',sans-serif}
   background:rgba(255,255,255,.06);cursor:pointer;
   align-items:center;justify-content:center;
   color:#C0B8B0;
-  transition:background .2s ease,color .2s ease,transform .2s var(--ease-out);
+  transition:background .2s ease,color .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1);
 }
 .sidebar-close-btn:hover{background:rgba(255,255,255,.14);color:#EDE8E0;transform:rotate(90deg) scale(1.1)}
 /* Navigation items container */
 .sidebar-nav{padding:10px 8px;flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none}
 .sidebar-nav::-webkit-scrollbar{display:none}
 /* Navigation section labels (MENU, etc.) */
-.nav-section-label{font-size:10px;font-weight:700;color:#9A8F86;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
+.nav-section-label{font-size:10px;font-weight:700;color:#B8AFA5;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
 /* Individual navigation items with hover and active states */
 .nav-item{
   display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
@@ -587,13 +573,22 @@ button{font-family:'DM Sans',sans-serif}
   transition:var(--transition);position:relative;-webkit-user-select:none;user-select:none;white-space:nowrap;
 }
 .nav-icon svg{width:16px;height:16px;flex-shrink:0}
-.nav-item:hover{background:#2A211A;color:#F5F0EC}
-.nav-item:active{transform:scale(.97)}
+.nav-item:hover{background:#2A211A;color:#F5F0EC;transform:translateX(3px)}
+.nav-item:active{transform:translateX(3px) scale(.97)}
 /* Active nav item with left indicator bar */
-.nav-item.active{background:rgba(30,123,94,.15);color:var(--primary)}
+/* Active nav item with left indicator bar. Text color is a fixed bright
+   teal, not var(--primary) — that variable is #1E7B5E (dark teal) in
+   light theme, correct for buttons/badges sitting on a light page
+   background, but the sidebar itself is dark regardless of theme, so
+   the same dark teal text became nearly unreadable against it in light
+   mode specifically. #3DBF96 is the brighter teal this app already uses
+   as --primary in dark theme — using it unconditionally here keeps
+   contrast strong in both themes instead of only one. */
+.nav-item.active{background:rgba(61,191,150,.15);color:#3DBF96}
 .nav-item.active::before{
   content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
-  width:3px;height:18px;background:var(--primary);border-radius:0 3px 3px 0;
+  width:3px;height:18px;background:#3DBF96;border-radius:0 3px 3px 0;
+  box-shadow:0 0 8px rgba(61,191,150,.7);
 }
 /* Logout button — a real <button>, unlike the other NavLink-based nav
    items, so without an explicit reset it inherits the browser's native
@@ -611,7 +606,20 @@ button{font-family:'DM Sans',sans-serif}
 .nav-item.logout-item:hover{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.3);color:#FCA5A5}
 .nav-item.logout-item:active{background:rgba(239,68,68,.22)}
 /* Notification badge on nav items */
-.nav-badge{margin-left:auto;background:var(--danger);color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:20px;text-align:center}
+.nav-badge{margin-left:auto;background:#E05A4E;color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:20px;text-align:center}
+
+/* The sidebar's own background is dark by design in BOTH app themes
+   (rgba(22,18,13,.88)) — its text colors are correctly light in every
+   theme, unconditionally, matching that dark backdrop. A previous
+   [data-theme="light"] override here darkened this text for light
+   theme specifically, left over from an earlier round of sidebar-
+   transparency work where the sidebar's own background briefly did
+   turn light-page-colored in light theme. Now that the sidebar is back
+   to its normal solid-dark background in both themes, that override
+   produced dark text on a dark background — unreadable, the opposite of
+   its intent — so it's removed; the base light-colored rules above
+   (.sidebar-logo-text h2/p, .nav-item, etc.) are correct as-is and need
+   no theme-specific exception. */
 .sidebar-footer{padding:10px 8px 12px;border-top:1px solid #2A211A;flex-shrink:0}
 .user-chip{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;transition:var(--transition)}
 .user-chip:hover{background:#2A211A}
@@ -627,9 +635,9 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ── TOPBAR ── */
 .topbar{
-  height:var(--topbar-h);background:rgba(250,248,245,.97);border-bottom:1px solid rgba(208,200,188,.9);
+  height:var(--topbar-h);background:rgba(250,248,245,.55);border-bottom:1px solid rgba(208,200,188,.9);
   display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;
-  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);position:relative;z-index:10;
+  -webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);position:relative;z-index:10;
 }
 .hamburger-btn{
   width:36px;height:36px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
@@ -637,7 +645,7 @@ button{font-family:'DM Sans',sans-serif}
   display:none; /* hidden by default; portrait rule below shows it */
   align-items:center;justify-content:center;
   color:#2E2420;flex-shrink:0;
-  transition:background .16s ease, color .16s ease, transform .12s var(--ease-out), box-shadow .16s ease;
+  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
   box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .hamburger-btn:hover{
@@ -647,7 +655,7 @@ button{font-family:'DM Sans',sans-serif}
   transform:scale(1.06);
 }
 /* Animate the three SVG lines into an X when sidebar is open */
-.hamburger-btn svg line{transition:transform .25s var(--ease-standard), opacity .2s ease}
+.hamburger-btn svg line{transition:transform .25s cubic-bezier(.4,0,.2,1), opacity .2s ease}
 .hamburger-btn.is-open svg line:nth-child(1){transform:translateY(6px) rotate(45deg);transform-origin:center}
 .hamburger-btn.is-open svg line:nth-child(2){opacity:0;transform:scaleX(0)}
 .hamburger-btn.is-open svg line:nth-child(3){transform:translateY(-6px) rotate(-45deg);transform-origin:center}
@@ -681,7 +689,7 @@ button{font-family:'DM Sans',sans-serif}
   width:38px;height:38px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
   background:rgba(250,248,245,.97);cursor:pointer;display:flex;align-items:center;
   justify-content:center;color:#2E2420;
-  transition:background .16s ease, color .16s ease, transform .12s var(--ease-out), box-shadow .16s ease;
+  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
   position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .icon-btn:hover{
@@ -700,6 +708,26 @@ button{font-family:'DM Sans',sans-serif}
   font-size:9px;font-weight:700;color:#fff;line-height:1;
   font-family:'DM Sans',sans-serif;
 }
+/* Profile group in topbar: avatar + name/role + dropdown chevron, as one
+   clickable unit (the whole row navigates to /profile, not just the
+   avatar circle). */
+.topbar-profile{
+  display:flex;align-items:center;gap:9px;cursor:pointer;
+  padding:4px 10px 4px 4px;border-radius:24px;flex-shrink:0;
+  transition:var(--transition);
+}
+.topbar-profile:hover{background:var(--surface2)}
+.topbar-profile:hover .topbar-avatar{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.topbar-profile-info{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+.topbar-profile-name{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.topbar-profile-role{font-size:11px;color:var(--text-3);white-space:nowrap}
+/* Mobile topbar is already tight (see .topbar-page-actions above) — name/
+   role/chevron collapse away, leaving just the avatar, same space-saving
+   approach already used for the page-action buttons on this row. */
+@media(max-width:768px){
+  .topbar-profile{gap:0;padding:0}
+  .topbar-profile-info{display:none}
+}
 /* Avatar button in topbar */
 .topbar-avatar{
   width:34px;height:34px;border-radius:50%;cursor:pointer;
@@ -707,7 +735,6 @@ button{font-family:'DM Sans',sans-serif}
   font-size:11px;font-weight:700;color:white;flex-shrink:0;overflow:hidden;
   border:2px solid var(--border);transition:var(--transition);
 }
-.topbar-avatar:hover{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
 .topbar-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
 /* ── CARDS ── */
@@ -760,13 +787,23 @@ table{width:100%;border-collapse:collapse}
    markup restructure (moving horizontal scroll to a wrapper outside the
    sticky positioning's ancestor chain); reverting this one property is
    the safe fix for now rather than shipping invisible table headers. */
-thead th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#0F5C40;text-transform:uppercase;letter-spacing:.06em;background:#C2ECD9;border-bottom:1px solid #8FD4B4;white-space:nowrap}
+thead th{padding:13px 16px;text-align:left;font-size:11px;font-weight:700;color:#0F5C40;text-transform:uppercase;letter-spacing:.06em;background:#C2ECD9;border-bottom:1px solid #8FD4B4;white-space:nowrap}
 /* Table data cells with bottom border */
-tbody td{padding:11px 14px;font-size:13px;color:#2E2420;border-bottom:1px solid rgba(203,213,225,.7);vertical-align:middle}
+tbody td{padding:14px 16px;font-size:13px;color:#2E2420;border-bottom:1px solid rgba(203,213,225,.7);vertical-align:middle;line-height:1.5}
 tbody tr:last-child td{border-bottom:none}
 /* Hover effect on rows */
 tbody tr:hover td{background:var(--surface2)}
 td strong{color:#1A1310;font-weight:700}
+/* Badges/buttons/toggles sitting inside a cell previously had no
+   guaranteed vertical alignment of their own — fine at the old tighter
+   row height, but with more cell padding a badge or button could drift
+   off the text baseline of neighboring plain-text cells. Centering them
+   on their own line keeps every cell's content vertically balanced
+   regardless of what it contains. */
+tbody td > .badge,
+tbody td > .btn {
+  vertical-align: middle;
+}
 
 /* ========== BADGES: Status and role indicators ========== */
 /* Inline badge with colored dot indicator */
@@ -795,7 +832,7 @@ td strong{color:#1A1310;font-weight:700}
   font-size:13px;
   font-weight:600;
   letter-spacing:0.01em;
-  transition:background .18s ease, transform .12s var(--ease-bounce), box-shadow .18s ease, opacity .15s ease;
+  transition:background .18s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, opacity .15s ease;
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -1016,7 +1053,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:var(--surface2);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   color:var(--text-2);font-size:18px;line-height:1;
-  transition:background .15s ease, color .15s ease, transform .12s var(--ease-bounce);
+  transition:background .15s ease, color .15s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
 }
 .modal-close:hover{background:var(--danger-light);color:var(--danger);transform:scale(1.08);}
 .modal-close:active{transform:scale(.93);}
@@ -1024,20 +1061,32 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 
 /* ========== TABS: Tabbed interface for filtering content ========== */
-/* Tab button container with background pill styling */
-.tab-row{display:flex;gap:2px;width:fit-content;margin-left:auto;margin-right:auto;background:var(--surface);flex-wrap:wrap}
-/* Individual tab button */
+/* Tab button container — no longer a connected pill strip; each button
+   stands on its own like any other .btn in this app, so the row is just
+   a wrapped flex group with breathing room between buttons. */
+.tab-row{display:flex;gap:8px;width:fit-content;margin-left:auto;margin-right:auto;flex-wrap:wrap}
+/* Individual tab button — modeled directly on .btn-outline (border,
+   shadow, hover lift, press-down scale) rather than the app's own
+   lighter "tab" treatment, so an unselected tab reads unambiguously as
+   a real, clickable button rather than a label that happens to be
+   inside a tab strip. */
 .tab-btn{
-  padding:8px 16px;border-radius:10px;border:none;
-  background:transparent;font-family:'DM Sans',sans-serif;
+  padding:9px 16px;border-radius:10px;
+  border:1.5px solid var(--border-strong);
+  background:var(--surface);font-family:'DM Sans',sans-serif;
   font-size:12px;font-weight:600;color:var(--text-2);
   cursor:pointer;
-  transition:background .16s ease, color .16s ease, box-shadow .16s ease, transform .1s ease;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;
 }
-/* Border removed — kept only the background/color states (hover tint,
-   solid-green active) from the previous bordered-button treatment. */
-.tab-btn:hover:not(.active){background:var(--primary-light);color:var(--primary);}
+.tab-btn:hover:not(.active){
+  border-color:var(--primary);color:var(--primary);
+  background:var(--primary-light);
+  box-shadow:0 2px 8px rgba(30,123,94,.12);
+  transform:translateY(-1px);
+}
+.tab-btn:active:not(.active){transform:scale(.96);}
 /* Active tab — solid brand green with white text, matching how
    "selected"/"primary" already reads everywhere else in this app
    (buttons, .nav-item.active's indicator). The previous light-green-
@@ -1047,11 +1096,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
    + white text is unmistakable in both themes, no side-by-side
    comparison needed to tell which tab is active. */
 .tab-btn.active{
-  background:var(--primary);color:#fff;
-  box-shadow:0 2px 8px rgba(30,123,94,.35);
+  background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 2px 8px rgba(30,123,94,.35), 0 1px 2px rgba(30,123,94,.18);
 }
 [data-theme="dark"] .tab-btn.active{
-  background:var(--primary);color:#fff;
+  background:var(--primary);color:#fff;border-color:var(--primary);
   box-shadow:0 2px 8px rgba(30,123,94,.5);
 }
 
@@ -1224,7 +1273,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 /* Toast container at bottom-right of viewport */
 #toast-container{position:fixed;bottom:80px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:7px}
 /* Individual toast notification with auto-dismiss animation */
-.toast{color:white;padding:11px 14px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;min-width:260px}
+.toast{color:white;padding:11px 14px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;min-width:260px;animation:slideUp .22s ease}
 .toast.success{background:var(--success)}
 .toast.warning{background:var(--warning)}
 .toast.error{background:var(--danger)}
@@ -1236,10 +1285,28 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .empty-state p{font-size:13px;margin-top:6px;color:#3E332C;font-weight:500}
 
 /* ── PROFILE ── */
+/* Blurred, translucent, interactive glass card — ROLE_GRADIENTS
+   (profileHelpers.js) now uses rgba stops (.82 alpha) specifically so
+   this backdrop-filter blur has something to actually show through;
+   an opaque gradient here would make the blur invisible, same lesson
+   as the sidebar's own blur/transparency work elsewhere in this file.
+   The hover lift + brighter shadow is the "interactive" half — small
+   and tasteful (a profile header isn't a button, it shouldn't feel
+   clickable), just enough to read as a living surface rather than a
+   flat, static banner. */
 .profile-header{
   display:flex;align-items:center;gap:18px;padding:22px;
   background:linear-gradient(135deg,#16A34A,#059669);
   border-radius:14px;margin-bottom:18px;color:#fff;position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.22);
+  -webkit-backdrop-filter:blur(40px);backdrop-filter:blur(40px);
+  box-shadow:0 8px 24px rgba(0,0,0,.18);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, filter .25s ease;
+}
+.profile-header:hover{
+  transform:translateY(-3px);
+  box-shadow:0 14px 34px rgba(0,0,0,.26);
+  filter:brightness(1.06) saturate(1.1);
 }
 .profile-header::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08)}
 .profile-avatar-lg{
@@ -1267,37 +1334,50 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);
 }
 .avatar-remove-btn:hover{background:#B91C1C}
-.profile-info h2{font-size:19px;font-weight:700}
-.profile-info p{font-size:13px;opacity:.8;margin-top:2px}
+.profile-info h2{font-size:19px;font-weight:700;text-shadow:0 1px 8px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.4)}
+.profile-info p{font-size:13px;opacity:.95;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.35)}
 .profile-info .role-tag{display:inline-block;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-top:5px}
 
 /* ── PROFILE TABS ── */
 .profile-tabs-container{margin-top:24px}
+/* Redesigned from an underline-tab strip to standalone buttons, matching
+   .tab-btn's treatment elsewhere in the app (border, shadow, hover lift,
+   press scale) — the container itself no longer needs its own
+   background/border-bottom framing since each tab now carries its own
+   full button chrome instead of sharing one strip's outline. */
 .profile-tabs{
-  display:flex;gap:14px;margin-bottom:20px;
-  background:rgba(250,248,245,.96);
-  border:1px solid rgba(208,200,188,.8);
-  border-radius:12px 12px 0 0;
-  border-bottom:2px solid var(--border);
-  padding:6px 14px 0;overflow-x:auto;
+  display:flex;gap:8px;margin-bottom:20px;
+  padding:0;overflow-x:auto;flex-wrap:wrap;
+  width:fit-content;margin-left:auto;margin-right:auto;
   scrollbar-width:none;-ms-overflow-style:none;
 }
 .profile-tabs::-webkit-scrollbar{display:none}
 .profile-tab{
-  padding:12px 16px;border:none;background:none;cursor:pointer;
-  font-size:13px;font-weight:600;color:#5B6472;
-  transition:var(--transition);position:relative;
-  border-bottom:3px solid transparent;transform:translateY(2px);
+  padding:9px 16px;border-radius:10px;
+  border:1.5px solid var(--border-strong);
+  background:var(--surface);cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  font-size:12px;font-weight:600;color:var(--text-2);
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;flex-shrink:0;
 }
-.profile-tab:hover{color:#1A1310}
-.profile-tab.active{
-  color:var(--primary);border-bottom-color:var(--primary);
-  transform:translateY(0);
+.profile-tab:hover:not(.active){
+  border-color:var(--primary);color:var(--primary);
+  background:var(--primary-light);
+  box-shadow:0 2px 8px rgba(30,123,94,.12);
+  transform:translateY(-1px);
 }
-.profile-tab-content,
-.tab-panel-enter{
-  animation:fadeIn .2s var(--ease-standard) both;
+.profile-tab:active:not(.active){transform:scale(.96);}
+.profile-tab.active{
+  background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 2px 8px rgba(30,123,94,.35), 0 1px 2px rgba(30,123,94,.18);
+}
+.profile-tab-content{
+  display:none;opacity:0;transition:opacity .2s ease;
+}
+.profile-tab-content.active{
+  display:block;opacity:1;
 }
 
 /* ── FAMILY BACKGROUND SECTION ── */
@@ -1346,6 +1426,8 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;width:130px;flex-shrink:0}
 .detail-value{font-size:13px;color:#0A0F1E;font-weight:500}
+/* Vital Signs grid inside HealthDetailModal (BP / Temp / Pulse / O2 Sat) */
+.vital-signs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 
 /* ── INVENTORY LOG TABLE ── */
 .inv-log-row{display:grid;grid-template-columns:100px 1fr 70px 80px 120px 80px;gap:8px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
@@ -1395,7 +1477,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   width:340px;max-height:500px;overflow-y:auto;
   background:var(--surface);border:1px solid var(--border);
   border-radius:16px;box-shadow:var(--shadow-lg);
-  animation:slideUp .22s var(--ease-out);
+  animation:slideUp .22s ease;
 }
 
 /* Responsive help panel */
@@ -1783,6 +1865,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   .page-header h2{font-size:16px}
   .report-summary{grid-template-columns:1fr 1fr}
   .profile-header{flex-direction:column;align-items:flex-start;gap:12px}
+  .profile-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;justify-content:flex-start;margin-left:0;margin-right:0}
   .chatbot-layout{height:calc(100vh - 130px);height:calc(100dvh - 130px)}
   .msg-content-wrap{max-width:88%}
   .tab-row{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;border-radius:9px}
@@ -2043,7 +2126,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 
 /* Ultra-wide screens (1440px+) */
 @media (min-width:1440px){
-  .page-content{padding:28px;max-width:1400px;margin:0 auto}
+  .page-content{padding:28px}
   .stats-row.cols-4{grid-template-columns:repeat(4,1fr)}
   .stats-row.cols-3{grid-template-columns:repeat(3,1fr)}
   .two-col{grid-template-columns:1fr 380px}
@@ -2090,49 +2173,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-
-  /* Interactive elements: drop hover-triggered scale/position shifts entirely;
-     color/background feedback still applies, just without an eased transition
-     (handled by the instant animation/transition duration above). */
-  .btn:hover:not(:disabled),
-  .login-btn:hover:not(:disabled),
-  .tab-btn:hover:not(.active),
-  .icon-btn:hover,
-  .hamburger-btn:hover,
-  .theme-toggle-btn:hover,
-  .modal-close:hover,
-  .nav-item:hover{
-    transform:none!important;
-  }
-}
-
-/* Touch / coarse-pointer devices (tablets, phones): a tap leaves an
-   element in the :hover state until something else is tapped, so a
-   hover-triggered transform can appear visually "stuck" instead of a
-   one-off hover effect. Same selector list as the reduced-motion block
-   above — these are the elements with a hover transform in the first
-   place. Color/background hover feedback still applies. */
-@media (hover:none),(pointer:coarse){
-  .btn:hover:not(:disabled),
-  .login-btn:hover:not(:disabled),
-  .tab-btn:hover:not(.active),
-  .icon-btn:hover,
-  .hamburger-btn:hover,
-  .theme-toggle-btn:hover,
-  .modal-close:hover,
-  .nav-item:hover,
-  .card:hover,
-  .stat-card:hover,
-  .chip:hover,
-  .diag-code-item:hover,
-  .qr-sample-btn:hover,
-  .sidebar-close-btn:hover,
-  .topbar-avatar:hover,
-  .profile-avatar-lg:hover,
-  .help-fab:hover{
-    transform:none!important;
-  }
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
 /* Dark mode preference (future enhancement) */
@@ -2443,7 +2484,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   background:rgba(14,10,6,.97);border:1.5px solid rgba(220,38,38,.4);
   border-radius:18px;padding:36px 40px;width:380px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(220,38,38,.25);
-  animation:emg-pop .2s var(--ease-out);
+  animation:emg-pop .2s ease;
 }
 .emg-confirm-icon{font-size:44px;margin-bottom:12px;animation:pulse-emg 1.2s infinite}
 .emg-confirm-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:8px}
@@ -2461,7 +2502,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 .emg-form-box{
   background:rgba(15,23,42,.98);border:1.5px solid rgba(220,38,38,.35);
   border-radius:18px;padding:28px 32px;width:560px;max-width:100%;
-  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .2s var(--ease-out);
+  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .2s ease;
   max-height:90vh;overflow-y:auto;
 }
 .emg-form-header{
@@ -2537,7 +2578,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   background:rgba(15,23,42,.97);border:1.5px solid rgba(22,163,74,.4);
   border-radius:18px;padding:36px 40px;width:400px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(22,163,74,.2);
-  animation:emg-pop .25s var(--ease-out);
+  animation:emg-pop .25s ease;
 }
 .emg-success-icon{font-size:48px;margin-bottom:12px}
 .emg-success-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:10px}
@@ -2575,16 +2616,6 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   to{transform:scale(1);opacity:1}
 }
 
-/* ── Exit — driven by useDelayedUnmount's "closing" flag on .emg-overlay ── */
-.emg-overlay.closing {
-  animation: modalOverlayOut 0.16s var(--ease-out) both;
-}
-.emg-overlay.closing .emg-confirm-box,
-.emg-overlay.closing .emg-form-box,
-.emg-overlay.closing .emg-success-box {
-  animation: emgPopOut 0.16s var(--ease-out) both;
-}
-
 /* ── Live Emergency Popup Modal ── */
 #emg-live-popup{position:fixed;inset:0;z-index:99999;pointer-events:none}
 .emg-live-backdrop{
@@ -2611,8 +2642,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   border-radius:20px;width:540px;max-width:100%;
   box-shadow:0 0 0 4px rgba(220,38,38,.15),0 32px 80px rgba(220,38,38,.35);
   overflow:hidden;
-  transform:scale(.92) translateY(30px);opacity:0;
-  transition:transform .32s var(--ease-bounce),opacity .25s var(--ease-out);
+  transform:scale(.88) translateY(30px);opacity:0;
+  transition:transform .32s cubic-bezier(.34,1.56,.64,1),opacity .25s ease;
 }
 .emg-live-backdrop.emg-live-open .emg-live-modal{
   transform:scale(1) translateY(0);opacity:1;
@@ -2694,7 +2725,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .emg-live-btn{
   flex:1;min-width:120px;padding:11px 16px;border-radius:9px;border:none;
   cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
-  transition:background .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease;display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .18s ease;display:flex;align-items:center;justify-content:center;gap:6px;
 }
 .emg-live-btn-ack{
   background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;
@@ -2774,7 +2805,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-box{
   background:rgba(15,23,42,.98);border:1px solid rgba(255,255,255,.12);
   border-radius:20px;padding:32px 38px;width:560px;max-width:calc(100vw - 40px);
-  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s var(--ease-out);
+  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s ease;
   position:relative;
 }
 
@@ -2807,7 +2838,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-step span{
   width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.15);
   background:rgba(255,255,255,.05);color:#A0988E;font-size:12px;font-weight:700;
-  display:flex;align-items:center;justify-content:center;transition:background .3s ease,border-color .3s ease,color .3s ease;
+  display:flex;align-items:center;justify-content:center;transition:all .3s;
 }
 .reg-step p{font-size:10px;color:#475569;font-weight:500;white-space:nowrap}
 .reg-step.active span{border-color:var(--primary);background:var(--primary);color:#fff}
@@ -2859,7 +2890,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* Password strength */
 .reg-pw-strength-wrap{display:flex;align-items:center;gap:10px}
 .reg-pw-strength-bar{flex:1;height:5px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
-.reg-pw-bar-fill{height:100%;width:100%;border-radius:4px;transform-origin:left;transform:scaleX(0);transition:transform .3s var(--ease-standard),background .3s}
+.reg-pw-bar-fill{height:100%;width:0;border-radius:4px;transition:width .3s,background .3s}
 .reg-pw-label{font-size:11px;font-weight:600;min-width:44px;text-align:right}
 
 /* Alerts */
@@ -2875,7 +2906,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 
 /* Step content */
-.reg-step-content{animation:reg-fade .2s var(--ease-out)}
+.reg-step-content{animation:reg-fade .2s ease}
 
 /* Nav buttons */
 .reg-nav{
@@ -3001,9 +3032,37 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    header scrolling out of the visible area with no way back to it. */
 .bot-identity{display:flex;align-items:center;gap:12px;min-width:0}
 .bot-avatar-lg{
-  width:42px;height:42px;border-radius:50%;background:#D1D5DB;
+  width:40px;height:40px;background:transparent;
   display:flex;align-items:center;justify-content:center;font-size:20px;color:#5B6A6F;
-  box-shadow:0 2px 8px rgba(0,0,0,.08);flex-shrink:0;
+  flex-shrink:0;
+}
+/* MediBot's animated mascot face (BotFace.jsx). Idle: eyes blink on a
+   slow, slightly-offset-per-eye loop so it doesn't read as a mechanical
+   simultaneous blink; mouth stays a calm closed smile. Talking (while a
+   reply is being composed/sent): the smile hides and an open-mouth
+   ellipse animates rapidly between small and large scale — the same
+   "mouth moving" cue a real talking face gives, not just a static
+   thinking indicator. */
+.bot-eye{transform-origin:45px 52px;animation:botBlink 4.6s ease-in-out infinite}
+.bot-eye-right{transform-origin:59.5px 52px;animation-delay:.12s}
+@keyframes botBlink{
+  0%,90%,100%{transform:scaleY(1)}
+  94%{transform:scaleY(.15)}
+}
+.bot-mouth-talk{
+  opacity:0;transform-origin:50px 66px;transform:scaleY(.3);
+  transition:opacity .15s ease;
+}
+.bot-mouth-smile{transition:opacity .15s ease}
+.bot-face-talking .bot-mouth-smile{opacity:0}
+.bot-face-talking .bot-mouth-talk{opacity:1;animation:botTalk .32s ease-in-out infinite}
+@keyframes botTalk{
+  0%,100%{transform:scaleY(.3)}
+  50%{transform:scaleY(1)}
+}
+@media (prefers-reduced-motion: reduce){
+  .bot-eye,.bot-mouth-talk{animation:none}
+  .bot-face-talking .bot-mouth-talk{opacity:1;transform:scaleY(.7)}
 }
 .bot-name{font-size:15px;font-weight:700;color:var(--text)}
 .bot-status{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3046,12 +3105,12 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
 
 /* ── MESSAGE BUBBLES (New Structure) ── */
-.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s var(--ease-out)}
-.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s var(--ease-out)}
+.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s ease}
+.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s ease}
 .msg-content-wrap{display:flex;flex-direction:column;max-width:80%}
 @keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
-.bot-av{width:32px;height:32px;border-radius:50%;background:#D1D5DB;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:#5B6A6F}
+.bot-av{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:#5B6A6F}
 .user-av{width:32px;height:32px;border-radius:50%;background:#D1D5DB;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#5B6A6F;flex-shrink:0;overflow:hidden}
 .user-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
@@ -3112,7 +3171,6 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   font-size:11.5px;cursor:pointer;border:1px solid #BFDBFE;transition:var(--transition);font-weight:500;
 }
 .chip:hover{background:var(--primary);color:white}
-.chip:active{transform:scale(.97)}
 
 .chat-step{
   display:flex;align-items:flex-start;gap:10px;padding:7px 0;
@@ -3366,6 +3424,14 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* Manual wrap */
 .scan-manual-wrap{padding:16px 18px;border-top:1px solid var(--border);background:var(--surface2)}
+.scan-manual-textarea{min-height:130px}
+/* Native textarea scrollbars default to the OS/browser's own light-gray
+   style regardless of the app's theme — jarring against a dark surface.
+   Same thin, theme-matched treatment already used for .modal/.page-content. */
+.scan-manual-textarea::-webkit-scrollbar{width:6px}
+.scan-manual-textarea::-webkit-scrollbar-track{background:transparent}
+.scan-manual-textarea::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.scan-manual-textarea::-webkit-scrollbar-button{display:none;height:0}
 .ocr-result-box{
   margin-top:14px;padding:12px 14px;border-radius:8px;
   background:var(--warning-light,#FEF3C7);border:1px solid rgba(217,119,6,.25);
@@ -3380,7 +3446,6 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   transition:var(--transition);
 }
 .qr-sample-btn:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
-.qr-sample-btn:active{transform:scale(.97)}
 
 /* Scan history */
 .scan-side-panel{height:100%}
@@ -3449,7 +3514,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .med-row{
   background:var(--surface2);border:1px solid var(--border);border-radius:8px;
   padding:10px 12px;margin-bottom:8px;
-  animation:med-row-in .2s var(--ease-out);
+  animation:med-row-in .2s ease;
 }
 @keyframes med-row-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .med-row-grid{
@@ -3511,7 +3576,6 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   margin-bottom:2px;
 }
 .diag-code-item:hover{background:var(--primary-light);color:var(--primary)}
-.diag-code-item:active{transform:scale(.97)}
 
 /* ── DEDUCTION ROWS ── */
 .deduction-row{
@@ -3529,7 +3593,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .diag-breakdown-row:hover{background:var(--surface2);border-radius:6px;padding:8px 6px}
 .diag-breakdown-row:last-child{border-bottom:none}
 .diag-bar-wrap{height:5px;background:var(--border);border-radius:3px;margin-top:4px;overflow:hidden}
-.diag-bar-fill{height:100%;width:100%;background:linear-gradient(90deg,var(--primary),#6A3FA0);border-radius:3px;transform-origin:left;transition:transform .3s var(--ease-standard)}
+.diag-bar-fill{height:100%;background:linear-gradient(90deg,var(--primary),#6A3FA0);border-radius:3px;transition:width .4s ease}
 
 /* ── ANALYTICS GRID ── */
 .analytics-grid{
@@ -3589,7 +3653,6 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .sms-step-num{
   width:28px;height:28px;border-radius:50%;flex-shrink:0;
   background:linear-gradient(135deg,var(--primary),#6A3FA0);
-  transition:background .22s ease;
   color:white;font-size:13px;font-weight:700;
   display:flex;align-items:center;justify-content:center;
   margin-top:2px;
@@ -3643,6 +3706,14 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 .pickup-option.selected .pickup-radio{background:var(--primary);border-color:var(--primary)}
 
+/* ── SMS PICKUP CARD (Steps 3 & 4, now stacked under Live Preview in the
+   narrow 320px column instead of the wide form card) ── */
+.sms-pickup-card .sms-step-block{padding:16px 18px;gap:12px}
+.sms-pickup-card .sms-step-num{width:24px;height:24px;font-size:12px}
+.sms-pickup-card .sms-step-title{margin-bottom:10px}
+.sms-pickup-card .pickup-options{flex-direction:column;gap:8px}
+.sms-pickup-card .pickup-option{min-width:0;padding:12px}
+
 /* ── SMS ACTIONS ── */
 .sms-actions{
   display:flex;align-items:center;justify-content:space-between;
@@ -3692,9 +3763,9 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   background:linear-gradient(135deg,#16A34A,#15803D);
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 0 0 12px rgba(22,163,74,.15);
-  animation:sms-pop .3s var(--ease-bounce);
+  animation:sms-pop .4s cubic-bezier(.34,1.56,.64,1);
 }
-@keyframes sms-pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes sms-pop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
 .sms-sent-preview{
   margin-top:14px;padding:12px;background:#2A211A;color:#EDE8E0;
   border-radius:10px;font-size:11px;line-height:1.6;white-space:pre-wrap;
@@ -3779,7 +3850,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.94); }
+  from { opacity: 0; transform: scale(0.88); }
   to   { opacity: 1; transform: scale(1); }
 }
 
@@ -3811,9 +3882,9 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 @keyframes bounceIn {
-  0%   { opacity: 0; transform: scale(0.9); }
-  50%  { opacity: 1; transform: scale(1.06); }
-  70%  { transform: scale(0.97); }
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { opacity: 1; transform: scale(1.08); }
+  70%  { transform: scale(0.95); }
   100% { transform: scale(1); }
 }
 
@@ -3839,8 +3910,8 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 @keyframes chatBubblePop {
-  0%   { opacity: 0; transform: scale(0.94) translateY(8px); }
-  60%  { transform: scale(1.02) translateY(-2px); }
+  0%   { opacity: 0; transform: scale(0.8) translateY(8px); }
+  60%  { transform: scale(1.04) translateY(-2px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -3852,6 +3923,12 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 @keyframes skeletonPulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }
+}
+
+@keyframes badgeWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25%       { transform: rotate(-8deg) scale(1.1); }
+  75%       { transform: rotate(8deg) scale(1.1); }
 }
 
 @keyframes progressFill {
@@ -3879,46 +3956,18 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 @keyframes avatarPop {
-  from { opacity: 0; transform: scale(0.92); }
+  from { opacity: 0; transform: scale(0); }
   to   { opacity: 1; transform: scale(1); }
-}
-
-/* ── EXIT ANIMATIONS — mirror an entrance above so components can play a
-   closing transition instead of vanishing mid-motion (see
-   useDelayedUnmount / the ".closing"/".leaving" classes it drives) ── */
-@keyframes modalOverlayOut {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-
-@keyframes modalOut {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.96); }
-}
-
-@keyframes emgPopOut {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.94); }
-}
-
-@keyframes toastSlideOut {
-  from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(40px); }
-}
-
-@keyframes dropdownFadeOut {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(-4px); }
 }
 
 /* ── PAGE LOAD — App shell entrance ── */
 .sidebar {
-  animation: slideInSidebar 0.38s var(--ease-out) both;
+  animation: slideInSidebar 0.38s cubic-bezier(0.22,1,0.36,1) both;
 }
 
 /* Staggered nav items */
 .nav-item {
-  animation: navSlideIn 0.3s var(--ease-out) both;
+  animation: navSlideIn 0.3s ease both;
 }
 .sidebar-nav .nav-item:nth-child(1)  { animation-delay: 0.05s; }
 .sidebar-nav .nav-item:nth-child(2)  { animation-delay: 0.10s; }
@@ -3932,15 +3981,24 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .sidebar-nav .nav-item:nth-child(10) { animation-delay: 0.50s; }
 
 .topbar {
-  animation: fadeInDown 0.35s var(--ease-out) both;
+  animation: fadeInDown 0.35s cubic-bezier(0.22,1,0.36,1) both;
   animation-delay: 0.12s;
 }
 
 /* ── PAGE CONTENT transitions ── */
+.page-content > * {
+  animation: fadeInUp 0.36s cubic-bezier(0.22,1,0.36,1) both;
+}
+.page-content > *:nth-child(1) { animation-delay: 0.04s; }
+.page-content > *:nth-child(2) { animation-delay: 0.10s; }
+.page-content > *:nth-child(3) { animation-delay: 0.16s; }
+.page-content > *:nth-child(4) { animation-delay: 0.22s; }
+.page-content > *:nth-child(5) { animation-delay: 0.28s; }
+
 /* ── STAT CARDS — staggered bounce-reveal ── */
 .stat-card {
-  animation: statCardReveal 0.3s var(--ease-out) both;
-  transition: transform 0.22s var(--ease-standard),
+  animation: statCardReveal 0.42s cubic-bezier(0.34,1.56,0.64,1) both;
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1),
               box-shadow 0.22s ease;
   will-change: transform;
 }
@@ -3955,13 +4013,18 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 .stat-num {
-  animation: countUp 0.28s var(--ease-out) both;
+  animation: countUp 0.5s cubic-bezier(0.22,1,0.36,1) both;
   animation-delay: 0.3s;
+}
+
+/* Stat icon float on hover */
+.stat-card:hover .stat-icon {
+  animation: floatBob 0.8s ease-in-out infinite;
 }
 
 /* ── CARDS — entrance and hover ── */
 .card {
-  animation: fadeInUp 0.28s var(--ease-out) both;
+  animation: fadeInUp 0.38s cubic-bezier(0.22,1,0.36,1) both;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
 }
 .card:hover {
@@ -3969,6 +4032,20 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 }
 
 /* ── TABLE ROWS — staggered fade ── */
+tbody tr {
+  animation: rowFadeIn 0.28s ease both;
+}
+tbody tr:nth-child(1)  { animation-delay: 0.04s; }
+tbody tr:nth-child(2)  { animation-delay: 0.08s; }
+tbody tr:nth-child(3)  { animation-delay: 0.12s; }
+tbody tr:nth-child(4)  { animation-delay: 0.16s; }
+tbody tr:nth-child(5)  { animation-delay: 0.20s; }
+tbody tr:nth-child(6)  { animation-delay: 0.24s; }
+tbody tr:nth-child(7)  { animation-delay: 0.28s; }
+tbody tr:nth-child(8)  { animation-delay: 0.32s; }
+tbody tr:nth-child(9)  { animation-delay: 0.36s; }
+tbody tr:nth-child(10) { animation-delay: 0.40s; }
+
 tbody tr {
   transition: background 0.18s ease, transform 0.18s ease;
 }
@@ -3978,7 +4055,7 @@ tbody tr:hover {
 
 /* ── BUTTONS — lift & press effect ── */
 .btn {
-  transition: transform 0.15s var(--ease-standard),
+  transition: transform 0.15s cubic-bezier(0.4,0,0.2,1),
               box-shadow 0.15s ease,
               background 0.15s ease,
               opacity 0.15s ease;
@@ -4031,6 +4108,7 @@ tbody tr:hover {
 
 /* ── BADGES — hover wiggle ── */
 .nav-badge {
+  animation: badgeWiggle 1.6s ease-in-out 1.2s 3;
   transition: transform 0.15s ease;
 }
 
@@ -4041,7 +4119,7 @@ tbody tr:hover {
 
 /* ── TOPBAR AVATAR ── */
 .topbar-avatar {
-  animation: avatarPop 0.3s var(--ease-out) both;
+  animation: avatarPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
   animation-delay: 0.45s;
 }
 .topbar-avatar:hover {
@@ -4052,20 +4130,20 @@ tbody tr:hover {
 
 /* ── LOGIN PAGE ── */
 .login-card {
-  animation: loginCardIn 0.3s var(--ease-out) both;
+  animation: loginCardIn 0.55s cubic-bezier(0.22,1,0.36,1) both;
   animation-delay: 0.1s;
 }
 #page-login .login-card .logo-mark {
-  animation: bounceIn 0.3s var(--ease-bounce) both;
+  animation: bounceIn 0.7s cubic-bezier(0.34,1.56,0.64,1) both;
   animation-delay: 0.4s;
 }
 #page-login label {
-  animation: fadeInLeft 0.35s var(--ease-out) both;
+  animation: fadeInLeft 0.35s ease both;
 }
 #page-login .form-group:nth-child(1) label { animation-delay: 0.35s; }
 #page-login .form-group:nth-child(2) label { animation-delay: 0.42s; }
 #page-login .btn-full {
-  animation: fadeInUp 0.38s var(--ease-out) both;
+  animation: fadeInUp 0.38s ease both;
   animation-delay: 0.55s;
 }
 
@@ -4087,17 +4165,10 @@ tbody tr:hover {
 
 /* ── MODAL — scale-in entrance ── */
 .modal-overlay.open {
-  animation: fadeIn 0.22s var(--ease-out) both;
+  animation: fadeIn 0.22s ease both;
 }
 .modal-overlay.open .modal {
-  animation: scaleIn 0.28s var(--ease-bounce-soft) both;
-}
-/* ── MODAL — scale-out exit (driven by useDelayedUnmount's "closing" flag) ── */
-.modal-overlay.closing {
-  animation: modalOverlayOut 0.18s var(--ease-out) both;
-}
-.modal-overlay.closing .modal {
-  animation: modalOut 0.18s var(--ease-out) both;
+  animation: scaleIn 0.28s cubic-bezier(0.34,1.4,0.64,1) both;
 }
 .modal-close {
   transition: background 0.18s ease, transform 0.18s ease, color 0.18s ease;
@@ -4114,14 +4185,15 @@ tbody tr:hover {
               box-shadow 0.2s ease, transform 0.2s ease;
   position: relative;
 }
+.tab-btn.active { animation: scaleIn 0.25s ease both; }
 .tab-btn:hover:not(.active) { transform: scale(1.04); }
 
 /* ── TOGGLE SWITCH — smooth ── */
 .toggle {
-  transition: background 0.28s var(--ease-standard);
+  transition: background 0.28s cubic-bezier(0.4,0,0.2,1);
 }
 .toggle::after {
-  transition: transform 0.2s var(--ease-out),
+  transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1),
               box-shadow 0.2s ease;
 }
 .toggle.on::after {
@@ -4130,15 +4202,12 @@ tbody tr:hover {
 
 /* ── TOAST — slide from right ── */
 .toast {
-  animation: toastSlide 0.28s var(--ease-out) both;
-}
-.toast.leaving {
-  animation: toastSlideOut 0.2s var(--ease-out) both;
+  animation: toastSlide 0.28s cubic-bezier(0.22,1,0.36,1) both;
 }
 
 /* ── CHAT MESSAGES ── */
 .msg {
-  animation: chatBubblePop 0.35s var(--ease-bounce-soft) both;
+  animation: chatBubblePop 0.35s cubic-bezier(0.34,1.4,0.64,1) both;
 }
 .msg.user  { animation-name: chatBubblePop; }
 .msg.bot   { animation-name: chatBubblePop; }
@@ -4156,7 +4225,7 @@ tbody tr:hover {
 
 /* ── STOCK BAR — animated fill ── */
 .stock-fill {
-  animation: progressFill 0.3s var(--ease-out) both;
+  animation: progressFill 0.8s cubic-bezier(0.22,1,0.36,1) both;
   animation-delay: 0.2s;
 }
 
@@ -4171,12 +4240,12 @@ tbody tr:hover {
 
 /* ── PROFILE HEADER ── */
 .profile-header {
-  animation: fadeInUp 0.4s var(--ease-out) both;
+  animation: fadeInUp 0.4s cubic-bezier(0.22,1,0.36,1) both;
   background-size: 200% 200%;
-  animation: gradientShift 6s ease infinite, fadeInUp 0.4s var(--ease-out) both;
+  animation: gradientShift 6s ease infinite, fadeInUp 0.4s cubic-bezier(0.22,1,0.36,1) both;
 }
 .profile-avatar-lg {
-  transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease;
 }
 .profile-avatar-lg:hover {
   transform: scale(1.08);
@@ -4185,16 +4254,11 @@ tbody tr:hover {
 
 /* ── HELP FAB — float animation ── */
 .help-fab:not(.hidden) {
-  animation: fadeInUp 0.28s var(--ease-out) both, floatBob 3s ease-in-out 1.5s infinite;
+  animation: fadeInUp 0.4s cubic-bezier(0.34,1.56,0.64,1) both, floatBob 3s ease-in-out 1.5s infinite;
 }
 .help-fab:hover {
-  /* No !important: `.help-fab:hover` and `.help-fab:not(.hidden)` share
-     specificity (0,2,0), and source order already lets this rule win in
-     normal use. Without !important, the reduced-motion rule below (which
-     is also !important) can now correctly cap this to .01ms instead of
-     being outranked by it. */
-  transform: scale(1.12) rotate(10deg);
-  animation: pulseRing 1s ease infinite;
+  transform: scale(1.12) rotate(10deg) !important;
+  animation: pulseRing 1s ease infinite !important;
 }
 
 /* ── EMERGENCY/DANGER — pulse red ── */
@@ -4205,7 +4269,7 @@ tbody tr:hover {
 
 /* ── NOTIFICATION ITEMS ── */
 .notif-item {
-  animation: fadeInLeft 0.28s var(--ease-out) both;
+  animation: fadeInLeft 0.28s ease both;
   transition: background 0.18s ease, transform 0.18s ease, padding-left 0.2s ease;
 }
 .notif-item:hover { padding-left: 22px; }
@@ -4223,7 +4287,7 @@ tbody tr:hover {
 
 /* ── SMS TEMPLATE CARDS ── */
 .sms-template-card {
-  transition: transform 0.22s var(--ease-bounce-soft),
+  transition: transform 0.22s cubic-bezier(0.34,1.4,0.64,1),
               border-color 0.2s ease,
               box-shadow 0.2s ease,
               background 0.2s ease;
@@ -4232,7 +4296,7 @@ tbody tr:hover {
   transform: translateY(-4px) scale(1.03);
 }
 .sms-template-card.selected {
-  animation: scaleIn 0.22s var(--ease-out) both;
+  animation: bounceIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 .tpl-icon {
   transition: transform 0.25s ease;
@@ -4247,7 +4311,7 @@ tbody tr:hover {
 }
 .pickup-option:hover { transform: translateY(-2px); }
 .pickup-option.selected {
-  animation: scaleIn 0.22s var(--ease-bounce-soft) both;
+  animation: scaleIn 0.22s cubic-bezier(0.34,1.4,0.64,1) both;
 }
 .pickup-radio {
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
@@ -4256,7 +4320,7 @@ tbody tr:hover {
 
 /* ── SIDEBAR LOGO ── */
 .sidebar-logo {
-  animation: fadeInDown 0.4s var(--ease-out) both;
+  animation: fadeInDown 0.4s ease both;
   animation-delay: 0.05s;
 }
 .logo-mark {
@@ -4267,7 +4331,7 @@ tbody tr:hover {
 /* ── SIDEBAR FOOTER CHIP ── */
 .user-chip {
   transition: background 0.2s ease, transform 0.2s ease;
-  animation: fadeInUp 0.35s var(--ease-out) both;
+  animation: fadeInUp 0.35s ease both;
   animation-delay: 0.55s;
 }
 .user-chip:hover { transform: translateX(4px); }
@@ -4278,13 +4342,13 @@ tbody tr:hover {
 }
 .chat-session:hover { padding-left: 18px; }
 .chat-session.active {
-  animation: fadeInLeft 0.25s var(--ease-out) both;
+  animation: fadeInLeft 0.25s ease both;
   padding-left: 17px;
 }
 
 /* ── SMS SUCCESS CIRCLE ── */
 .sms-success-circle {
-  animation: sms-pop 0.3s var(--ease-bounce) both,
+  animation: sms-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both,
              pulseRing 2s ease 0.5s infinite;
 }
 
@@ -4300,7 +4364,7 @@ tbody tr:hover {
 .reveal {
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.3s var(--ease-out), transform 0.3s var(--ease-out);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22,1,0.36,1);
 }
 .reveal.visible {
   opacity: 1;
@@ -4315,6 +4379,13 @@ tbody tr:hover {
 }
 
 /* ── REDUCE MOTION — accessibility ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 /* ═══════════════════════════════════════════════════
    SECURITY ADDITIONS — v1.0
    ═══════════════════════════════════════════════════ */
@@ -4372,8 +4443,8 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* Smooth width animation */
   .sidebar {
-    transition: width .3s var(--ease-standard),
-                min-width .3s var(--ease-standard) !important;
+    transition: width .3s cubic-bezier(.4,0,.2,1),
+                min-width .3s cubic-bezier(.4,0,.2,1) !important;
     overflow: visible !important;
   }
 
@@ -4424,7 +4495,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   /* ── NAV ITEMS: center icon, hide label text ── */
   .nav-item {
     transition: background .2s ease, color .2s ease,
-                padding .3s var(--ease-standard),
+                padding .3s cubic-bezier(.4,0,.2,1),
                 justify-content .3s ease;
   }
   .sidebar.collapsed .nav-item {
@@ -4447,7 +4518,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* NAV LABEL text: fade + collapse width */
   .nav-label {
-    transition: opacity .2s ease, max-width .3s var(--ease-standard);
+    transition: opacity .2s ease, max-width .3s cubic-bezier(.4,0,.2,1);
     overflow: hidden;
     white-space: nowrap;
     max-width: 160px;
@@ -4501,7 +4572,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity .15s var(--ease-out);
+    transition: opacity .15s ease;
     z-index: 300;
     box-shadow: 0 4px 14px rgba(0,0,0,.35);
     border: 1px solid rgba(255,255,255,.07);
@@ -4626,10 +4697,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 /* ── DARK MODE — blue/cold text overrides ── */
 
-/* Profile tabs: cold slate → warm readable */
-[data-theme="dark"] .profile-tab { color: #B8B0A8; }
-[data-theme="dark"] .profile-tab:hover { color: #DDD6CE; }
-
 /* Alert info border */
 [data-theme="dark"] .alert-info { border-color: rgba(61,191,150,.35); }
 
@@ -4681,7 +4748,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   top: 50%;
   right: -14px;
   transform: translateY(-50%);
-  transform-origin: right center;
   z-index: 201;
   width: 14px;
   height: 52px;
@@ -4693,16 +4759,16 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background .2s ease, transform .2s var(--ease-standard);
+  transition: background .2s ease, width .2s ease;
   box-shadow: 3px 0 10px rgba(0,0,0,.25);
 }
 .sidebar-toggle-tab:hover {
   background: #3A2D24;
-  transform: translateY(-50%) scaleX(1.29);
+  width: 18px;
 }
 /* Chevron arrow inside the tab */
 .sidebar-toggle-tab svg {
-  transition: transform .28s var(--ease-standard);
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
   flex-shrink: 0;
   color: #C0B8B0;
 }
@@ -4808,10 +4874,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   box-shadow: var(--shadow-lg);
   max-height: 220px;
   overflow-y: auto;
-  animation: dropdownFadeIn .15s var(--ease-out);
-}
-.patient-dropdown.closing {
-  animation: dropdownFadeOut .12s var(--ease-out) both;
+  animation: dropdownFadeIn .15s ease;
 }
 
 @keyframes dropdownFadeIn {
@@ -4921,7 +4984,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .student-list-avatar {
   width: 34px; height: 34px; border-radius: 50%;
   background: linear-gradient(135deg, var(--primary), var(--purple));
-  transition: background .22s ease;
   color: #fff; font-size: 12px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
@@ -4999,11 +5061,6 @@ button,
 .login-btn:active:not(:disabled),
 .tab-btn:active:not(.active) {
   transform: translateY(0) scale(.98);
-  /* Asymmetric timing: the press itself should read as an instant,
-     snappy response; the base .btn rule's 0.12s transform transition
-     still governs the slightly more deliberate release/settle back to
-     resting position. Matters most on .btn-red destructive actions. */
-  transition-duration: 0.08s;
 }
 
 .btn-blue:hover:not(:disabled) {
@@ -5107,6 +5164,31 @@ button:disabled {
   .emg-confirm-btns .btn,
   .emg-proceed-btn {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .login-btn,
+  .tab-btn,
+  .icon-btn,
+  .hamburger-btn,
+  .theme-toggle-btn,
+  .modal-close,
+  .nav-item {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .btn:hover:not(:disabled),
+  .login-btn:hover:not(:disabled),
+  .tab-btn:hover:not(.active),
+  .icon-btn:hover,
+  .hamburger-btn:hover,
+  .theme-toggle-btn:hover,
+  .modal-close:hover,
+  .nav-item:hover {
+    transform: none !important;
   }
 }
 
@@ -5461,6 +5543,14 @@ td {
   .processing-info-grid{grid-template-columns:1fr!important}
 }
 
+/* Health Record Details modal -> Vital Signs (BP / Temp / Pulse / O2 Sat).
+   4 equal columns is fine down to ~480px, but below that the values
+   ("120/80", "36.8") and units start wrapping mid-word inside each
+   cell. 2 columns keeps every reading fully legible on small phones. */
+@media(max-width:480px){
+  .vital-signs-grid{grid-template-columns:repeat(2,1fr)}
+}
+
 /* ── SCROLL TO TOP BUTTON ── */
 /* Floating over .page-content's bottom-right corner (positioned fixed
    relative to the viewport, not the scroll container, since the button
@@ -5473,13 +5563,11 @@ td {
   background:var(--primary);color:#fff;border:none;cursor:pointer;
   box-shadow:0 4px 14px rgba(0,0,0,.22);
   transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
-  animation:scroll-top-in .2s var(--ease-out);
+  animation:scroll-top-in .2s ease;
 }
 .scroll-to-top-btn:hover{background:var(--primary-dark);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
-.scroll-to-top-btn:active{transform:scale(.93)}
+.scroll-to-top-btn:active{transform:translateY(0)}
 @keyframes scroll-top-in{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
-.scroll-to-top-btn.closing{animation:scroll-top-out .15s var(--ease-out) both}
-@keyframes scroll-top-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(8px) scale(.9)}}
 @media(max-width:768px){
   .scroll-to-top-btn{right:16px;bottom:16px;width:40px;height:40px}
 }
@@ -5497,7 +5585,7 @@ td {
   width:820px;max-width:100%;height:82vh;max-height:640px;
   display:flex;flex-direction:column;overflow:hidden;
   box-shadow:0 24px 60px rgba(0,0,0,.35);
-  animation:manual-pop .18s var(--ease-out);
+  animation:manual-pop .18s ease;
 }
 @keyframes manual-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
 .manual-header{
@@ -5713,3 +5801,63 @@ td {
   border:none;cursor:pointer;color:var(--text-2);
 }
 .qr-history-close-btn:hover{background:var(--border)}
+
+/* ── CUSTOM DATE PICKER (components/ui/CustomDatePicker.jsx) ──
+   Replaces native <input type="date"> — the OS calendar popup can't be
+   restyled with CSS since it isn't part of the DOM at all. Trigger
+   matches the app's standard .btn-outline-style button; the dropdown
+   panel itself is a glass surface (transparent + blurred, same
+   language as .sidebar/.topbar/.profile-header elsewhere in this file)
+   with an interactive treatment on every clickable part — nav arrows
+   and day cells all get a hover response, not just a static grid. */
+.cdp-root{position:relative;display:inline-block;width:100%}
+.cdp-trigger{
+  display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;
+  border-radius:10px;border:1.5px solid var(--border-strong);
+  background:var(--surface);color:var(--text-2);font-size:13px;font-weight:600;
+  cursor:pointer;text-align:left;
+  transition:border-color .16s ease,box-shadow .16s ease,transform .12s ease,color .16s ease;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.cdp-trigger:hover{border-color:var(--primary);color:var(--primary);box-shadow:0 2px 8px rgba(30,123,94,.12);transform:translateY(-1px)}
+.cdp-trigger:active{transform:scale(.98)}
+
+.cdp-panel{
+  position:absolute;top:calc(100% + 8px);left:0;z-index:200;width:272px;
+  padding:14px;border-radius:16px;
+  background:rgba(250,248,245,.65);
+  border:1px solid rgba(255,255,255,.35);
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  box-shadow:0 16px 40px rgba(0,0,0,.22);
+  animation:cdpPop .16s cubic-bezier(.34,1.56,.64,1) both;
+}
+[data-theme="dark"] .cdp-panel{background:rgba(24,19,15,.65);border-color:rgba(255,255,255,.1)}
+@keyframes cdpPop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+.cdp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cdp-title{font-size:13px;font-weight:700;color:var(--text)}
+.cdp-nav{
+  width:28px;height:28px;border-radius:8px;border:none;background:transparent;
+  color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:background .14s ease,color .14s ease,transform .12s ease;
+}
+.cdp-nav:hover{background:var(--primary-light);color:var(--primary);transform:scale(1.08)}
+.cdp-nav:active{transform:scale(.9)}
+
+.cdp-weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px}
+.cdp-weekdays span{font-size:10px;font-weight:700;color:var(--text-3);text-align:center;text-transform:uppercase}
+
+.cdp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cdp-cell{
+  aspect-ratio:1;border:none;background:transparent;border-radius:8px;
+  font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .14s ease,color .14s ease,transform .12s cubic-bezier(.34,1.56,.64,1),box-shadow .14s ease;
+}
+.cdp-cell.cdp-empty{cursor:default;pointer-events:none}
+.cdp-cell:hover:not(.cdp-empty):not(:disabled){background:var(--primary-light);color:var(--primary);transform:scale(1.1)}
+.cdp-cell:active:not(.cdp-empty):not(:disabled){transform:scale(.94)}
+.cdp-cell.today{box-shadow:inset 0 0 0 1.5px var(--primary)}
+.cdp-cell.selected{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(30,123,94,.4)}
+.cdp-cell.selected:hover{transform:scale(1.06)}
+.cdp-cell:disabled{opacity:.3;cursor:not-allowed}

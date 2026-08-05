@@ -500,12 +500,12 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
           <div className="card scan-manual-wrap" style={{ marginTop: 12 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '.05em' }}>PASTE QR DATA / BARCODE VALUE</label>
             <textarea
-              className="form-input"
-              rows={3}
+              className="form-input scan-manual-textarea"
+              rows={6}
               value={manualValue}
               onChange={(e) => setManualValue(e.target.value)}
               placeholder={`Paste QR payload, e.g.: {"name":"Paracetamol 500mg","category":"Medicine","qty":100,"unit":"Tablets","batch":"PCT-2026-001","expiry":"2028-06-30","supplier":"PharmaCorp","minStock":50}\nor pipe format: Paracetamol 500mg|Medicine|100|Tablets|PCT-2026-001|2028-06-30|PharmaCorp|50`}
-              style={{ fontSize: 12, fontFamily: 'monospace', resize: 'vertical', marginTop: 8 }}
+              style={{ fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6, resize: 'vertical', marginTop: 8 }}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button type="button" className="btn btn-blue" onClick={handleManualSubmit}>

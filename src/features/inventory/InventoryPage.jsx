@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import ItemsTab from './ItemsTab'
 import BatchesTab from './BatchesTab'
@@ -61,8 +62,8 @@ import {
   getMedicineBatchById,
   runExpirationCheck,
 } from '@services/medicineService'
-import { listSuppliesAsInventoryItems, listSupplyBatches } from '@services/supplyService'
-import { listEquipmentAsInventoryItems, listEquipmentBatches } from '@services/equipmentService'
+import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply } from '@services/supplyService'
+import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment } from '@services/equipmentService'
 import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
@@ -82,6 +83,7 @@ const TABS = [
 export default function InventoryPage() {
   const { profile } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const currentUserId = profile?.user_id ?? null
 
   const [tab, setTab] = useState('items')
@@ -414,6 +416,38 @@ export default function InventoryPage() {
         return
       }
 
+      if (item._source === 'equipment' || item._source === 'supply') {
+        // Equipment/Supply now live in their own normalized tables
+        // (equipment / supplies) — see equipmentService.js / supplyService.js.
+        // Only patching `quantity` + `expiration_date` here: those are the
+        // two fields every item type (medicine/equipment/supply/legacy)
+        // consistently exposes and that this form actually collects.
+        // batch_no/received_date/supplier — unlike the legacy `inventory`
+        // table — aren't confirmed real columns on `equipment`/`supplies`
+        // themselves (they may only exist on the batch tables, joined into
+        // the read view), so they're deliberately left out rather than
+        // risking another failed PATCH from a nonexistent column.
+        const updateFn = item._source === 'equipment' ? updateEquipment : updateSupply
+        await updateFn(item._id, {
+          quantity: item.quantity + form.qty,
+          expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
+        })
+        // Best-effort log only — inventory_logs.inventory_id is a FK into
+        // the legacy `inventory` table, which has no row for this item
+        // (item.inventory_id is always null here), so this insert may be
+        // rejected. That must never undo the replenish that already
+        // succeeded above.
+        try {
+          await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: item.quantity, newQuantity: item.quantity + form.qty, staffId: currentUserId, notes: form.notes })
+        } catch {
+          // Non-critical — see comment above.
+        }
+        await Promise.all([refreshInventory(), refreshLogs()])
+        show(`${item.name} replenished by ${form.qty} ${item.unit}`, 'success')
+        setReplenishItemId(null)
+        return
+      }
+
       await updateInventoryItem(item.inventory_id, {
         quantity: item.quantity + form.qty,
         expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
@@ -493,7 +527,7 @@ export default function InventoryPage() {
           const removeQty = parseInt(raw, 10)
           if (!Number.isFinite(removeQty) || removeQty <= 0) return show('Enter a valid quantity to remove', 'error')
           if (removeQty > item.quantity) return show(`Cannot remove more than available expired stock (${item.quantity} ${item.unit})`, 'error')
-          if (!window.confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`)) return
+          if (!(await confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`))) return
 
           // Distribute the removal across this medicine's expired batches,
           // oldest-expiration first — mirrors the FIFO release logic, but
@@ -510,7 +544,7 @@ export default function InventoryPage() {
           }
           show(`${removeQty} ${item.unit} removed from ${item.name}`, 'success')
         } else {
-          if (!window.confirm(`Remove "${item.name}" from inventory?\nThis will deactivate the medicine — its batch and movement history is preserved, not deleted.`)) return
+          if (!(await confirm(`Remove "${item.name}" from inventory?\nThis will deactivate the medicine — its batch and movement history is preserved, not deleted.`))) return
           await deactivateMedicine(item._id)
           await addMedicineMovement({ medicineId: item._id, actionType: 'Removed', quantityChange: -item.quantity, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Medicine deactivated (${item.quantity} ${item.unit} on hand)` })
           show(`${item.name} removed`, 'success')
@@ -525,7 +559,7 @@ export default function InventoryPage() {
         const removeQty = parseInt(raw, 10)
         if (!Number.isFinite(removeQty) || removeQty <= 0) return show('Enter a valid quantity to remove', 'error')
         if (removeQty > item.quantity) return show(`Cannot remove more than available expired stock (${item.quantity} ${item.unit})`, 'error')
-        if (!window.confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`)) return
+        if (!(await confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`))) return
 
         if (removeQty >= item.quantity) {
           // Log BEFORE deleting — inventory_logs.inventory_id has a strict
@@ -542,7 +576,7 @@ export default function InventoryPage() {
           show(`${removeQty} ${item.unit} removed from ${item.name}`, 'success')
         }
       } else {
-        if (!window.confirm(`Remove "${item.name}" from inventory?\nQuantity to remove: ${item.quantity} ${item.unit}\nThis cannot be undone.`)) return
+        if (!(await confirm(`Remove "${item.name}" from inventory?\nQuantity to remove: ${item.quantity} ${item.unit}\nThis cannot be undone.`))) return
         await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Removed', quantityChange: -item.quantity, previousQuantity: item.quantity, newQuantity: 0, staffId: currentUserId, notes: `"${item.name}" removed from inventory (${item.quantity} ${item.unit})` })
         await deleteInventoryItem(item.inventory_id)
         show(`${item.name} removed`, 'success')
@@ -554,10 +588,15 @@ export default function InventoryPage() {
   }
 
   // ── MAINTENANCE RESTORE ──
-  // Equipment-only — Medicine is never Equipment, so this handler stays
-  // legacy-only by construction (a medicine row's needs_maintenance is
+  // Equipment-only — Medicine is never Equipment, so this handler only
+  // ever sees Equipment items (a medicine row's needs_maintenance is
   // always false, see medicine_inventory_view, so it never surfaces a
-  // Restore action in the first place).
+  // Restore action in the first place). Equipment now lives in its own
+  // normalized `equipment` table (see equipmentService.js) rather than
+  // the legacy `inventory` table this used to target, so this writes to
+  // updateEquipment(), keyed by item._id (the real equipment_id) —
+  // item.inventory_id is always null for these items and would produce
+  // an invalid PATCH (…inventory_id=eq.null → 400) if used here.
   // Single row only: restoring sets `quantity` to the number of units
   // actually returned to active stock. Any held-back units are no longer
   // tracked as inventory — they're recorded in the log's notes/quantity
@@ -567,12 +606,20 @@ export default function InventoryPage() {
     const item = restoringItem
     const heldBack = item.quantity - form.restoreQty
     try {
-      await updateInventoryItem(item.inventory_id, { quantity: form.restoreQty, expiration_date: form.expiry, needs_maintenance: false })
+      await updateEquipment(item._id, { quantity: form.restoreQty, expiration_date: form.expiry, needs_maintenance: false })
       const notes =
         heldBack > 0
           ? `${form.restoreQty} ${item.unit} restored to active inventory; ${heldBack} ${item.unit} held back and removed from tracked inventory. ${form.notes}`
           : `${form.restoreQty} ${item.unit} restored to active inventory. ${form.notes}`
-      await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Maintained', quantityChange: form.restoreQty - item.quantity, previousQuantity: item.quantity, newQuantity: form.restoreQty, staffId: currentUserId, notes })
+      // Best-effort log — inventory_logs.inventory_id is a FK into the
+      // legacy `inventory` table, which has no row for this item, so this
+      // insert may be rejected. Must never undo the restore that already
+      // succeeded above.
+      try {
+        await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Maintained', quantityChange: form.restoreQty - item.quantity, previousQuantity: item.quantity, newQuantity: form.restoreQty, staffId: currentUserId, notes })
+      } catch {
+        // Non-critical — see comment above.
+      }
       await Promise.all([refreshInventory(), refreshLogs()])
       if (heldBack > 0) {
         show(`${form.restoreQty} ${item.unit} restored · ${heldBack} ${item.unit} held back and removed from tracked inventory`, 'success')
@@ -838,7 +885,7 @@ export default function InventoryPage() {
   async function handleArchiveBatch(key) {
     const batch = batches.find((b) => batchKey(b) === key)
     if (!batch) return
-    if (!window.confirm(`Archive batch "${batch.batch_code}"?\nIt will be removed from active stock but its history is kept — this is not a delete.`)) return
+    if (!(await confirm(`Archive batch "${batch.batch_code}"?\nIt will be removed from active stock but its history is kept — this is not a delete.`, { danger: false, confirmLabel: 'Archive' }))) return
     try {
       await archiveMedicineBatch(batch.medicine_batch_id)
       await addMedicineMovement({ medicineId: batch.medicine_id, medicineBatchId: batch.medicine_batch_id, actionType: 'Archived', quantityChange: 0, previousQuantity: batch.quantity, newQuantity: batch.quantity, staffId: currentUserId, notes: `Batch ${batch.batch_code} archived` })
@@ -900,7 +947,7 @@ export default function InventoryPage() {
   }
 
   async function handleDeleteSupplier(supplier) {
-    if (!window.confirm(`Delete supplier "${supplier.supplier_name}"?`)) return
+    if (!(await confirm(`Delete supplier "${supplier.supplier_name}"?`))) return
     try {
       await deleteSupplier(supplier.supplier_id)
       await refreshSuppliers()
@@ -966,6 +1013,16 @@ export default function InventoryPage() {
       setTab('items')
       setItemsFilters((f) => ({ ...f, search: notification.medicine_name, status: 'All' }))
     }
+  }
+
+  // "Clicking an alert row should open that item's detail." The Alerts
+  // tab no longer has its own per-row action buttons (Restock/Remove/
+  // Restore/etc.) — this single handler replaces all of them, reusing
+  // the same navigate-to-Items-tab-filtered-by-name pattern already used
+  // by handleOpenNotificationRecord above.
+  function handleAlertItemClick(item) {
+    setTab('items')
+    setItemsFilters((f) => ({ ...f, search: item.name, status: 'All' }))
   }
 
   const replenishingBatch = batches.find((b) => batchKey(b) === replenishBatchId) || null
@@ -1232,7 +1289,7 @@ export default function InventoryPage() {
       {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} /></div>}
       {tab === 'alerts' && (
         <div>
-          <AlertsTab inventory={inventory} onRemove={handleRemove} onRestore={setRestoreItemId} onReplenish={setReplenishItemId} />
+          <AlertsTab inventory={inventory} onItemClick={handleAlertItemClick} />
         </div>
       )}
       {tab === 'notifications' && (

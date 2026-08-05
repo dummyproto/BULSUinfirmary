@@ -90,9 +90,11 @@ export default function PatientsPage() {
               )}
               {filtered.map((p) => (
                 <tr key={p.user_id}>
-                  <td style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar user={p} size={26} />
-                    <strong>{p.name}</strong>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar user={p} size={26} />
+                      <strong>{p.name}</strong>
+                    </div>
                   </td>
                   <td>
                     <code style={{ fontSize: 11 }}>{p.student_number || '—'}</code>
