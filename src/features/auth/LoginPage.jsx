@@ -186,7 +186,17 @@ export default function LoginPage() {
 
     setSubmitting(true)
     try {
-      await signIn(email, password)
+      // Trim + lowercase before the real auth call — Supabase stores/
+      // matches emails case-insensitively on the backend, but the input
+      // here was still being passed through with whatever casing the
+      // person typed (e.g. "Nurse@clinic.edu"), which could mismatch an
+      // account whose email was normalized to lowercase at creation time
+      // (see createUserProfile()/RegisterModal.jsx, which both already
+      // lowercase). getAttempts()/clearAttempts() below already
+      // normalize for the lockout tracker; the actual signIn() call
+      // needs the same normalization, not just a matching lockout key.
+      const normalizedEmail = email.trim().toLowerCase()
+      await signIn(normalizedEmail, password)
       clearAttempts(email)
       setLockUntil(0)
     } catch (err) {

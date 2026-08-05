@@ -57,6 +57,7 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
     const record = {
       name,
       email,
+      password: form.password,
       role: form.role,
       active: true,
       avatar_initials: initialsFor(name),

@@ -59,13 +59,19 @@ export default function MaintenancePage() {
     const username = record.email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase()
 
     // Try to provision a real, login-capable account via the server-side
-    // Edge Function first (see supabase/functions/create-user/). If it
-    // isn't deployed yet, fall back to profile-only creation so this flow
-    // still works during setup — just with a clear warning, same as
-    // before Phase D.
+    // Edge Function first (see supabase/functions/create-user/). Using
+    // mode: 'password' — not the default 'invite' — because AddUserModal
+    // already collects a required password field from the admin; 'invite'
+    // silently discarded that password entirely and relied on the new
+    // user receiving a set-password email instead, which on a project
+    // without email sending configured (very possible for a school
+    // system) never arrives — leaving the account permanently unable to
+    // log in with no error surfaced anywhere. Passing the admin-entered
+    // password through here means the account works immediately, matching
+    // what the form actually asks for.
     let authUserId = null
     try {
-      authUserId = await provisionUser({ email: record.email, name: record.name, role: record.role, mode: 'invite' })
+      authUserId = await provisionUser({ email: record.email, name: record.name, role: record.role, mode: 'password', temporaryPassword: record.password })
     } catch (err) {
       show(`Couldn't provision a login (${err.message}) — creating the account record only. Deploy the "create-user" Edge Function to enable real logins.`, 'warning')
     }
@@ -89,7 +95,7 @@ export default function MaintenancePage() {
       setAddOpen(false)
       show(
         authUserId
-          ? `User ${record.name} added — they'll receive an email to set their password.`
+          ? `User ${record.name} added — they can log in now with the password you set.`
           : `User ${record.name} added (profile only — no login yet).`,
         'success'
       )
