@@ -1,12 +1,21 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
+import { useConfirm } from '@context/ConfirmContext'
 import { NAV_ITEMS, ROLE_LABELS } from '@routes/navItems'
 import { LogoutIcon, MenuIcon } from '@components/ui/icons'
 import logo from '@/assets/logo.png'
 
 export default function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate }) {
   const { role, signOut } = useAuth()
-const items = NAV_ITEMS[role] || []
+  const confirm = useConfirm()
+  const navigate = useNavigate()
+  const items = NAV_ITEMS[role] || []
+
+  async function handleLogout() {
+    if (!(await confirm('Log out of your account?', { confirmLabel: 'Log Out' }))) return
+    await signOut()
+    navigate('/login', { replace: true })
+  }
 
   const classes = ['sidebar', collapsed ? 'collapsed' : '', mobileOpen ? 'mobile-open' : '']
     .filter(Boolean)
@@ -53,7 +62,7 @@ const items = NAV_ITEMS[role] || []
       </nav>
 
       <div className="sidebar-footer">
-        <button type="button" className="nav-item logout-item" onClick={signOut}>
+        <button type="button" className="nav-item logout-item" onClick={handleLogout}>
           <span className="nav-icon">
             <LogoutIcon />
           </span>

@@ -46,15 +46,11 @@
   --sidebar-w: 200px;
 }
 
-/* Portrait orientation adjustments */
-[data-orientation="portrait"] {
-  /* Sidebar becomes a drawer in portrait */
-}
-
-/* Landscape orientation adjustments */
-[data-orientation="landscape"] {
-  /* Sidebar visible in landscape */
-}
+/* Portrait orientation adjustments — sidebar becomes a drawer in
+   portrait; landscape keeps it visible. No CSS here of its own (both
+   behaviors are already handled by other rules elsewhere in this file);
+   the empty [data-orientation="..."] rulesets that used to sit here as
+   placeholder comments were removed since they had no declarations. */
 
 /* Ultra-wide screens */
 [data-screen-width="1440"],
@@ -99,7 +95,7 @@
 
 /* Dark mode topbar */
 [data-theme="dark"] .topbar {
-  background: rgba(16,12,9,.97);
+  background: rgba(16,12,9,.55);
   border-bottom-color: rgba(255,245,235,.07);
 }
 
@@ -112,12 +108,12 @@
 
 /* Dark mode tables */
 [data-theme="dark"] thead th {
-  background: rgba(18,14,10,.98);
-  color: #C0B8B0;
-  border-bottom-color: rgba(255,245,235,.07);
+  background: #14523E;
+  color: #8FF0C4;
+  border-bottom-color: rgba(30,123,94,.55);
 }
 [data-theme="dark"] tbody td {
-  border-bottom-color: rgba(255,255,255,.05);
+  border-bottom-color: rgba(255,255,255,.12);
   color: var(--text);
 }
 [data-theme="dark"] tbody tr:hover td {
@@ -321,7 +317,11 @@
 
 /* Tab buttons */
 [data-theme="dark"] .tab-btn        { color: var(--text-2); }
-[data-theme="dark"] .tab-btn.active { color: var(--text); }
+/* .tab-btn.active's dark-mode color lives inline right after the base
+   .tab-btn.active rule further down this file, not here — kept together
+   so the light/dark pair for the "bold solid green, unmistakable"
+   active-tab treatment doesn't drift out of sync in two far-apart
+   places again. */
 
 /* Badge gray in dark mode */
 [data-theme="dark"] .badge-gray { background: rgba(255,245,235,.08); color: var(--text-2); }
@@ -338,18 +338,6 @@
 [data-theme="dark"] .patient-item-name        { color: var(--text); }
 [data-theme="dark"] .patient-item-sub         { color: var(--text-3); }
 [data-theme="dark"] .patient-dropdown-item:hover { background: var(--primary-light); }
-
-/* Profile tab inactive → readable warm gray */
-[data-theme="dark"] .profile-tabs         { background: rgba(24,19,15,.96); border-color: rgba(255,245,235,.07); }
-[data-theme="dark"] .profile-tab        { color: var(--text-3) !important; }
-[data-theme="dark"] .profile-tab:hover  { color: var(--text-2) !important; }
-[data-theme="dark"] .profile-tab.active { color: var(--primary) !important; }
-
-/* ── DARK MODE: Sidebar logo subtitle ── */
-[data-theme="dark"] .sidebar-logo-text p { color: var(--text-3); }
-
-/* ── DARK MODE: Nav section label ── */
-[data-theme="dark"] .nav-section-label { color: var(--text-3); }
 
 /* ── DARK MODE: SVG icons inside buttons/nav inherit light color ── */
 [data-theme="dark"] .icon-btn svg,
@@ -448,8 +436,6 @@
 [data-theme="dark"] .hamburger-btn { color: var(--text-2); }
 
 /* ── DARK MODE: Sidebar close button ── */
-[data-theme="dark"] .sidebar-close-btn { color: var(--text-2); }
-[data-theme="dark"] .sidebar-close-btn:hover { color: var(--text); }
 
 /* ── DARK MODE: Notif dot border ── */
 [data-theme="dark"] .notif-dot { border-color: rgba(16,12,9,.97); }
@@ -523,7 +509,7 @@ button{font-family:'DM Sans',sans-serif}
 .app-container::after{
   content:'';position:fixed;inset:0;z-index:1;
   background:rgba(255,255,255,.45);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
 }
 /* Main content area: flex column for topbar + content */
 .main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;background:transparent;min-width:0;position:relative;z-index:2}
@@ -531,13 +517,21 @@ button{font-family:'DM Sans',sans-serif}
 .page-content{flex:1;overflow-y:auto;padding:24px;position:relative;z-index:2}
 
 /* ========== SIDEBAR: Navigation and user info ========== */
-/* Main sidebar container: dark theme, full height */
+/* Main sidebar container: dark theme, full height. Near-black base tone
+   at .72 opacity — high enough that the dark color actually dominates
+   over whatever's blended in behind it (at lower opacity, a light page
+   behind the sidebar was diluting the near-black tone into a washed-out
+   medium gray instead of reading as dark) — combined with a strong
+   blur so it still reads as glass, not a flat opaque panel. Text colors
+   throughout are unconditionally light in both app themes (see the
+   removed-override note further down), so this stays readable
+   regardless of what's blended in behind it. */
 .sidebar{
   width:var(--sidebar-w);min-width:var(--sidebar-w);
-  background:rgba(22,18,13,.88);display:flex;flex-direction:column;
-  height:100%;border-right:1px solid rgba(255,255,255,.06);
+  background:rgba(6,5,4,.72);display:flex;flex-direction:column;
+  height:100%;border-right:1px solid rgba(255,255,255,.08);
   transition:var(--transition);position:relative;z-index:100;
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(38px);backdrop-filter:blur(38px);
   overflow:hidden;
 }
 /* Collapsed state: hide sidebar on desktop */
@@ -555,7 +549,7 @@ button{font-family:'DM Sans',sans-serif}
 /* Logo text: constrain so it doesn't push close button off screen */
 .sidebar-logo-text{min-width:0;flex:1;overflow:hidden;}
 .sidebar-logo-text h2{font-size:13.5px;font-weight:700;color:#F5F0EC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-logo-text p{font-size:10px;color:#6E6358;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-logo-text p{font-size:10px;color:#B8AFA5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Close/burger button inside sidebar header — portrait only */
 .sidebar-close-btn{
   display:none;margin-left:auto;flex-shrink:0;
@@ -571,20 +565,30 @@ button{font-family:'DM Sans',sans-serif}
 .sidebar-nav{padding:10px 8px;flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none}
 .sidebar-nav::-webkit-scrollbar{display:none}
 /* Navigation section labels (MENU, etc.) */
-.nav-section-label{font-size:10px;font-weight:700;color:#9A8F86;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
+.nav-section-label{font-size:10px;font-weight:700;color:#B8AFA5;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
 /* Individual navigation items with hover and active states */
 .nav-item{
   display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
   cursor:pointer;color:#C0B8B0;font-size:13px;font-weight:500;
-  transition:var(--transition);position:relative;user-select:none;white-space:nowrap;
+  transition:var(--transition);position:relative;-webkit-user-select:none;user-select:none;white-space:nowrap;
 }
 .nav-icon svg{width:16px;height:16px;flex-shrink:0}
-.nav-item:hover{background:#2A211A;color:#F5F0EC}
+.nav-item:hover{background:#2A211A;color:#F5F0EC;transform:translateX(3px)}
+.nav-item:active{transform:translateX(3px) scale(.97)}
 /* Active nav item with left indicator bar */
-.nav-item.active{background:rgba(30,123,94,.15);color:var(--primary)}
+/* Active nav item with left indicator bar. Text color is a fixed bright
+   teal, not var(--primary) — that variable is #1E7B5E (dark teal) in
+   light theme, correct for buttons/badges sitting on a light page
+   background, but the sidebar itself is dark regardless of theme, so
+   the same dark teal text became nearly unreadable against it in light
+   mode specifically. #3DBF96 is the brighter teal this app already uses
+   as --primary in dark theme — using it unconditionally here keeps
+   contrast strong in both themes instead of only one. */
+.nav-item.active{background:rgba(61,191,150,.15);color:#3DBF96}
 .nav-item.active::before{
   content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
-  width:3px;height:18px;background:var(--primary);border-radius:0 3px 3px 0;
+  width:3px;height:18px;background:#3DBF96;border-radius:0 3px 3px 0;
+  box-shadow:0 0 8px rgba(61,191,150,.7);
 }
 /* Logout button — a real <button>, unlike the other NavLink-based nav
    items, so without an explicit reset it inherits the browser's native
@@ -602,7 +606,20 @@ button{font-family:'DM Sans',sans-serif}
 .nav-item.logout-item:hover{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.3);color:#FCA5A5}
 .nav-item.logout-item:active{background:rgba(239,68,68,.22)}
 /* Notification badge on nav items */
-.nav-badge{margin-left:auto;background:var(--danger);color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:20px;text-align:center}
+.nav-badge{margin-left:auto;background:#E05A4E;color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:20px;text-align:center}
+
+/* The sidebar's own background is dark by design in BOTH app themes
+   (rgba(22,18,13,.88)) — its text colors are correctly light in every
+   theme, unconditionally, matching that dark backdrop. A previous
+   [data-theme="light"] override here darkened this text for light
+   theme specifically, left over from an earlier round of sidebar-
+   transparency work where the sidebar's own background briefly did
+   turn light-page-colored in light theme. Now that the sidebar is back
+   to its normal solid-dark background in both themes, that override
+   produced dark text on a dark background — unreadable, the opposite of
+   its intent — so it's removed; the base light-colored rules above
+   (.sidebar-logo-text h2/p, .nav-item, etc.) are correct as-is and need
+   no theme-specific exception. */
 .sidebar-footer{padding:10px 8px 12px;border-top:1px solid #2A211A;flex-shrink:0}
 .user-chip{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;transition:var(--transition)}
 .user-chip:hover{background:#2A211A}
@@ -618,9 +635,9 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ── TOPBAR ── */
 .topbar{
-  height:var(--topbar-h);background:rgba(250,248,245,.97);border-bottom:1px solid rgba(208,200,188,.9);
+  height:var(--topbar-h);background:rgba(250,248,245,.55);border-bottom:1px solid rgba(208,200,188,.9);
   display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);position:relative;z-index:10;
+  -webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);position:relative;z-index:10;
 }
 .hamburger-btn{
   width:36px;height:36px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
@@ -646,6 +663,21 @@ button{font-family:'DM Sans',sans-serif}
 .topbar-title{font-size:15.5px;font-weight:700;color:#1A1310;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topbar-breadcrumb{font-size:11.5px;color:#475569;white-space:nowrap;font-weight:500}
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* Empty on most pages (nothing portaled in) — :empty hides it entirely
+   so there's no stray gap/margin on pages that don't use TopbarActions,
+   only showing once a page actually renders buttons into it. */
+.topbar-page-actions{display:flex;align-items:center;gap:8px}
+.topbar-page-actions:empty{display:none}
+/* Mobile topbar is already tight (hamburger + title + SOS + Help + Bell
+   + Avatar) — rather than hide these actions entirely (which would make
+   Add Item/Release inaccessible on mobile, a real functional loss, not
+   just a style tradeoff), their text labels collapse to icon-only so
+   they still fit without needing the extra width. */
+@media(max-width:768px){
+  .topbar-page-actions .btn span,
+  .topbar-page-actions .btn{font-size:0;padding:8px;gap:0}
+  .topbar-page-actions .btn svg{width:15px;height:15px}
+}
 /* A little extra breathing room specifically between the SOS button and
    the theme toggle — the base 10px gap (shared by every icon in
    .topbar-right) reads as slightly too tight next to the SOS button's
@@ -668,7 +700,34 @@ button{font-family:'DM Sans',sans-serif}
   transform:translateY(-1px);
 }
 .icon-btn:active{transform:scale(.93);}
-.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:var(--danger);border-radius:50%;border:2px solid white}
+.notif-dot{
+  position:absolute;top:2px;right:2px;min-width:16px;height:16px;
+  padding:0 3px;background:var(--danger);border-radius:9px;
+  border:2px solid white;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:700;color:#fff;line-height:1;
+  font-family:'DM Sans',sans-serif;
+}
+/* Profile group in topbar: avatar + name/role + dropdown chevron, as one
+   clickable unit (the whole row navigates to /profile, not just the
+   avatar circle). */
+.topbar-profile{
+  display:flex;align-items:center;gap:9px;cursor:pointer;
+  padding:4px 10px 4px 4px;border-radius:24px;flex-shrink:0;
+  transition:var(--transition);
+}
+.topbar-profile:hover{background:var(--surface2)}
+.topbar-profile:hover .topbar-avatar{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.topbar-profile-info{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+.topbar-profile-name{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.topbar-profile-role{font-size:11px;color:var(--text-3);white-space:nowrap}
+/* Mobile topbar is already tight (see .topbar-page-actions above) — name/
+   role/chevron collapse away, leaving just the avatar, same space-saving
+   approach already used for the page-action buttons on this row. */
+@media(max-width:768px){
+  .topbar-profile{gap:0;padding:0}
+  .topbar-profile-info{display:none}
+}
 /* Avatar button in topbar */
 .topbar-avatar{
   width:34px;height:34px;border-radius:50%;cursor:pointer;
@@ -676,7 +735,6 @@ button{font-family:'DM Sans',sans-serif}
   font-size:11px;font-weight:700;color:white;flex-shrink:0;overflow:hidden;
   border:2px solid var(--border);transition:var(--transition);
 }
-.topbar-avatar:hover{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
 .topbar-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
 /* ── CARDS ── */
@@ -687,7 +745,7 @@ button{font-family:'DM Sans',sans-serif}
 .card-footer{padding:10px 18px;border-top:1px solid var(--border)}
 
 /* ── STATS ── */
-.stats-row{display:grid;gap:14px;margin-bottom:20px}
+.stats-row{display:grid;gap:22px;margin-bottom:20px}
 .stats-row.cols-4{grid-template-columns:repeat(4,1fr)}
 .stats-row.cols-3{grid-template-columns:repeat(3,1fr)}
 .stats-row.cols-2{grid-template-columns:repeat(2,1fr)}
@@ -713,13 +771,39 @@ button{font-family:'DM Sans',sans-serif}
 /* Standard table with collapsed borders */
 table{width:100%;border-collapse:collapse}
 /* Table headers: uppercase, muted color, background highlight */
-thead th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#3E332C;text-transform:uppercase;letter-spacing:.06em;background:rgba(243,240,236,.98);border-bottom:1px solid rgba(208,200,188,.9);white-space:nowrap}
+/* NOTE: previously had position:sticky;top:0 here to freeze column
+   headers while scrolling. Reverted — .table-wrap{overflow-x:auto}
+   (below) has no explicit overflow-y, which per the CSS Overflow spec
+   forces the computed overflow-y to 'auto' too (a non-'visible' value on
+   one axis coerces the other away from 'visible'). That makes
+   .table-wrap itself the nearest scrolling ancestor for this sticky
+   positioning instead of the actual page — and since .table-wrap never
+   develops its own vertical scrollbar (its content just grows to fit),
+   the sticky thead didn't just fail to freeze, it rendered invisibly/
+   with no effective height, hiding every column label. The frozen
+   title/filter bars above these tables (.inv-items-sticky-header etc.)
+   are unaffected — they're NOT inside .table-wrap, so they don't hit
+   this. Fixing the underlying overflow conflict properly would need a
+   markup restructure (moving horizontal scroll to a wrapper outside the
+   sticky positioning's ancestor chain); reverting this one property is
+   the safe fix for now rather than shipping invisible table headers. */
+thead th{padding:13px 16px;text-align:left;font-size:11px;font-weight:700;color:#0F5C40;text-transform:uppercase;letter-spacing:.06em;background:#C2ECD9;border-bottom:1px solid #8FD4B4;white-space:nowrap}
 /* Table data cells with bottom border */
-tbody td{padding:11px 14px;font-size:13px;color:#2E2420;border-bottom:1px solid rgba(203,213,225,.7);vertical-align:middle}
+tbody td{padding:14px 16px;font-size:13px;color:#2E2420;border-bottom:1px solid rgba(203,213,225,.7);vertical-align:middle;line-height:1.5}
 tbody tr:last-child td{border-bottom:none}
 /* Hover effect on rows */
 tbody tr:hover td{background:var(--surface2)}
 td strong{color:#1A1310;font-weight:700}
+/* Badges/buttons/toggles sitting inside a cell previously had no
+   guaranteed vertical alignment of their own — fine at the old tighter
+   row height, but with more cell padding a badge or button could drift
+   off the text baseline of neighboring plain-text cells. Centering them
+   on their own line keeps every cell's content vertically balanced
+   regardless of what it contains. */
+tbody td > .badge,
+tbody td > .btn {
+  vertical-align: middle;
+}
 
 /* ========== BADGES: Status and role indicators ========== */
 /* Inline badge with colored dot indicator */
@@ -755,6 +839,7 @@ td strong{color:#1A1310;font-weight:700}
   gap:6px;
   line-height:1;
   position:relative;
+  -webkit-user-select:none;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
 }
@@ -954,7 +1039,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
 /* ========== MODAL DIALOGS: Overlay and modal container ========== */
 /* Full-screen overlay with semi-transparent background and blur */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:20px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:none;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);padding:20px}
 /* Modal overlay visible state */
 .modal-overlay.open{display:flex}
 /* Modal container with shadow and rounded corners */
@@ -976,22 +1061,47 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 
 /* ========== TABS: Tabbed interface for filtering content ========== */
-/* Tab button container with background pill styling */
-.tab-row{display:flex;gap:2px;padding:3px;background:var(--surface2);border-radius:9px;width:fit-content;border:1px solid var(--border)}
-/* Individual tab button */
+/* Tab button container — no longer a connected pill strip; each button
+   stands on its own like any other .btn in this app, so the row is just
+   a wrapped flex group with breathing room between buttons. */
+.tab-row{display:flex;gap:8px;width:fit-content;margin-left:auto;margin-right:auto;flex-wrap:wrap}
+/* Individual tab button — modeled directly on .btn-outline (border,
+   shadow, hover lift, press-down scale) rather than the app's own
+   lighter "tab" treatment, so an unselected tab reads unambiguously as
+   a real, clickable button rather than a label that happens to be
+   inside a tab strip. */
 .tab-btn{
-  padding:7px 16px;border-radius:8px;border:none;
-  background:transparent;font-family:'DM Sans',sans-serif;
+  padding:9px 16px;border-radius:10px;
+  border:1.5px solid var(--border-strong);
+  background:var(--surface);font-family:'DM Sans',sans-serif;
   font-size:12px;font-weight:600;color:var(--text-2);
   cursor:pointer;
-  transition:background .16s ease, color .16s ease, box-shadow .16s ease, transform .1s ease;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;
 }
-.tab-btn:hover:not(.active){background:rgba(30,123,94,.07);color:var(--primary);}
-/* Active tab with background highlight */
+.tab-btn:hover:not(.active){
+  border-color:var(--primary);color:var(--primary);
+  background:var(--primary-light);
+  box-shadow:0 2px 8px rgba(30,123,94,.12);
+  transform:translateY(-1px);
+}
+.tab-btn:active:not(.active){transform:scale(.96);}
+/* Active tab — solid brand green with white text, matching how
+   "selected"/"primary" already reads everywhere else in this app
+   (buttons, .nav-item.active's indicator). The previous light-green-
+   tint version (#C2ECD9 bg / dark green text) was already a fix over
+   the old near-black dark-mode bug, but a soft tint can still read as
+   "barely different" at a glance next to unselected tabs — solid color
+   + white text is unmistakable in both themes, no side-by-side
+   comparison needed to tell which tab is active. */
 .tab-btn.active{
-  background:var(--surface);color:var(--primary);
-  box-shadow:0 1px 5px rgba(0,0,0,.10), 0 0 0 1px rgba(30,123,94,.12);
+  background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 2px 8px rgba(30,123,94,.35), 0 1px 2px rgba(30,123,94,.18);
+}
+[data-theme="dark"] .tab-btn.active{
+  background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 2px 8px rgba(30,123,94,.5);
 }
 
 /* ========== INVENTORY ACTION BUTTONS: Clean grid layout ========== */
@@ -1029,6 +1139,21 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   flex-basis:100%;
   width:100%;
   justify-content:center;
+}
+
+/* Inventory Items' Actions column — icon-only, horizontal row. A
+   dedicated class rather than reusing .inv-action-group/.inv-action-btn
+   above, since Batches and Suppliers still use those with the original
+   stacked, text-labeled button layout — changing those shared classes
+   would have broken those two tables' action columns instead of just
+   redesigning Items'. */
+.inv-action-group-icons{
+  display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;
+  align-items:center;justify-content:flex-start;
+}
+.inv-action-group-icons .inv-action-btn{
+  width:32px;height:32px;padding:0;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;
 }
 /* Edit button styling — neutral gray variant */
 .inv-action-edit{
@@ -1160,10 +1285,28 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .empty-state p{font-size:13px;margin-top:6px;color:#3E332C;font-weight:500}
 
 /* ── PROFILE ── */
+/* Blurred, translucent, interactive glass card — ROLE_GRADIENTS
+   (profileHelpers.js) now uses rgba stops (.82 alpha) specifically so
+   this backdrop-filter blur has something to actually show through;
+   an opaque gradient here would make the blur invisible, same lesson
+   as the sidebar's own blur/transparency work elsewhere in this file.
+   The hover lift + brighter shadow is the "interactive" half — small
+   and tasteful (a profile header isn't a button, it shouldn't feel
+   clickable), just enough to read as a living surface rather than a
+   flat, static banner. */
 .profile-header{
   display:flex;align-items:center;gap:18px;padding:22px;
   background:linear-gradient(135deg,#16A34A,#059669);
   border-radius:14px;margin-bottom:18px;color:#fff;position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.22);
+  -webkit-backdrop-filter:blur(40px);backdrop-filter:blur(40px);
+  box-shadow:0 8px 24px rgba(0,0,0,.18);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, filter .25s ease;
+}
+.profile-header:hover{
+  transform:translateY(-3px);
+  box-shadow:0 14px 34px rgba(0,0,0,.26);
+  filter:brightness(1.06) saturate(1.1);
 }
 .profile-header::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08)}
 .profile-avatar-lg{
@@ -1178,33 +1321,57 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   display:none;align-items:center;justify-content:center;font-size:18px;
 }
 .profile-avatar-lg:hover .avatar-upload-overlay{display:flex}
-.profile-info h2{font-size:19px;font-weight:700}
-.profile-info p{font-size:13px;opacity:.8;margin-top:2px}
+/* Wraps .profile-avatar-lg so the remove-photo badge can sit on the
+   circle's outer edge — .profile-avatar-lg itself needs overflow:hidden
+   to clip the circular photo, which would also clip this badge if it
+   lived inside that same element instead of as its sibling here. */
+.profile-avatar-wrap{position:relative;flex-shrink:0}
+.avatar-remove-btn{
+  position:absolute;bottom:-2px;right:-2px;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--danger,#DC2626);border:2px solid var(--surface,#fff);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);
+}
+.avatar-remove-btn:hover{background:#B91C1C}
+.profile-info h2{font-size:19px;font-weight:700;text-shadow:0 1px 8px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.4)}
+.profile-info p{font-size:13px;opacity:.95;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.35)}
 .profile-info .role-tag{display:inline-block;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-top:5px}
 
 /* ── PROFILE TABS ── */
 .profile-tabs-container{margin-top:24px}
+/* Redesigned from an underline-tab strip to standalone buttons, matching
+   .tab-btn's treatment elsewhere in the app (border, shadow, hover lift,
+   press scale) — the container itself no longer needs its own
+   background/border-bottom framing since each tab now carries its own
+   full button chrome instead of sharing one strip's outline. */
 .profile-tabs{
-  display:flex;gap:14px;margin-bottom:20px;
-  background:rgba(250,248,245,.96);
-  border:1px solid rgba(208,200,188,.8);
-  border-radius:12px 12px 0 0;
-  border-bottom:2px solid var(--border);
-  padding:6px 14px 0;overflow-x:auto;
+  display:flex;gap:8px;margin-bottom:20px;
+  padding:0;overflow-x:auto;flex-wrap:wrap;
+  width:fit-content;margin-left:auto;margin-right:auto;
   scrollbar-width:none;-ms-overflow-style:none;
 }
 .profile-tabs::-webkit-scrollbar{display:none}
 .profile-tab{
-  padding:12px 16px;border:none;background:none;cursor:pointer;
-  font-size:13px;font-weight:600;color:#5B6472;
-  transition:var(--transition);position:relative;
-  border-bottom:3px solid transparent;transform:translateY(2px);
+  padding:9px 16px;border-radius:10px;
+  border:1.5px solid var(--border-strong);
+  background:var(--surface);cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  font-size:12px;font-weight:600;color:var(--text-2);
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;flex-shrink:0;
 }
-.profile-tab:hover{color:#1A1310}
+.profile-tab:hover:not(.active){
+  border-color:var(--primary);color:var(--primary);
+  background:var(--primary-light);
+  box-shadow:0 2px 8px rgba(30,123,94,.12);
+  transform:translateY(-1px);
+}
+.profile-tab:active:not(.active){transform:scale(.96);}
 .profile-tab.active{
-  color:var(--primary);border-bottom-color:var(--primary);
-  transform:translateY(0);
+  background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 2px 8px rgba(30,123,94,.35), 0 1px 2px rgba(30,123,94,.18);
 }
 .profile-tab-content{
   display:none;opacity:0;transition:opacity .2s ease;
@@ -1259,6 +1426,8 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;width:130px;flex-shrink:0}
 .detail-value{font-size:13px;color:#0A0F1E;font-weight:500}
+/* Vital Signs grid inside HealthDetailModal (BP / Temp / Pulse / O2 Sat) */
+.vital-signs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 
 /* ── INVENTORY LOG TABLE ── */
 .inv-log-row{display:grid;grid-template-columns:100px 1fr 70px 80px 120px 80px;gap:8px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
@@ -1372,11 +1541,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 #page-login::before{
   content:'';position:absolute;inset:0;
   background:linear-gradient(135deg,rgba(210,195,178,.35) 0%,rgba(36,28,18,.35) 50%,rgba(12,8,4,.45) 100%);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
 }
 .login-card{
   background:rgba(14,10,6,.72);border:1px solid rgba(255,245,230,.14);
-  backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
   border-radius:20px;padding:44px 48px;
   width:440px;max-width:calc(100vw - 40px);position:relative;z-index:1;
   box-shadow:0 24px 64px rgba(0,0,0,.55);
@@ -1545,7 +1714,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 }
 
 /* ── FORGOT PASSWORD OVERLAY ── */
-.forgot-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.forgot-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9500;display:none;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .forgot-overlay.open{display:flex}
 .forgot-box{background:rgba(14,10,6,.95);border:1px solid rgba(255,245,230,.11);border-radius:16px;padding:32px;width:380px;max-width:calc(100vw - 40px)}
 .forgot-box h3{font-size:17px;font-weight:700;color:#EDE8E0;margin-bottom:6px}
@@ -1652,8 +1821,9 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
     background:var(--surface,#fff);padding:16px 16px 24px;
     box-shadow:-8px 0 28px rgba(0,0,0,.3);
     transform:translateX(100%);transition:transform .28s ease;
-    overflow-y:auto;
+    overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;
   }
+  .chat-side-panels::-webkit-scrollbar{display:none}
   .chat-side-panels.mobile-open{transform:translateX(0)}
   .chat-panel-toggle-btn{display:inline-flex}
   .chat-panel-close-btn{
@@ -1695,7 +1865,8 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   .page-header h2{font-size:16px}
   .report-summary{grid-template-columns:1fr 1fr}
   .profile-header{flex-direction:column;align-items:flex-start;gap:12px}
-  .chatbot-layout{height:calc(100vh - 130px)}
+  .profile-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;justify-content:flex-start;margin-left:0;margin-right:0}
+  .chatbot-layout{height:calc(100vh - 130px);height:calc(100dvh - 130px)}
   .msg-content-wrap{max-width:88%}
   .tab-row{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;border-radius:9px}
   .tab-row::-webkit-scrollbar{display:none}
@@ -1730,7 +1901,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   tbody td{padding:9px 10px;font-size:12px}
   .report-summary{grid-template-columns:1fr}
   .chat-topic-grid{grid-template-columns:1fr 1fr}
-  .chatbot-layout{height:calc(100vh - 120px)}
+  .chatbot-layout{height:calc(100vh - 120px);height:calc(100dvh - 120px)}
   .modal{padding:20px 16px}
   .modal-header h3{font-size:15px}
   .sms-template-grid{grid-template-columns:1fr 1fr}
@@ -1955,7 +2126,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 
 /* Ultra-wide screens (1440px+) */
 @media (min-width:1440px){
-  .page-content{padding:28px;max-width:1400px;margin:0 auto}
+  .page-content{padding:28px}
   .stats-row.cols-4{grid-template-columns:repeat(4,1fr)}
   .stats-row.cols-3{grid-template-columns:repeat(3,1fr)}
   .two-col{grid-template-columns:1fr 380px}
@@ -2151,7 +2322,12 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 @media (max-width:768px){
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{min-width:500px}
-  thead th{position:sticky;top:0;z-index:10}
+  /* thead th sticky positioning removed here too — same root cause as
+     the base thead th rule elsewhere in this file: .table-wrap's
+     overflow-x:auto (right above) forces overflow-y to compute as
+     'auto' too, making .table-wrap itself the sticky positioning's
+     scrolling ancestor instead of the actual page, which renders
+     column headers invisibly rather than just non-sticky. */
 }
 
 /* Better responsive lists and cards */
@@ -2299,7 +2475,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 .emg-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10000;
   display:none;align-items:center;justify-content:center;
-  backdrop-filter:blur(6px);padding:20px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:20px;
 }
 .emg-overlay.open{display:flex}
 
@@ -2445,12 +2621,12 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .emg-live-backdrop{
   position:fixed;inset:0;z-index:99999;
   display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,0);backdrop-filter:blur(0px);
+  background:rgba(0,0,0,0);-webkit-backdrop-filter:blur(0px);backdrop-filter:blur(0px);
   transition:background .3s ease,backdrop-filter .3s ease;
   padding:20px;pointer-events:none;
 }
 .emg-live-backdrop.emg-live-open{
-  background:rgba(0,0,0,.78);backdrop-filter:blur(8px);pointer-events:all;
+  background:rgba(0,0,0,.78);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);pointer-events:all;
 }
 .emg-log-entry{
   padding:12px 0;
@@ -2609,7 +2785,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-overlay{
   position:fixed;inset:0;background:transparent;z-index:9800;
   display:none;align-items:flex-start;justify-content:center;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   padding:40px 20px;overflow-y:auto;
   scrollbar-width:none;-ms-overflow-style:none;
 }
@@ -2808,7 +2984,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* ── CHATBOT LAYOUT ── */
 .chatbot-layout{display:grid;grid-template-columns:1fr 300px;gap:16px;height:calc(100vh - 112px)}
 .chat-main-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
-.chat-side-panels{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.chat-side-panels{display:flex;flex-direction:column;gap:12px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+.chat-side-panels::-webkit-scrollbar{display:none}
 .chat-side-card{flex-shrink:0}
 
 /* Mobile toggle for Topic Categories / Clinic Contacts / Medical
@@ -2834,13 +3011,58 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .chat-main-header{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;
-  background:linear-gradient(135deg,var(--primary-light),#F0F4FA);
+  background:var(--surface,#fff);
+  position:sticky;top:0;z-index:5;
 }
+/* The old background (linear-gradient(135deg,var(--primary-light),
+   #F0F4FA)) was never fully opaque in dark mode — --primary-light there
+   is only 14% alpha (rgba(61,191,150,.14)), and #F0F4FA is a hardcoded
+   light color with no dark-mode equivalent at all. That was tolerable
+   while the header just sat in normal document flow, but once it became
+   position:fixed on mobile (sitting directly on top of scrolling chat
+   content — see the @media(max-width:900px) block below), that
+   near-transparent background let the messages underneath show straight
+   through it, producing the "ghosted", double-exposed text look. A
+   solid var(--surface) is fully opaque in both themes. */
+/* Belt-and-suspenders on top of the dvh fix for .chatbot-layout's height
+   (older mobile browsers without dvh support): pinning the header keeps
+   the Info/Logs/Clear buttons — including the mobile drawer toggle —
+   reachable even if the on-screen keyboard opening momentarily leaves
+   .chat-main-panel's height calculation stale, instead of the whole
+   header scrolling out of the visible area with no way back to it. */
 .bot-identity{display:flex;align-items:center;gap:12px;min-width:0}
 .bot-avatar-lg{
-  width:42px;height:42px;border-radius:50%;background:#D1D5DB;
+  width:40px;height:40px;background:transparent;
   display:flex;align-items:center;justify-content:center;font-size:20px;color:#5B6A6F;
-  box-shadow:0 2px 8px rgba(0,0,0,.08);flex-shrink:0;
+  flex-shrink:0;
+}
+/* MediBot's animated mascot face (BotFace.jsx). Idle: eyes blink on a
+   slow, slightly-offset-per-eye loop so it doesn't read as a mechanical
+   simultaneous blink; mouth stays a calm closed smile. Talking (while a
+   reply is being composed/sent): the smile hides and an open-mouth
+   ellipse animates rapidly between small and large scale — the same
+   "mouth moving" cue a real talking face gives, not just a static
+   thinking indicator. */
+.bot-eye{transform-origin:45px 52px;animation:botBlink 4.6s ease-in-out infinite}
+.bot-eye-right{transform-origin:59.5px 52px;animation-delay:.12s}
+@keyframes botBlink{
+  0%,90%,100%{transform:scaleY(1)}
+  94%{transform:scaleY(.15)}
+}
+.bot-mouth-talk{
+  opacity:0;transform-origin:50px 66px;transform:scaleY(.3);
+  transition:opacity .15s ease;
+}
+.bot-mouth-smile{transition:opacity .15s ease}
+.bot-face-talking .bot-mouth-smile{opacity:0}
+.bot-face-talking .bot-mouth-talk{opacity:1;animation:botTalk .32s ease-in-out infinite}
+@keyframes botTalk{
+  0%,100%{transform:scaleY(.3)}
+  50%{transform:scaleY(1)}
+}
+@media (prefers-reduced-motion: reduce){
+  .bot-eye,.bot-mouth-talk{animation:none}
+  .bot-face-talking .bot-mouth-talk{opacity:1;transform:scaleY(.7)}
 }
 .bot-name{font-size:15px;font-weight:700;color:var(--text)}
 .bot-status{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2856,6 +3078,24 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    wraps to two rows if it still doesn't fit, keeping the buttons intact
    rather than forcing a shrink. */
 .chat-header-actions{flex-shrink:0}
+@media(max-width:900px){
+  /* REVERTED — position:fixed here was meant to keep the header (and
+     its Info/Logs/Clear/mobile-drawer-toggle buttons) reachable when the
+     on-screen keyboard opens (see git history / earlier comments in this
+     file for the original reasoning). In practice, across several
+     attempts to get the reserved-space padding exactly right, it kept
+     reproducing a worse problem instead: the header rendering on top of
+     /overlapping chat content, looking "ghosted" or duplicated. That's a
+     more disruptive, more visible bug than the one it was meant to
+     solve, so this reverts .chat-main-header back to its original,
+     simple in-flow positioning (the same rule that applies at all other
+     widths — see the base .chat-main-header rule, which is just
+     position:sticky) — no position:fixed, no reserved padding-top
+     workaround, nothing that can overlap content again. If the keyboard-
+     hides-the-toggle issue needs solving again later, it should be
+     tackled as its own separate, carefully-tested change rather than
+     layered back on top of this. */
+}
 @media(max-width:600px){
   .chat-main-header{flex-wrap:wrap;row-gap:8px}
   .bot-status{max-width:220px}
@@ -2866,12 +3106,13 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* ── MESSAGE BUBBLES (New Structure) ── */
 .msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s ease}
-.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;animation:msg-in .25s ease}
+.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s ease}
 .msg-content-wrap{display:flex;flex-direction:column;max-width:80%}
 @keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
-.bot-av{width:32px;height:32px;border-radius:50%;background:#D1D5DB;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:#5B6A6F}
-.user-av{width:32px;height:32px;border-radius:50%;background:#D1D5DB;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#5B6A6F;flex-shrink:0}
+.bot-av{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:#5B6A6F}
+.user-av{width:32px;height:32px;border-radius:50%;background:#D1D5DB;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#5B6A6F;flex-shrink:0;overflow:hidden}
+.user-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
 .msg-bubble{padding:11px 14px;border-radius:14px;font-size:13px;line-height:1.55;word-break:break-word}
 .msg-bubble.bot{background:var(--surface);border:1px solid var(--border);color:var(--text);border-top-left-radius:4px;box-shadow:var(--shadow)}
@@ -3038,6 +3279,55 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   text-transform:none;
   letter-spacing:0;
 }
+/* Tint the group header row itself to match its category's badge color
+   (.cat-medicine/.cat-supply/.cat-equipment elsewhere in this file) —
+   previously every category's group row used the same plain
+   var(--surface2) background regardless of category, so "MEDICINE",
+   "SUPPLY", and "EQUIPMENT" section headers all looked identical apart
+   from their text. Text color left as var(--text) (not tinted) since
+   these rows are bold/uppercase section labels, not small pills — a
+   colored background alone reads clearly enough without needing colored
+   text too, and keeps them legible against every category's tint. */
+.cat-row-medicine td{background:#C4B5FD}
+.cat-row-supply td{background:#A7F3D0}
+.cat-row-equipment td{background:#93C5FD}
+/* Solid, category-matched text color instead of falling back to the
+   generic body text color — matches each category's own badge text
+   (.cat-medicine/.cat-supply/.cat-equipment) so "MEDICINE"/"SUPPLY"/
+   "EQUIPMENT" reads as clearly, deliberately tied to that category's
+   color, not just default dark text sitting on a colored background. */
+.cat-row-medicine td span{color:#5B21B6}
+.cat-row-supply td span{color:#065F46}
+.cat-row-equipment td span{color:#1D4ED8}
+[data-theme="dark"] .cat-row-medicine td{background:rgba(139,92,246,.16)}
+[data-theme="dark"] .cat-row-supply td{background:rgba(16,185,129,.14)}
+[data-theme="dark"] .cat-row-equipment td{background:rgba(59,130,246,.14)}
+[data-theme="dark"] .cat-row-medicine td span{color:#C4B5FD}
+[data-theme="dark"] .cat-row-supply td span{color:#6EE7B7}
+[data-theme="dark"] .cat-row-equipment td span{color:#93C5FD}
+
+/* Individual item rows (Inventory -> Items) — more generous than the
+   table's base 11px/14px td padding, so each item reads as a distinct,
+   comfortably-spaced row rather than a cramped line, especially given
+   how much is packed into the first cell (name + batch/received-date/
+   purchase-ref/FIFO tags). border-bottom is set explicitly here too,
+   stronger than the base tbody td separator — that one was nearly
+   invisible in dark mode (rgba(255,255,255,.05), fixed separately
+   above, but items specifically benefit from an even clearer break
+   between rows given how much content each row packs in). */
+.inv-item-row td{
+  padding-top:18px;padding-bottom:18px;
+  vertical-align:middle;
+  border-bottom:3px solid var(--border-strong);
+}
+[data-theme="dark"] .inv-item-row td{border-bottom-color:rgba(255,255,255,.22)}
+/* Alternating background — a border alone wasn't enough to visually
+   separate two consecutive rows when they happen to share the exact
+   same item name (e.g. two different batches of "Vitamin B Complex"),
+   since the identical text made adjacent rows read as one continuous
+   block even with a line between them. A background tint makes every
+   row's boundary obvious regardless of what its text says. */
+.inv-item-row-alt td{background:var(--surface2)}
 
 .inv-expiry-row td{
   background:var(--surface);
@@ -3134,6 +3424,19 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* Manual wrap */
 .scan-manual-wrap{padding:16px 18px;border-top:1px solid var(--border);background:var(--surface2)}
+.scan-manual-textarea{min-height:130px}
+/* Native textarea scrollbars default to the OS/browser's own light-gray
+   style regardless of the app's theme — jarring against a dark surface.
+   Same thin, theme-matched treatment already used for .modal/.page-content. */
+.scan-manual-textarea::-webkit-scrollbar{width:6px}
+.scan-manual-textarea::-webkit-scrollbar-track{background:transparent}
+.scan-manual-textarea::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.scan-manual-textarea::-webkit-scrollbar-button{display:none;height:0}
+.ocr-result-box{
+  margin-top:14px;padding:12px 14px;border-radius:8px;
+  background:var(--warning-light,#FEF3C7);border:1px solid rgba(217,119,6,.25);
+}
+[data-theme="dark"] .ocr-result-box{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.3)}
 
 /* Sample buttons */
 .qr-sample-btn{
@@ -3337,8 +3640,9 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
   box-shadow:0 4px 12px rgba(220,38,38,.3);
 }
-.sms-form-header h3{font-size:15px;font-weight:700;color:var(--text);margin:0}
-.sms-form-header p{font-size:12px;color:var(--text-2);margin:2px 0 0}
+.sms-form-header h3{font-size:15px;font-weight:700;color:#7F1D1D;margin:0}
+.sms-form-header p{font-size:12px;color:#9F3B3B;margin:2px 0 0}
+.sms-form-header .sms-header-subtitle{font-size:12px;color:#9F3B3B}
 
 /* ── STEP BLOCKS ── */
 .sms-step-block{
@@ -3401,6 +3705,14 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   flex-shrink:0;transition:var(--transition);
 }
 .pickup-option.selected .pickup-radio{background:var(--primary);border-color:var(--primary)}
+
+/* ── SMS PICKUP CARD (Steps 3 & 4, now stacked under Live Preview in the
+   narrow 320px column instead of the wide form card) ── */
+.sms-pickup-card .sms-step-block{padding:16px 18px;gap:12px}
+.sms-pickup-card .sms-step-num{width:24px;height:24px;font-size:12px}
+.sms-pickup-card .sms-step-title{margin-bottom:10px}
+.sms-pickup-card .pickup-options{flex-direction:column;gap:8px}
+.sms-pickup-card .pickup-option{min-width:0;padding:12px}
 
 /* ── SMS ACTIONS ── */
 .sms-actions{
@@ -4385,19 +4697,21 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 /* ── DARK MODE — blue/cold text overrides ── */
 
-/* Profile tabs: cold slate → warm readable */
-[data-theme="dark"] .profile-tab { color: #B8B0A8; }
-[data-theme="dark"] .profile-tab:hover { color: #DDD6CE; }
-
 /* Alert info border */
 [data-theme="dark"] .alert-info { border-color: rgba(61,191,150,.35); }
 
 /* Chat chips: light blue border on dark bg */
 [data-theme="dark"] .chip { border-color: rgba(61,191,150,.3); }
 
-/* Category equipment badge (blue on white → warm on dark) */
-[data-theme="dark"] .cat-equipment { background: rgba(26,122,138,.2); color: #38B8CC; }
-[data-theme="dark"] .cat-medicine  { background: rgba(106,63,160,.2); color: #A97FE0; }
+/* Category badge dark-mode colors (Medicine=violet, Supply=green,
+   Equipment=blue) live in one place only, near the base .cat-medicine/
+   .cat-supply/.cat-equipment rules further down this file — a duplicate
+   override used to sit here too, with different (duller/off-target)
+   values, and being later in the file it silently won the cascade over
+   the correct one, making Medicine read as a muddy purple and Equipment
+   as teal instead of a clean violet/blue. Removed rather than fixed in
+   place, so there's a single source of truth instead of two competing
+   copies drifting apart again. */
 
 /* Scan idle label */
 [data-theme="dark"] .scan-idle-label { color: #B8B0A8; }
@@ -5214,7 +5528,336 @@ td {
 
 @keyframes pulse-warning{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.4)}70%{box-shadow:0 0 0 6px rgba(245,158,11,0)}}
 
-
+/* My Requests -> Processing Information cards (Processing Time /
+   Requirements / Pickup) — a fixed 3-column grid squeezed "Requirements"
+   into too little space per column, wrapping it mid-word
+   ("Requiremen/ts"). The generic inline-style attribute-selector
+   catch-all elsewhere in this file (targeting
+   [style*="grid-template-columns:repeat(3,1fr)"]) should in principle
+   already collapse this, but this rule is placed here — after
+   everything else in the stylesheet — as a direct, unambiguous class-
+   based fix that doesn't depend on matching a raw inline-style string,
+   guaranteeing it takes effect regardless of any cascade ordering
+   elsewhere in this large file. */
 @media(max-width:640px){
   .processing-info-grid{grid-template-columns:1fr!important}
 }
+
+/* Health Record Details modal -> Vital Signs (BP / Temp / Pulse / O2 Sat).
+   4 equal columns is fine down to ~480px, but below that the values
+   ("120/80", "36.8") and units start wrapping mid-word inside each
+   cell. 2 columns keeps every reading fully legible on small phones. */
+@media(max-width:480px){
+  .vital-signs-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ── SCROLL TO TOP BUTTON ── */
+/* Floating over .page-content's bottom-right corner (positioned fixed
+   relative to the viewport, not the scroll container, since the button
+   itself must stay put visually while the page scrolls underneath it).
+   See components/ui/ScrollToTopButton.jsx for the show/hide logic. */
+.scroll-to-top-btn{
+  position:fixed;right:24px;bottom:24px;z-index:400;
+  width:44px;height:44px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--primary);color:#fff;border:none;cursor:pointer;
+  box-shadow:0 4px 14px rgba(0,0,0,.22);
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
+  animation:scroll-top-in .2s ease;
+}
+.scroll-to-top-btn:hover{background:var(--primary-dark);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.scroll-to-top-btn:active{transform:translateY(0)}
+@keyframes scroll-top-in{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:768px){
+  .scroll-to-top-btn{right:16px;bottom:16px;width:40px;height:40px}
+}
+
+/* ── USER MANUAL MODAL ── */
+.manual-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9700;
+  display:none;align-items:center;justify-content:center;
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  padding:24px;
+}
+.manual-overlay.open{display:flex}
+.manual-box{
+  background:var(--surface,#fff);border-radius:16px;
+  width:820px;max-width:100%;height:82vh;max-height:640px;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
+  animation:manual-pop .18s ease;
+}
+@keyframes manual-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+.manual-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.manual-header h3{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--text);margin:0}
+.manual-close-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:32px;height:32px;border-radius:50%;
+  background:var(--surface2);border:none;cursor:pointer;color:var(--text-2);
+}
+.manual-close-btn:hover{background:var(--border)}
+.manual-body{display:flex;flex:1;min-height:0}
+.manual-nav{
+  width:220px;flex-shrink:0;border-right:1px solid var(--border);
+  padding:10px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;
+  background:var(--surface2);
+}
+.manual-nav-item{
+  display:flex;align-items:center;gap:9px;text-align:left;
+  padding:9px 12px;border-radius:8px;border:none;background:none;
+  cursor:pointer;font-size:13px;color:var(--text-2);font-weight:500;
+  transition:var(--transition);
+}
+.manual-nav-item:hover{background:var(--border);color:var(--text)}
+.manual-nav-item.active{background:var(--primary);color:#fff}
+.manual-content{
+  flex:1;min-width:0;overflow-y:auto;padding:24px 28px;
+}
+.manual-content h2{font-size:18px;font-weight:700;color:var(--text);margin:0 0 14px}
+.manual-content h4{font-size:13px;font-weight:700;color:var(--primary);margin:18px 0 6px;text-transform:uppercase;letter-spacing:.03em}
+.manual-content h4:first-of-type{margin-top:0}
+.manual-content p{font-size:13.5px;line-height:1.6;color:var(--text-2);margin:0 0 10px}
+.manual-content ul{margin:0 0 10px;padding-left:20px}
+.manual-content li{font-size:13.5px;line-height:1.7;color:var(--text-2);margin-bottom:6px}
+.manual-content strong{color:var(--text);font-weight:700}
+
+@media(max-width:768px){
+  .manual-box{width:100%;height:100%;max-height:100%;border-radius:0}
+  .manual-body{flex-direction:column}
+  .manual-nav{
+    width:100%;flex-direction:row;overflow-x:auto;overflow-y:visible;
+    border-right:none;border-bottom:1px solid var(--border);
+    padding:8px;scrollbar-width:none;-ms-overflow-style:none;
+  }
+  .manual-nav::-webkit-scrollbar{display:none}
+  .manual-nav-item{white-space:nowrap;flex-shrink:0}
+  .manual-content{padding:18px}
+}
+
+/* ── INVENTORY ITEMS / LOG / EHR: frozen title/filter row + column
+   headers while scrolling ──
+   The title/filter row (.inv-*-sticky-header) always freezes — it's not
+   inside .table-wrap, so it's unaffected by the conflict below.
+   The column-header row (thead th) ALSO freezes, but only above 1024px.
+   Reason: .table-wrap's app-wide overflow-x:auto (needed for horizontal
+   scroll on narrow screens) forces its computed overflow-y to 'auto'
+   too, which makes .table-wrap itself — not the actual page — the
+   scrolling ancestor for thead's position:sticky, and since .table-wrap
+   never develops its own vertical scrollbar, that hijacked stickiness
+   renders the column labels invisibly instead of just failing to
+   freeze. The fix: for these three tables specifically (scoped via
+   .inv-items-scroll/.inv-log-scroll/.inv-ehr-scroll, NOT the shared
+   .table-wrap class other tables use), horizontal-scroll overflow is
+   removed above 1024px — comfortably wide enough that these tables fit
+   without needing it — so thead's sticky positioning correctly targets
+   .page-content instead. Below 1024px, horizontal scroll is restored
+   (still genuinely needed on narrower screens) and thead reverts to
+   static positioning to avoid the invisible-header bug returning; the
+   title/filter row keeps freezing regardless. */
+.inv-items-scroll,.inv-log-scroll,.inv-ehr-scroll{overflow-x:visible}
+/* Deliberately a different color from .inv-*-sticky-header above (near-
+   white/cream) — once both rows are frozen and stacked directly on top
+   of each other, two near-identical backgrounds made them blur into one
+   indistinct block with no visible boundary between "controls" and
+   "column labels". A clearly different, branded tint here gives the
+   two frozen layers a visible seam so it's obvious where one ends and
+   the other begins. */
+.inv-items-table thead th,.inv-log-table thead th,.inv-ehr-table thead th{
+  position:sticky;z-index:2;
+  background:#C2ECD9!important;color:#0F5C40!important;
+  border-bottom:1px solid #8FD4B4;
+}
+[data-theme="dark"] .inv-items-table thead th,
+[data-theme="dark"] .inv-log-table thead th,
+[data-theme="dark"] .inv-ehr-table thead th{
+  background:#14523E!important;color:#8FF0C4!important;
+  border-bottom:1px solid rgba(30,123,94,.55);
+}
+.inv-items-table thead th{top:var(--items-header-h,64px)}
+.inv-log-table thead th{top:var(--log-header-h,52px)}
+.inv-ehr-table thead th{top:var(--ehr-header-h,52px)}
+
+@media(max-width:1024px){
+  .inv-items-scroll,.inv-log-scroll,.inv-ehr-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .inv-items-table thead th,.inv-log-table thead th,.inv-ehr-table thead th{
+    position:static;
+  }
+}
+
+.inv-items-sticky-header{
+  position:sticky;top:0;z-index:5;
+  background:rgba(250,248,245,.98);
+}
+[data-theme="dark"] .inv-items-sticky-header{background:#18130F}
+
+.inv-log-sticky-header{
+  position:sticky;top:0;z-index:5;
+  background:rgba(250,248,245,.98);
+}
+[data-theme="dark"] .inv-log-sticky-header{background:#18130F}
+
+.inv-ehr-sticky-header{
+  position:sticky;top:0;z-index:5;
+  background:rgba(250,248,245,.98);
+}
+[data-theme="dark"] .inv-ehr-sticky-header{background:#18130F}
+
+/* ── REPORTS: same frozen title/export-buttons row + column headers ── */
+.reports-scroll{overflow-x:visible}
+.reports-table thead th{
+  position:sticky;z-index:2;top:var(--reports-header-h,64px);
+  background:#C2ECD9!important;color:#0F5C40!important;
+  border-bottom:1px solid #8FD4B4;
+}
+[data-theme="dark"] .reports-table thead th{
+  background:#14523E!important;color:#8FF0C4!important;
+  border-bottom:1px solid rgba(30,123,94,.55);
+}
+@media(max-width:1024px){
+  .reports-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .reports-table thead th{position:static}
+}
+.reports-sticky-header{
+  position:sticky;top:0;z-index:5;
+  background:rgba(250,248,245,.98);
+}
+[data-theme="dark"] .reports-sticky-header{background:#18130F}
+
+/* ── PATIENTS: same frozen title/search row + column headers ── */
+.patients-scroll{overflow-x:visible}
+.patients-table thead th{
+  position:sticky;z-index:2;top:var(--patients-header-h,52px);
+  background:#C2ECD9!important;color:#0F5C40!important;
+  border-bottom:1px solid #8FD4B4;
+}
+[data-theme="dark"] .patients-table thead th{
+  background:#14523E!important;color:#8FF0C4!important;
+  border-bottom:1px solid rgba(30,123,94,.55);
+}
+@media(max-width:1024px){
+  .patients-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .patients-table thead th{position:static}
+}
+.patients-sticky-header{
+  position:sticky;top:0;z-index:5;
+  background:rgba(250,248,245,.98);
+}
+[data-theme="dark"] .patients-sticky-header{background:#18130F}
+
+/* ── QR SCANNER (redesigned): instructions | camera | scanned item ── */
+.qr-scan-layout{display:grid;grid-template-columns:240px 1fr 300px;gap:16px;align-items:start}
+@media(max-width:1100px){.qr-scan-layout{grid-template-columns:1fr 300px}.qr-instructions-card{grid-column:1/-1}}
+@media(max-width:768px){.qr-scan-layout{grid-template-columns:1fr}.qr-instructions-card{grid-column:auto}}
+
+.qr-instructions-card{padding:18px}
+.qr-instructions-card h3{margin:0 0 8px;font-size:15px;font-weight:700;color:var(--text)}
+.qr-instructions-card p{margin:0 0 16px;font-size:12.5px;line-height:1.5;color:var(--text-2)}
+.qr-checklist{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:10px}
+.qr-checklist li{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2)}
+.qr-checklist li svg{color:var(--primary);flex-shrink:0}
+.qr-upload-link{
+  display:inline-flex;align-items:center;gap:6px;background:none;border:none;
+  color:var(--primary);font-size:12.5px;font-weight:600;cursor:pointer;padding:0;
+}
+.qr-upload-link:hover{text-decoration:underline}
+
+.qr-camera-col{display:flex;flex-direction:column;gap:12px}
+.qr-camera-col .scan-viewport-wrap{padding:0;border-bottom:none}
+.qr-camera-col .scan-viewport{height:340px}
+.qr-camera-toggle-row{display:flex;justify-content:center}
+.qr-camera-toggle-row .btn{min-width:180px;justify-content:center}
+
+/* Flash / fullscreen overlay controls on the viewport itself */
+.scan-overlay-btn{
+  position:absolute;width:34px;height:34px;border-radius:50%;
+  background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);transition:background .15s;
+  z-index:3;
+}
+.scan-overlay-btn:hover{background:rgba(0,0,0,.65)}
+.scan-overlay-flash{top:12px;left:12px}
+.scan-overlay-fullscreen{top:12px;right:12px}
+
+.qr-test-samples-card{padding:14px 18px}
+
+.qr-bottom-actions{display:flex;gap:10px;justify-content:center;margin-top:4px}
+.qr-bottom-actions .btn{flex:1;max-width:200px;justify-content:center}
+
+/* Right column — Scanned Item (always visible) + Scan History (hidden
+   until toggled open via the "Scan History" button, or the "View Item
+   Details" button on the Scanned Item card — both just set the same
+   historyOpen state). */
+.qr-side-panel{display:flex;flex-direction:column;gap:16px}
+.qr-scanned-item-card{overflow:hidden}
+.qr-history-card{display:none;flex-direction:column;max-height:420px}
+.qr-side-panel.history-open .qr-history-card{display:flex}
+.qr-history-close-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:50%;background:var(--surface2);
+  border:none;cursor:pointer;color:var(--text-2);
+}
+.qr-history-close-btn:hover{background:var(--border)}
+
+/* ── CUSTOM DATE PICKER (components/ui/CustomDatePicker.jsx) ──
+   Replaces native <input type="date"> — the OS calendar popup can't be
+   restyled with CSS since it isn't part of the DOM at all. Trigger
+   matches the app's standard .btn-outline-style button; the dropdown
+   panel itself is a glass surface (transparent + blurred, same
+   language as .sidebar/.topbar/.profile-header elsewhere in this file)
+   with an interactive treatment on every clickable part — nav arrows
+   and day cells all get a hover response, not just a static grid. */
+.cdp-root{position:relative;display:inline-block;width:100%}
+.cdp-trigger{
+  display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;
+  border-radius:10px;border:1.5px solid var(--border-strong);
+  background:var(--surface);color:var(--text-2);font-size:13px;font-weight:600;
+  cursor:pointer;text-align:left;
+  transition:border-color .16s ease,box-shadow .16s ease,transform .12s ease,color .16s ease;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.cdp-trigger:hover{border-color:var(--primary);color:var(--primary);box-shadow:0 2px 8px rgba(30,123,94,.12);transform:translateY(-1px)}
+.cdp-trigger:active{transform:scale(.98)}
+
+.cdp-panel{
+  position:absolute;top:calc(100% + 8px);left:0;z-index:200;width:272px;
+  padding:14px;border-radius:16px;
+  background:rgba(250,248,245,.65);
+  border:1px solid rgba(255,255,255,.35);
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  box-shadow:0 16px 40px rgba(0,0,0,.22);
+  animation:cdpPop .16s cubic-bezier(.34,1.56,.64,1) both;
+}
+[data-theme="dark"] .cdp-panel{background:rgba(24,19,15,.65);border-color:rgba(255,255,255,.1)}
+@keyframes cdpPop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+.cdp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cdp-title{font-size:13px;font-weight:700;color:var(--text)}
+.cdp-nav{
+  width:28px;height:28px;border-radius:8px;border:none;background:transparent;
+  color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:background .14s ease,color .14s ease,transform .12s ease;
+}
+.cdp-nav:hover{background:var(--primary-light);color:var(--primary);transform:scale(1.08)}
+.cdp-nav:active{transform:scale(.9)}
+
+.cdp-weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px}
+.cdp-weekdays span{font-size:10px;font-weight:700;color:var(--text-3);text-align:center;text-transform:uppercase}
+
+.cdp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cdp-cell{
+  aspect-ratio:1;border:none;background:transparent;border-radius:8px;
+  font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .14s ease,color .14s ease,transform .12s cubic-bezier(.34,1.56,.64,1),box-shadow .14s ease;
+}
+.cdp-cell.cdp-empty{cursor:default;pointer-events:none}
+.cdp-cell:hover:not(.cdp-empty):not(:disabled){background:var(--primary-light);color:var(--primary);transform:scale(1.1)}
+.cdp-cell:active:not(.cdp-empty):not(:disabled){transform:scale(.94)}
+.cdp-cell.today{box-shadow:inset 0 0 0 1.5px var(--primary)}
+.cdp-cell.selected{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(30,123,94,.4)}
+.cdp-cell.selected:hover{transform:scale(1.06)}
+.cdp-cell:disabled{opacity:.3;cursor:not-allowed}

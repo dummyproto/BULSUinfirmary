@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import ItemsTab from './ItemsTab'
 import BatchesTab from './BatchesTab'
@@ -61,6 +62,8 @@ import {
   getMedicineBatchById,
   runExpirationCheck,
 } from '@services/medicineService'
+import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply } from '@services/supplyService'
+import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment } from '@services/equipmentService'
 import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
@@ -74,11 +77,13 @@ const TABS = [
   { key: 'scan', label: 'QR Scanner', Icon: CameraIcon },
   { key: 'log', label: 'Log', Icon: ClipboardIcon },
   { key: 'alerts', label: 'Alerts', Icon: BellIcon },
+  { key: 'notifications', label: 'Notifications', Icon: MailIcon },
 ]
 
 export default function InventoryPage() {
   const { profile } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const currentUserId = profile?.user_id ?? null
 
   const [tab, setTab] = useState('items')
@@ -137,6 +142,17 @@ export default function InventoryPage() {
     }
   }
 
+  // Declared here (before the effect below that calls it) rather than
+  // further down with the other refresh* helpers — that ordering used to
+  // trip up the react-hooks linter ("accessed before it is declared"),
+  // since function declarations being hoisted at runtime doesn't change
+  // how ESLint reads top-to-bottom source order.
+  async function refreshInventoryNotifications() {
+    const [list, unread] = await Promise.all([listInventoryNotifications(), countUnreadInventoryNotifications()])
+    setInventoryNotifications(list)
+    setUnreadNotifCount(unread)
+  }
+
   useEffect(() => {
     let cancelled = false
     Promise.all([
@@ -147,25 +163,36 @@ export default function InventoryPage() {
       listInventoryBatches(),
       listMedicinesAsInventoryItems(),
       listMedicineBatches(),
+      listSuppliesAsInventoryItems(),
+      listSupplyBatches(),
+      listEquipmentAsInventoryItems(),
+      listEquipmentBatches(),
       listSuppliers(),
       listInventoryNotifications(),
       countUnreadInventoryNotifications(),
     ])
-      .then(async ([inv, log, scan, users, batchList, medicines, medBatches, supplierList, notifList, unread]) => {
+      .then(async ([inv, log, scan, users, batchList, medicines, medBatches, supplies, supplyBatchList, equipmentItems, equipmentBatchList, supplierList, notifList, unread]) => {
         if (cancelled) return
-        // Medicine now lives in the new normalized tables (Phase 2/3) —
-        // legacy `inventory` rows with category='Medicine' still exist in
-        // the database (nothing was deleted) but are suppressed from
-        // display here so each medicine shows exactly once, from its
-        // authoritative new source. Supply/Equipment are unaffected —
-        // they still live on `inventory` and display exactly as before.
-        const legacyNonMedicine = inv.filter((i) => i.category !== 'Medicine')
-        const legacyNonMedicineBatches = batchList.filter((b) => b.item_category !== 'Medicine')
-        setInventory([...legacyNonMedicine, ...medicines])
+        // Medicine, Supply, and Equipment now all live in normalized
+        // tables (migrations 007/008 for Medicine, 024/025 for Supply and
+        // Equipment) — legacy `inventory` rows for all three categories
+        // still exist in the database (nothing was deleted) but are
+        // suppressed from display here so each item shows exactly once,
+        // from its authoritative new source. This is the same staged
+        // cutover pattern Medicine already went through; nothing on
+        // `inventory` itself changes as part of it.
+        const legacyMigrated = inv.filter((i) => !['Medicine', 'Supply', 'Equipment'].includes(i.category))
+        const legacyMigratedBatches = batchList.filter((b) => !['Medicine', 'Supply', 'Equipment'].includes(b.item_category))
+        setInventory([...legacyMigrated, ...medicines, ...supplies, ...equipmentItems])
         setLogs(log)
         setScanHistory(scan)
         setStaff(users.filter((u) => u.role === 'staff' || u.role === 'admin'))
-        setBatches([...legacyNonMedicineBatches, ...medBatches.map((b) => ({ ...b, _source: 'medicine' }))])
+        setBatches([
+          ...legacyMigratedBatches,
+          ...medBatches.map((b) => ({ ...b, _source: 'medicine', item_category: 'Medicine' })),
+          ...supplyBatchList.map((b) => ({ ...b, _source: 'supply', item_category: 'Supply' })),
+          ...equipmentBatchList.map((b) => ({ ...b, _source: 'equipment', item_category: 'Equipment' })),
+        ])
         setSuppliers(supplierList)
         setInventoryNotifications(notifList)
         setUnreadNotifCount(unread)
@@ -186,26 +213,40 @@ export default function InventoryPage() {
   }, [])
 
   async function refreshInventory() {
-    const [inv, medicines] = await Promise.all([listInventory(), listMedicinesAsInventoryItems()])
-    setInventory([...inv.filter((i) => i.category !== 'Medicine'), ...medicines])
+    const [inv, medicines, supplies, equipmentItems] = await Promise.all([
+      listInventory(),
+      listMedicinesAsInventoryItems(),
+      listSuppliesAsInventoryItems(),
+      listEquipmentAsInventoryItems(),
+    ])
+    setInventory([
+      ...inv.filter((i) => !['Medicine', 'Supply', 'Equipment'].includes(i.category)),
+      ...medicines,
+      ...supplies,
+      ...equipmentItems,
+    ])
   }
   async function refreshLogs() {
     setLogs(await listInventoryLogs())
   }
   async function refreshBatches() {
-    const [legacyBatches, medBatches] = await Promise.all([listInventoryBatches(), listMedicineBatches()])
-    setBatches([...legacyBatches.filter((b) => b.item_category !== 'Medicine'), ...medBatches.map((b) => ({ ...b, _source: 'medicine' }))])
+    const [legacyBatches, medBatches, supplyBatchList, equipmentBatchList] = await Promise.all([
+      listInventoryBatches(),
+      listMedicineBatches(),
+      listSupplyBatches(),
+      listEquipmentBatches(),
+    ])
+    setBatches([
+      ...legacyBatches.filter((b) => !['Medicine', 'Supply', 'Equipment'].includes(b.item_category)),
+      ...medBatches.map((b) => ({ ...b, _source: 'medicine', item_category: 'Medicine' })),
+      ...supplyBatchList.map((b) => ({ ...b, _source: 'supply', item_category: 'Supply' })),
+      ...equipmentBatchList.map((b) => ({ ...b, _source: 'equipment', item_category: 'Equipment' })),
+    ])
   }
   async function refreshSuppliers() {
     setSuppliers(await listSuppliers())
   }
-  async function refreshInventoryNotifications() {
-    const [list, unread] = await Promise.all([listInventoryNotifications(), countUnreadInventoryNotifications()])
-    setInventoryNotifications(list)
-    setUnreadNotifCount(unread)
-  }
 
-  const good = inventory.filter((i) => getInventoryStatus(i) === 'Available').length
   const low = inventory.filter((i) => getInventoryStatus(i) === 'Low Stock').length
   const expired = inventory.filter((i) => getInventoryStatus(i) === 'Expired').length
   const expiring = inventory.filter((i) => getInventoryStatus(i) === 'Near Expiry').length
@@ -375,6 +416,38 @@ export default function InventoryPage() {
         return
       }
 
+      if (item._source === 'equipment' || item._source === 'supply') {
+        // Equipment/Supply now live in their own normalized tables
+        // (equipment / supplies) — see equipmentService.js / supplyService.js.
+        // Only patching `quantity` + `expiration_date` here: those are the
+        // two fields every item type (medicine/equipment/supply/legacy)
+        // consistently exposes and that this form actually collects.
+        // batch_no/received_date/supplier — unlike the legacy `inventory`
+        // table — aren't confirmed real columns on `equipment`/`supplies`
+        // themselves (they may only exist on the batch tables, joined into
+        // the read view), so they're deliberately left out rather than
+        // risking another failed PATCH from a nonexistent column.
+        const updateFn = item._source === 'equipment' ? updateEquipment : updateSupply
+        await updateFn(item._id, {
+          quantity: item.quantity + form.qty,
+          expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
+        })
+        // Best-effort log only — inventory_logs.inventory_id is a FK into
+        // the legacy `inventory` table, which has no row for this item
+        // (item.inventory_id is always null here), so this insert may be
+        // rejected. That must never undo the replenish that already
+        // succeeded above.
+        try {
+          await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: item.quantity, newQuantity: item.quantity + form.qty, staffId: currentUserId, notes: form.notes })
+        } catch {
+          // Non-critical — see comment above.
+        }
+        await Promise.all([refreshInventory(), refreshLogs()])
+        show(`${item.name} replenished by ${form.qty} ${item.unit}`, 'success')
+        setReplenishItemId(null)
+        return
+      }
+
       await updateInventoryItem(item.inventory_id, {
         quantity: item.quantity + form.qty,
         expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
@@ -454,7 +527,7 @@ export default function InventoryPage() {
           const removeQty = parseInt(raw, 10)
           if (!Number.isFinite(removeQty) || removeQty <= 0) return show('Enter a valid quantity to remove', 'error')
           if (removeQty > item.quantity) return show(`Cannot remove more than available expired stock (${item.quantity} ${item.unit})`, 'error')
-          if (!window.confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`)) return
+          if (!(await confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`))) return
 
           // Distribute the removal across this medicine's expired batches,
           // oldest-expiration first — mirrors the FIFO release logic, but
@@ -471,7 +544,7 @@ export default function InventoryPage() {
           }
           show(`${removeQty} ${item.unit} removed from ${item.name}`, 'success')
         } else {
-          if (!window.confirm(`Remove "${item.name}" from inventory?\nThis will deactivate the medicine — its batch and movement history is preserved, not deleted.`)) return
+          if (!(await confirm(`Remove "${item.name}" from inventory?\nThis will deactivate the medicine — its batch and movement history is preserved, not deleted.`))) return
           await deactivateMedicine(item._id)
           await addMedicineMovement({ medicineId: item._id, actionType: 'Removed', quantityChange: -item.quantity, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Medicine deactivated (${item.quantity} ${item.unit} on hand)` })
           show(`${item.name} removed`, 'success')
@@ -486,7 +559,7 @@ export default function InventoryPage() {
         const removeQty = parseInt(raw, 10)
         if (!Number.isFinite(removeQty) || removeQty <= 0) return show('Enter a valid quantity to remove', 'error')
         if (removeQty > item.quantity) return show(`Cannot remove more than available expired stock (${item.quantity} ${item.unit})`, 'error')
-        if (!window.confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`)) return
+        if (!(await confirm(`Remove ${removeQty} ${item.unit} of expired "${item.name}"? This cannot be undone.`))) return
 
         if (removeQty >= item.quantity) {
           // Log BEFORE deleting — inventory_logs.inventory_id has a strict
@@ -503,7 +576,7 @@ export default function InventoryPage() {
           show(`${removeQty} ${item.unit} removed from ${item.name}`, 'success')
         }
       } else {
-        if (!window.confirm(`Remove "${item.name}" from inventory?\nQuantity to remove: ${item.quantity} ${item.unit}\nThis cannot be undone.`)) return
+        if (!(await confirm(`Remove "${item.name}" from inventory?\nQuantity to remove: ${item.quantity} ${item.unit}\nThis cannot be undone.`))) return
         await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Removed', quantityChange: -item.quantity, previousQuantity: item.quantity, newQuantity: 0, staffId: currentUserId, notes: `"${item.name}" removed from inventory (${item.quantity} ${item.unit})` })
         await deleteInventoryItem(item.inventory_id)
         show(`${item.name} removed`, 'success')
@@ -515,10 +588,15 @@ export default function InventoryPage() {
   }
 
   // ── MAINTENANCE RESTORE ──
-  // Equipment-only — Medicine is never Equipment, so this handler stays
-  // legacy-only by construction (a medicine row's needs_maintenance is
+  // Equipment-only — Medicine is never Equipment, so this handler only
+  // ever sees Equipment items (a medicine row's needs_maintenance is
   // always false, see medicine_inventory_view, so it never surfaces a
-  // Restore action in the first place).
+  // Restore action in the first place). Equipment now lives in its own
+  // normalized `equipment` table (see equipmentService.js) rather than
+  // the legacy `inventory` table this used to target, so this writes to
+  // updateEquipment(), keyed by item._id (the real equipment_id) —
+  // item.inventory_id is always null for these items and would produce
+  // an invalid PATCH (…inventory_id=eq.null → 400) if used here.
   // Single row only: restoring sets `quantity` to the number of units
   // actually returned to active stock. Any held-back units are no longer
   // tracked as inventory — they're recorded in the log's notes/quantity
@@ -528,12 +606,20 @@ export default function InventoryPage() {
     const item = restoringItem
     const heldBack = item.quantity - form.restoreQty
     try {
-      await updateInventoryItem(item.inventory_id, { quantity: form.restoreQty, expiration_date: form.expiry, needs_maintenance: false })
+      await updateEquipment(item._id, { quantity: form.restoreQty, expiration_date: form.expiry, needs_maintenance: false })
       const notes =
         heldBack > 0
           ? `${form.restoreQty} ${item.unit} restored to active inventory; ${heldBack} ${item.unit} held back and removed from tracked inventory. ${form.notes}`
           : `${form.restoreQty} ${item.unit} restored to active inventory. ${form.notes}`
-      await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Maintained', quantityChange: form.restoreQty - item.quantity, previousQuantity: item.quantity, newQuantity: form.restoreQty, staffId: currentUserId, notes })
+      // Best-effort log — inventory_logs.inventory_id is a FK into the
+      // legacy `inventory` table, which has no row for this item, so this
+      // insert may be rejected. Must never undo the restore that already
+      // succeeded above.
+      try {
+        await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Maintained', quantityChange: form.restoreQty - item.quantity, previousQuantity: item.quantity, newQuantity: form.restoreQty, staffId: currentUserId, notes })
+      } catch {
+        // Non-critical — see comment above.
+      }
       await Promise.all([refreshInventory(), refreshLogs()])
       if (heldBack > 0) {
         show(`${form.restoreQty} ${item.unit} restored · ${heldBack} ${item.unit} held back and removed from tracked inventory`, 'success')
@@ -799,7 +885,7 @@ export default function InventoryPage() {
   async function handleArchiveBatch(key) {
     const batch = batches.find((b) => batchKey(b) === key)
     if (!batch) return
-    if (!window.confirm(`Archive batch "${batch.batch_code}"?\nIt will be removed from active stock but its history is kept — this is not a delete.`)) return
+    if (!(await confirm(`Archive batch "${batch.batch_code}"?\nIt will be removed from active stock but its history is kept — this is not a delete.`, { danger: false, confirmLabel: 'Archive' }))) return
     try {
       await archiveMedicineBatch(batch.medicine_batch_id)
       await addMedicineMovement({ medicineId: batch.medicine_id, medicineBatchId: batch.medicine_batch_id, actionType: 'Archived', quantityChange: 0, previousQuantity: batch.quantity, newQuantity: batch.quantity, staffId: currentUserId, notes: `Batch ${batch.batch_code} archived` })
@@ -861,7 +947,7 @@ export default function InventoryPage() {
   }
 
   async function handleDeleteSupplier(supplier) {
-    if (!window.confirm(`Delete supplier "${supplier.supplier_name}"?`)) return
+    if (!(await confirm(`Delete supplier "${supplier.supplier_name}"?`))) return
     try {
       await deleteSupplier(supplier.supplier_id)
       await refreshSuppliers()
@@ -927,6 +1013,16 @@ export default function InventoryPage() {
       setTab('items')
       setItemsFilters((f) => ({ ...f, search: notification.medicine_name, status: 'All' }))
     }
+  }
+
+  // "Clicking an alert row should open that item's detail." The Alerts
+  // tab no longer has its own per-row action buttons (Restock/Remove/
+  // Restore/etc.) — this single handler replaces all of them, reusing
+  // the same navigate-to-Items-tab-filtered-by-name pattern already used
+  // by handleOpenNotificationRecord above.
+  function handleAlertItemClick(item) {
+    setTab('items')
+    setItemsFilters((f) => ({ ...f, search: item.name, status: 'All' }))
   }
 
   const replenishingBatch = batches.find((b) => batchKey(b) === replenishBatchId) || null
@@ -1090,6 +1186,7 @@ export default function InventoryPage() {
     if (t.key === 'suppliers') return { ...t, label: `Suppliers (${suppliers.length})` }
     if (t.key === 'log') return { ...t, label: `Log (${logs.length})` }
     if (t.key === 'alerts') return { ...t, label: `Alerts${alertCount > 0 ? ` (${alertCount})` : ''}` }
+    if (t.key === 'notifications') return { ...t, label: `Notifications${unreadNotifCount > 0 ? ` (${unreadNotifCount})` : ''}` }
     return t
   })
 
@@ -1097,25 +1194,6 @@ export default function InventoryPage() {
 
   return (
     <>
-      <div className="stats-row cols-4" style={{ marginBottom: 16 }}>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => { setTab('items'); setItemsFilters((f) => ({ ...f, status: 'All' })) }}>
-          <div className="stat-num">{inventory.length}</div>
-          <div className="stat-label">Total Items</div>
-        </div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => { setTab('items'); setItemsFilters((f) => ({ ...f, status: 'Available' })) }}>
-          <div className="stat-num">{good}</div>
-          <div className="stat-label">Good Stock</div>
-        </div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => { setTab('items'); setItemsFilters((f) => ({ ...f, status: 'Low Stock' })) }}>
-          <div className="stat-num">{low}</div>
-          <div className="stat-label">Low Stock</div>
-        </div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => { setTab('items'); setItemsFilters((f) => ({ ...f, status: 'Expired' })) }}>
-          <div className="stat-num">{expired}</div>
-          <div className="stat-label">Expired</div>
-        </div>
-      </div>
-
       {alertCount > 0 && (
         <div className="inv-alert-banner">
           {expired > 0 && (
@@ -1148,60 +1226,82 @@ export default function InventoryPage() {
       </div>
 
       {tab === 'dashboard' && (
-        <InventoryDashboardTab
-          inventory={inventory}
-          onNavigateToStatus={(status) => {
-            setTab('items')
-            setItemsFilters((f) => ({ ...f, status }))
-          }}
-          onNavigateToBatches={() => setTab('batches')}
-        />
+        <div>
+          <InventoryDashboardTab
+            inventory={inventory}
+            onNavigateToStatus={(status) => {
+              setTab('items')
+              setItemsFilters((f) => ({ ...f, status }))
+            }}
+            onNavigateToBatches={() => setTab('batches')}
+          />
+        </div>
       )}
 
       {tab === 'items' && (
-        <ItemsTab
-          inventory={inventory}
-          filters={itemsFilters}
-          onFiltersChange={setItemsFilters}
-          onAddItem={() => setAddItemOpen(true)}
-          onReleasePicker={() => setReleasePickerOpen(true)}
-          onEdit={setEditItemId}
-          onRelease={setReleaseItemId}
-          onRemove={handleRemove}
-          onRestore={setRestoreItemId}
-        />
+        <div>
+          <ItemsTab
+            inventory={inventory}
+            filters={itemsFilters}
+            onFiltersChange={setItemsFilters}
+            onAddItem={() => setAddItemOpen(true)}
+            onReleasePicker={() => setReleasePickerOpen(true)}
+            onEdit={setEditItemId}
+            onRelease={setReleaseItemId}
+            onRemove={handleRemove}
+            onRestore={setRestoreItemId}
+            onReplenish={setReplenishItemId}
+          />
+        </div>
       )}
       {tab === 'batches' && (
-        <BatchesTab
-          batches={batches}
-          search={batchSearch}
-          onSearchChange={setBatchSearch}
-          onAddBatch={() => setAddBatchOpen(true)}
-          onReleaseBatchPicker={() => setReleaseBatchPickerOpen(true)}
-          onEditBatch={setEditBatchId}
-          onReplenishBatch={setReplenishBatchId}
-          onReleaseBatch={setReleaseBatchId}
-          onArchiveBatch={handleArchiveBatch}
-          onUnarchiveBatch={handleUnarchiveBatch}
-          onReportDamaged={handleReportDamaged}
-          onViewQR={setQrBatchKey}
-        />
+        <div>
+          <BatchesTab
+            batches={batches}
+            search={batchSearch}
+            onSearchChange={setBatchSearch}
+            onAddBatch={() => setAddBatchOpen(true)}
+            onReleaseBatchPicker={() => setReleaseBatchPickerOpen(true)}
+            onEditBatch={setEditBatchId}
+            onReplenishBatch={setReplenishBatchId}
+            onReleaseBatch={setReleaseBatchId}
+            onArchiveBatch={handleArchiveBatch}
+            onUnarchiveBatch={handleUnarchiveBatch}
+            onReportDamaged={handleReportDamaged}
+            onViewQR={setQrBatchKey}
+          />
+        </div>
       )}
       {tab === 'suppliers' && (
-        <SuppliersTab
-          suppliers={suppliers}
-          batches={batches}
-          search={supplierSearch}
-          onSearchChange={setSupplierSearch}
-          onAdd={() => setSupplierModal({ mode: 'add' })}
-          onEdit={(supplier) => setSupplierModal({ mode: 'edit', supplier })}
-          onDelete={handleDeleteSupplier}
-        />
+        <div>
+          <SuppliersTab
+            suppliers={suppliers}
+            batches={batches}
+            search={supplierSearch}
+            onSearchChange={setSupplierSearch}
+            onAdd={() => setSupplierModal({ mode: 'add' })}
+            onEdit={(supplier) => setSupplierModal({ mode: 'edit', supplier })}
+            onDelete={handleDeleteSupplier}
+          />
+        </div>
       )}
-      {tab === 'scan' && <ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} />}
-      {tab === 'log' && <LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} />}
+      {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} /></div>}
+      {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} /></div>}
       {tab === 'alerts' && (
-        <AlertsTab inventory={inventory} onRemove={handleRemove} onRestore={setRestoreItemId} onReplenish={setReplenishItemId} />
+        <div>
+          <AlertsTab inventory={inventory} onItemClick={handleAlertItemClick} />
+        </div>
+      )}
+      {tab === 'notifications' && (
+        <div>
+          <NotificationCenterTab
+            notifications={inventoryNotifications}
+            unreadCount={unreadNotifCount}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+            onOpenRecord={handleOpenNotificationRecord}
+          />
+        </div>
       )}
 
 

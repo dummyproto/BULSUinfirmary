@@ -1,10 +1,10 @@
+import { useEffect, useRef, useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
 import { FolderIcon, EyeIcon } from '@components/ui/icons'
 
 export default function EHRRecordsTab({ consultations, search, onSearchChange, onView, onPrint }) {
-  console.log('EHRRecordsTab received:', consultations, 'search:', search)
   const q = search.toLowerCase()
   const filtered = search
     ? consultations.filter(
@@ -15,16 +15,31 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
       )
     : consultations
 
+  // Same freeze-header-and-column-labels-while-scrolling treatment as
+  // Inventory Items (ItemsTab.jsx) — measured live via ResizeObserver
+  // since the header row can wrap on narrow screens.
+  const headerRef = useRef(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return undefined
+    const measure = () => setHeaderHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   return (
-    <div className="card">
-      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+    <div className="card" style={{ '--ehr-header-h': `${headerHeight}px` }}>
+      <div ref={headerRef} className="card-header inv-ehr-sticky-header" style={{ flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><FolderIcon width={15} height={15} /> Health Records</h3>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search records…" width={200} />
         </div>
       </div>
-      <div className="table-wrap">
-        <table>
+      <div className="table-wrap inv-ehr-scroll">
+        <table className="inv-ehr-table">
           <thead>
             <tr>
               <th>Patient</th>

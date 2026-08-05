@@ -25,11 +25,34 @@
 // inventory_batches.batch_id are separate sequences that could
 // numerically collide once both are merged into one displayed list.
 export function batchKey(batch) {
-  return batch._source === 'medicine' ? `medicine:${batch.medicine_batch_id}` : `legacy:${batch.batch_id}`
+  // Same collision this caused in itemKey() (see that function's own
+  // comment) — supply/equipment batches were missing their own case here
+  // too, falling through to `legacy:${batch.batch_id}`. That field
+  // doesn't exist on those objects at all (they carry
+  // supply_batch_id/equipment_batch_id instead — see migration 024), so
+  // it evaluated to `legacy:undefined` for every single supply and
+  // equipment batch, all colliding on that one identical key.
+  if (batch._source === 'medicine') return `medicine:${batch.medicine_batch_id}`
+  if (batch._source === 'supply') return `supply:${batch.supply_batch_id}`
+  if (batch._source === 'equipment') return `equipment:${batch.equipment_batch_id}`
+  return `legacy:${batch.batch_id}`
 }
 
 export function itemKey(item) {
-  return item._source === 'medicine' ? `medicine:${item._id}` : `legacy:${item.inventory_id}`
+  // Each normalized source (migrations 007/008 for medicine, 024/025 for
+  // supply/equipment) sets inventory_id to null and tags _source/_id
+  // instead — falling through to the `legacy:${item.inventory_id}` branch
+  // for any of them collapses to the literal string "legacy:null" for
+  // EVERY item from that source, since they all share that same null
+  // value. Medicine already had its own case; supply/equipment were
+  // missing theirs, so every supply and every equipment item was
+  // colliding on the identical React key (visible as "Encountered two
+  // children with the same key, `item-legacy:null`" in the console) —
+  // this is what actually caused that, not a one-off duplicate.
+  if (item._source === 'medicine') return `medicine:${item._id}`
+  if (item._source === 'supply') return `supply:${item._id}`
+  if (item._source === 'equipment') return `equipment:${item._id}`
+  return `legacy:${item.inventory_id}`
 }
 
 export function todayISODate() {

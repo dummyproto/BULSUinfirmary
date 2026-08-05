@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import Tabs from '@components/ui/Tabs'
 import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
@@ -78,6 +79,7 @@ function renderNotes(request) {
 export default function MyRequestsPage() {
   const { profile } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const myPatientId = profile?.user_id ?? null
 
   const [requests, setRequests] = useState([])
@@ -147,9 +149,7 @@ export default function MyRequestsPage() {
       show('This document is not yet ready for claiming.', 'warning')
       return
     }
-    // Native confirm is fine to call from a React event handler — it's a
-    // browser API, not manual DOM manipulation.
-    if (!window.confirm('Confirm that you have physically received and claimed this document?')) return
+    if (!(await confirm('Confirm that you have physically received and claimed this document?', { danger: false, confirmLabel: 'Confirm Claim' }))) return
 
     try {
       const updated = await updateDocumentRequestStatus(id, 'Claimed')

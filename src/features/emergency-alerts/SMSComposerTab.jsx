@@ -55,7 +55,7 @@ export default function SMSComposerTab({ patients, prefillPatientId, onClearPref
           <div className="sms-header-icon-wrap"><PhoneIcon width={18} height={18} /></div>
           <div>
             <h3>Notify Parent / Guardian</h3>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Demo mode — messages are logged only, not actually sent</div>
+            <div className="sms-header-subtitle">Demo mode — messages are logged only, not actually sent</div>
           </div>
         </div>
 
@@ -125,46 +125,6 @@ export default function SMSComposerTab({ patients, prefillPatientId, onClearPref
             </div>
           </div>
 
-          <div className="sms-step-block">
-            <div className="sms-step-num">3</div>
-            <div className="sms-step-content">
-              <div className="sms-step-title">Pickup Instructions</div>
-              <div className="pickup-options">
-                {PICKUP_OPTIONS.map((o) => (
-                  <label className={`pickup-option${pickupFlag === o.value ? ' selected' : ''}`} key={o.value}>
-                    <input
-                      type="radio"
-                      className="pickup-radio"
-                      name="pickupFlag"
-                      checked={pickupFlag === o.value}
-                      onChange={() => setPickupFlag(o.value)}
-                    />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{o.label}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{o.sub}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="sms-step-block">
-            <div className="sms-step-num">4</div>
-            <div className="sms-step-content">
-              <div className="sms-step-title">
-                Additional Notes <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>(optional)</span>
-              </div>
-              <textarea
-                className="form-textarea"
-                placeholder="Any additional instructions or information…"
-                style={{ minHeight: 60 }}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-          </div>
-
           <div className="sms-actions">
             <button type="button" className="btn btn-outline" onClick={reset}>
               <RefreshCwIcon width={13} height={13} /> Clear
@@ -199,6 +159,50 @@ export default function SMSComposerTab({ patients, prefillPatientId, onClearPref
             {situation && situation !== 'custom' && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>Template: {effectiveSituationText}</div>
             )}
+          </div>
+        </div>
+
+        <div className="card sms-pickup-card" style={{ marginTop: 16 }}>
+          <div style={{ padding: 18 }}>
+            <div className="sms-step-block">
+              <div className="sms-step-num">3</div>
+              <div className="sms-step-content">
+                <div className="sms-step-title">Pickup Instructions</div>
+                <div className="pickup-options">
+                  {PICKUP_OPTIONS.map((o) => (
+                    <label className={`pickup-option${pickupFlag === o.value ? ' selected' : ''}`} key={o.value}>
+                      <input
+                        type="radio"
+                        className="pickup-radio"
+                        name="pickupFlag"
+                        checked={pickupFlag === o.value}
+                        onChange={() => setPickupFlag(o.value)}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{o.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{o.sub}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="sms-step-block">
+              <div className="sms-step-num">4</div>
+              <div className="sms-step-content">
+                <div className="sms-step-title">
+                  Additional Notes <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>(optional)</span>
+                </div>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Any additional instructions or information…"
+                  style={{ minHeight: 60 }}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

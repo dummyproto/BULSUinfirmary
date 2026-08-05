@@ -55,7 +55,7 @@ export default function HealthDetailModal({ isOpen, onClose, consultation, atten
 
       <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
         <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}><BarChartIcon width={12} height={12} /> VITAL SIGNS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, textAlign: 'center' }}>
+        <div className="vital-signs-grid" style={{ textAlign: 'center' }}>
           {[
             ['BP', c.bp || '—', 'mmHg'],
             ['Temp', c.temp || '—', '°C'],

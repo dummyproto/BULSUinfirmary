@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useToast } from '@context/ToastContext'
 import Avatar from '@components/ui/Avatar'
 import StatusBadge from '@components/ui/StatusBadge'
@@ -14,6 +14,22 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState([])
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
+
+  // Same freeze-header-and-column-labels-while-scrolling treatment as
+  // Inventory Items/Log, Health Records, and Reports — see legacy.css's
+  // note above .inv-items-scroll for why this needs a scoped, measured
+  // offset rather than plain position:sticky on thead th everywhere.
+  const headerRef = useRef(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return undefined
+    const measure = () => setHeaderHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -47,13 +63,13 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-header">
+      <div className="card" style={{ '--patients-header-h': `${headerHeight}px` }}>
+        <div ref={headerRef} className="card-header patients-sticky-header">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><GraduationCapIcon width={15} height={15} /> Patient Directory</h3>
           <SearchInput value={search} onChange={setSearch} placeholder="Search by name, user ID, or course…" width={240} />
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="table-wrap patients-scroll">
+          <table className="patients-table">
             <thead>
               <tr>
                 <th>Patient</th>
@@ -74,9 +90,11 @@ export default function PatientsPage() {
               )}
               {filtered.map((p) => (
                 <tr key={p.user_id}>
-                  <td style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar user={p} size={26} />
-                    <strong>{p.name}</strong>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar user={p} size={26} />
+                      <strong>{p.name}</strong>
+                    </div>
                   </td>
                   <td>
                     <code style={{ fontSize: 11 }}>{p.student_number || '—'}</code>

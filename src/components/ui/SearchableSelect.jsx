@@ -1,4 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
+import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
+
+const EXIT_DURATION = 120
 
 // Highlights the matched substring the same way legacy _highlightMatch() did.
 function highlightMatch(text, q) {
@@ -42,6 +45,7 @@ export default function SearchableSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const wrapRef = useRef(null)
+  const { shouldRender: showDropdown, closing: dropdownClosing } = useDelayedUnmount(open, EXIT_DURATION)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -98,8 +102,8 @@ export default function SearchableSelect({
           </span>
         )}
       </div>
-      {open && (
-        <div className="patient-dropdown" style={{ display: 'block' }}>
+      {showDropdown && (
+        <div className={`patient-dropdown${dropdownClosing ? ' closing' : ''}`} style={{ display: 'block' }}>
           <div>
             {filtered.length === 0 && (
               <div style={{ padding: '12px 14px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>

@@ -1,7 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import jsQR from 'jsqr'
+import { BrowserMultiFormatReader } from '@zxing/browser'
 import { timeAgo } from './lib/inventoryHelpers'
-import { RefreshCwIcon, SearchIcon, AlertTriangleIcon, CheckCircleIcon, CameraIcon, ImageIcon, KeyboardIcon, SquareIcon, TrashIcon, ClipboardIcon, FlaskConicalIcon, HistoryIcon } from '@components/ui/icons'
+import { parseQRPayload } from './ScanVerifyModal'
+import {
+  RefreshCwIcon,
+  SearchIcon,
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  CameraIcon,
+  ImageIcon,
+  KeyboardIcon,
+  SquareIcon,
+  TrashIcon,
+  ClipboardIcon,
+  FlaskConicalIcon,
+  HistoryIcon,
+  ZapIcon,
+  MaximizeIcon,
+  CheckIcon,
+  FileTextIcon,
+  TagIcon,
+  EyeIcon,
+  XIcon,
+} from '@components/ui/icons'
 
 const SAMPLE_QR = '{"name":"Vitamin B Complex","category":"Medicine","qty":150,"unit":"Tablets","batch":"VBC-2026-001","expiry":"2028-09-30","supplier":"HealthPlus","minStock":30}'
 const TEST_SCANS = [
@@ -9,17 +30,6 @@ const TEST_SCANS = [
 ]
 
 const STATUS_ICONS = { info: SearchIcon, success: CheckCircleIcon, error: AlertTriangleIcon }
-
-// A real phone-camera photo is commonly 4000×3000 (12MP) or larger —
-// applying the existing [1, 0.5, 2] scale attempts directly to that
-// would mean a worst case of 8000×6000 (48MP) for the 2x pass, which can
-// exceed the browser's canvas size/memory limits and throw inside
-// drawImage/getImageData. Downscaling to this ceiling first (applied to
-// the *longest* side, so aspect ratio is preserved) before running the
-// existing scale multipliers keeps the worst case (2x this ceiling)
-// comfortably under any real browser's limits, while jsQR still gets
-// the same multiple resolutions to try against.
-const MAX_UPLOAD_DIMENSION = 1800
 
 function StatusIcon({ status }) {
   const Icon = STATUS_ICONS[status.kind] || SearchIcon
@@ -30,6 +40,35 @@ function StatusIcon({ status }) {
   )
 }
 
+// Best-effort parse of the most recent scan_history row into the fields
+// the "Scanned Item" panel wants (batch/expiry aren't columns on
+// scan_history itself — see services/inventoryService.addScanHistory —
+// so they're recovered from the same raw_data payload
+// parseQRPayload/ScanVerifyModal already knows how to read). Our own
+// printed batch QR codes (type:'batch') have a different shape with no
+// `name` field, so this falls back to scan_history's own item_name/
+// category/quantity columns whenever the raw payload doesn't parse into
+// something usable — the panel always shows *something* sensible
+// regardless of which kind of code was scanned.
+function summarizeLastScan(entry) {
+  if (!entry) return null
+  let parsed = null
+  try {
+    parsed = entry.raw_data ? parseQRPayload(entry.raw_data) : null
+  } catch {
+    // parsed stays null — already its initial value, nothing to reset.
+  }
+  return {
+    name: parsed?.name || entry.item_name || 'Unknown item',
+    category: parsed?.category || entry.category || '—',
+    batch: parsed?.batch || '—',
+    expiry: parsed?.expiry || '—',
+    stock: parsed?.qty != null ? `${parsed.qty} ${parsed.unit || ''}`.trim() : entry.quantity != null ? String(entry.quantity) : '—',
+    result: entry.result,
+    scannedAt: entry.scanned_at,
+  }
+}
+
 export default function ScanTab({ scanHistory, onProcessRaw }) {
   const [panel, setPanel] = useState(null) // 'manual' | 'upload' | null
   const [manualValue, setManualValue] = useState('')
@@ -37,20 +76,55 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
   const [imageFile, setImageFile] = useState(null)
   const [decodeStatus, setDecodeStatus] = useState({ text: '', kind: 'info' })
   const [decoding, setDecoding] = useState(false)
-  const fileInputRef = useRef(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const historyCardRef = useRef(null)
 
-  // Live camera scanning — ported from initQRScanner/startCamera/
-  // stopCamera/captureFrame. MediaStream/video/canvas are inherently
-  // imperative APIs, so refs (not state) are the right tool here, same as
-  // the legacy code's direct DOM handles.
+  // Below 768px, .qr-scan-layout collapses to a single column (see
+  // legacy.css), so the Scanned Item + Scan History panel ends up
+  // stacked far below the camera section instead of sitting beside it.
+  // Tapping "Scan History" DOES correctly toggle it open — but with no
+  // scroll, it opens off-screen below whatever the person is currently
+  // looking at, which reads as "the button didn't do anything" even
+  // though it worked. Scrolling it into view on open fixes that,
+  // without needing to change the layout itself.
+  useEffect(() => {
+    if (historyOpen) historyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [historyOpen])
+  // OCR (read text/handwriting) — separate from decoding/decodeStatus
+  // above (that's for QR/barcode). OCR runs on the SAME uploaded image
+  // but through Tesseract.js instead of ZXing, and the result is never
+  // auto-submitted — see readText()'s comment for why.
+  const [ocrRunning, setOcrRunning] = useState(false)
+  const [ocrText, setOcrText] = useState(null)
+  const fileInputRef = useRef(null)
+  const viewportRef = useRef(null)
+
+  // Live camera scanning — now backed by ZXing's BrowserMultiFormatReader
+  // instead of jsQR. jsQR only ever decoded QR codes; ZXing's multi-format
+  // reader decodes QR codes AND common 1D/text barcodes (Code 128, EAN-13/
+  // 8, UPC-A/E, Code 39, ITF, Codabar, etc.) in one unified scan, which is
+  // exactly what "also read text/written [barcodes]" needs — many printed
+  // batch/product labels only carry a traditional barcode, not a QR code.
+  // The getUserMedia/video-element setup below is unchanged from before;
+  // only the "read frames from the video and decode" mechanism changed,
+  // from jsQR's manual 250ms canvas-polling loop to ZXing's own
+  // continuous-decode API running against the same live video element.
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
   const videoRef = useRef(null)
-  const canvasRef = useRef(null)
   const streamRef = useRef(null)
-  const pollRef = useRef(null)
+  const codeReaderRef = useRef(null)
+  const scanControlsRef = useRef(null)
+  if (codeReaderRef.current === null) codeReaderRef.current = new BrowserMultiFormatReader()
 
   useEffect(() => stopCamera, []) // stop the camera if the page is left while scanning
+
+  // scan_history is fetched newest-first (listScanHistory orders by
+  // scanned_at descending), so the most recent scan is simply index 0 —
+  // no need for the reverse()/slice() gymnastics the history list below
+  // uses for its own, separate display purposes.
+  const lastScan = summarizeLastScan(scanHistory[0])
 
   function togglePanel(name) {
     setPanel((p) => (p === name ? null : name))
@@ -69,8 +143,18 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
         await videoRef.current.play().catch(() => {})
       }
       setCameraActive(true)
-      setDecodeStatus({ text: 'Scanning for QR/Barcode…', kind: 'info' })
-      pollRef.current = setInterval(captureFrame, 250)
+      setDecodeStatus({ text: 'Scanning for QR code or barcode…', kind: 'info' })
+      // decodeFromVideoElement calls back on every frame it examines —
+      // `result` is only set when something was actually found; on every
+      // other frame it fires with a NotFoundException in `error`, which
+      // is the library's normal "nothing here yet" signal, not a real
+      // error, so it's silently ignored rather than surfaced.
+      scanControlsRef.current = await codeReaderRef.current.decodeFromVideoElement(videoRef.current, (result) => {
+        if (!result) return
+        setDecodeStatus({ text: 'Code detected!', kind: 'success' })
+        stopCamera()
+        onProcessRaw(result.getText())
+      })
     } catch (err) {
       const msg =
         err.name === 'NotAllowedError'
@@ -85,32 +169,40 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
   }
 
   function stopCamera() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
+    if (scanControlsRef.current) {
+      scanControlsRef.current.stop()
+      scanControlsRef.current = null
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
     setCameraActive(false)
+    setTorchOn(false)
     setDecodeStatus((s) => (s.kind === 'error' ? s : { text: 'Ready to scan', kind: 'info' }))
   }
 
-  function captureFrame() {
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas || video.readyState < 2) return
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
-    if (code?.data) {
-      setDecodeStatus({ text: 'QR Code detected!', kind: 'success' })
-      stopCamera()
-      onProcessRaw(code.data)
+  // Camera torch/flashlight — only supported on some devices/browsers
+  // (mainly Android Chrome over a rear camera); there's no reliable way
+  // to feature-detect this ahead of time other than trying it, so this
+  // fails silently rather than showing an error for something the
+  // person has no control over on their specific device.
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks?.()[0]
+    if (!track) return
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] })
+      setTorchOn((v) => !v)
+    } catch {
+      // Device/browser doesn't support torch control — nothing to do.
+    }
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.()
+    } else {
+      viewportRef.current?.requestFullscreen?.().catch(() => {})
     }
   }
 
@@ -141,6 +233,7 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
     if (!file) return
     setImageFile(file)
     setDecodeStatus({ text: '', kind: 'info' })
+    setOcrText(null)
 
     let toRead = file
     if (isHeic(file)) {
@@ -166,106 +259,93 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
     setImageFile(null)
     setImagePreview(null)
     setDecodeStatus({ text: '', kind: 'info' })
+    setOcrText(null)
+    setOcrRunning(false)
   }
 
-  function decodeImage() {
+  async function decodeImage() {
     if (!imagePreview) return
     setDecoding(true)
     setDecodeStatus({ text: 'Decoding image…', kind: 'info' })
-    const img = new Image()
-    img.onload = () => {
-      try {
-        // Downscale to a safe ceiling first (preserving aspect ratio),
-        // then run the existing scale attempts relative to THAT size,
-        // not the original (possibly huge) natural dimensions — see
-        // MAX_UPLOAD_DIMENSION above for why.
-        const longestSide = Math.max(img.naturalWidth, img.naturalHeight)
-        const baseScale = longestSide > MAX_UPLOAD_DIMENSION ? MAX_UPLOAD_DIMENSION / longestSide : 1
-        const baseWidth = Math.round(img.naturalWidth * baseScale)
-        const baseHeight = Math.round(img.naturalHeight * baseScale)
-
-        // Try a couple of canvas scales — a still image can afford more
-        // decode attempts than a live 250ms-polled video frame can.
-        const scales = [1, 0.5, 2]
-        let found = null
-        for (const scale of scales) {
-          const canvas = document.createElement('canvas')
-          canvas.width = Math.round(baseWidth * scale)
-          canvas.height = Math.round(baseHeight * scale)
-          if (canvas.width < 1 || canvas.height < 1) continue
-          const ctx = canvas.getContext('2d', { willReadFrequently: true })
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })
-          if (code?.data) {
-            found = code.data
-            break
-          }
-        }
-        setDecoding(false)
-        if (found) {
-          setDecodeStatus({ text: 'QR Code detected!', kind: 'success' })
-          setPanel(null)
-          onProcessRaw(found)
-        } else {
-          setDecodeStatus({ text: 'No QR code found. Use a clearer, well-lit image.', kind: 'error' })
-        }
-      } catch {
-        // A canvas/memory error mid-decode (e.g. an unusually large
-        // source image even after downscaling, or a browser-specific
-        // limit) previously left `decoding` stuck true forever, since
-        // nothing after the throwing line ever ran — this is the actual
-        // bug this phase fixes. Every path now always resolves to a
-        // visible message, never a stuck spinner.
-        setDecoding(false)
-        setDecodeStatus({ text: 'Could not process this image. Try a smaller/clearer photo.', kind: 'error' })
-      }
-    }
-    img.onerror = () => {
+    try {
+      // decodeFromImageUrl loads the data URL into its own image element
+      // and decodes at natural resolution, trying multiple internal
+      // strategies (including rotated attempts) — handles large phone
+      // photos and unusual angles more robustly than the manual
+      // multi-scale canvas loop this replaced, and now catches barcodes
+      // (Code 128, EAN, UPC, etc.) in addition to QR codes.
+      const result = await codeReaderRef.current.decodeFromImageUrl(imagePreview)
       setDecoding(false)
-      setDecodeStatus({ text: 'Could not load this file as an image — it may be corrupted or an unsupported format. Try a JPG or PNG.', kind: 'error' })
+      setDecodeStatus({ text: 'Code detected!', kind: 'success' })
+      setPanel(null)
+      onProcessRaw(result.getText())
+    } catch {
+      setDecoding(false)
+      setDecodeStatus({ text: 'No QR code or barcode found. Use a clearer, well-lit image.', kind: 'error' })
     }
-    img.src = imagePreview
+  }
+
+  // "Read Text" — OCR for plain printed or handwritten labels (like a
+  // handwritten stock card) that don't have a QR code or barcode on them
+  // at all. Tesseract.js (the OCR engine) is dynamically imported so its
+  // sizable WASM payload is only ever downloaded by someone who actually
+  // uses this feature, not everyone who opens the QR Scanner tab — same
+  // lazy-loading approach already used for heic2any above.
+  //
+  // Deliberately does NOT feed the result into onProcessRaw the way a
+  // decoded QR/barcode does. onProcessRaw expects a specific structured
+  // payload (JSON or pipe-delimited: name|category|qty|unit|batch|
+  // expiry|supplier|minStock) — raw OCR text from a handwritten note
+  // ("Paracetamol 500G 24 pcs") won't match that shape, and silently
+  // mis-mapping OCR guesses into item fields could create wrong
+  // inventory records with no obvious sign anything went wrong. Instead
+  // the extracted text is shown back for the person to read and copy the
+  // relevant parts into the actual form themselves — especially
+  // important for handwriting, where OCR accuracy is meaningfully lower
+  // than on printed text and mistakes are expected, not exceptional.
+  async function readText() {
+    if (!imagePreview) return
+    setOcrRunning(true)
+    setOcrText(null)
+    setDecodeStatus({ text: '', kind: 'info' })
+    try {
+      const { createWorker } = await import('tesseract.js')
+      const worker = await createWorker('eng')
+      const { data } = await worker.recognize(imagePreview)
+      await worker.terminate()
+      const text = (data.text || '').trim()
+      setOcrRunning(false)
+      if (text) {
+        setOcrText(text)
+      } else {
+        setDecodeStatus({ text: 'No readable text found in this image. Try better lighting or a closer, steadier photo.', kind: 'error' })
+      }
+    } catch (err) {
+      setOcrRunning(false)
+      setDecodeStatus({ text: `Text reading failed: ${err.message}`, kind: 'error' })
+    }
   }
 
   return (
-    <div className="scan-layout">
-      <div className="card scan-main-card">
-        <div className="card-header">
-          <div>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><CameraIcon width={15} height={15} /> QR / Barcode Scanner</h3>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Point camera at QR code or enter code manually</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className={`btn btn-sm ${cameraActive ? 'btn-red' : 'btn-outline'}`}
-              onClick={() => (cameraActive ? stopCamera() : startCamera())}
-              disabled={cameraStarting}
-            >
-              {cameraActive ? (<><SquareIcon width={11} height={11} /> Stop Camera</>) : cameraStarting ? 'Starting…' : (<><CameraIcon width={13} height={13} /> Start Camera</>)}
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm"
-              style={{ background: 'linear-gradient(135deg,#0EA5E9,#0369A1)', color: 'white' }}
-              onClick={() => togglePanel('upload')}
-            >
-              <ImageIcon width={13} height={13} /> Upload Image
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm"
-              style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: 'white' }}
-              onClick={() => togglePanel('manual')}
-            >
-              <KeyboardIcon width={13} height={13} /> Manual Entry
-            </button>
-          </div>
-        </div>
+    <div className="qr-scan-layout">
+      {/* Left — instructions */}
+      <div className="card qr-instructions-card">
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><CameraIcon width={15} height={15} /> Scan Inventory QR Code or Barcode</h3>
+        <p>Position the QR code or barcode within the frame to scan and retrieve item information.</p>
+        <ul className="qr-checklist">
+          <li><CheckIcon width={13} height={13} /> Ensure good lighting</li>
+          <li><CheckIcon width={13} height={13} /> Hold camera steady</li>
+          <li><CheckIcon width={13} height={13} /> QR code or barcode will be scanned automatically</li>
+        </ul>
+        <button type="button" className="qr-upload-link" onClick={() => togglePanel('upload')}>
+          <ImageIcon width={13} height={13} /> Upload an image instead
+        </button>
+      </div>
 
+      {/* Center — camera viewport */}
+      <div className="qr-camera-col">
         <div className="scan-viewport-wrap">
-          <div className="scan-viewport">
+          <div className="scan-viewport" ref={viewportRef}>
             <video
               ref={videoRef}
               playsInline
@@ -273,7 +353,6 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
               muted
               style={{ display: cameraActive ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
             />
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
             {!cameraActive && (
               <div className="scan-idle-state">
                 <div className="scan-qr-icon">
@@ -294,7 +373,7 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
                   </svg>
                 </div>
                 <div className="scan-idle-label">Camera not started</div>
-                <div className="scan-idle-sub">Click &quot;Start Camera&quot;, upload an image, or use Manual Entry</div>
+                <div className="scan-idle-sub">Tap the camera icon below to start scanning</div>
               </div>
             )}
             <div className="scan-corner-tl" />
@@ -302,15 +381,38 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
             <div className="scan-corner-bl" />
             <div className="scan-corner-br" />
             {cameraActive && <div className="scan-line" />}
+
+            {/* Flash + fullscreen overlay controls — only meaningful once
+                the camera is running; torch fails silently on
+                unsupported devices (see toggleTorch's comment). */}
+            {cameraActive && (
+              <button type="button" className="scan-overlay-btn scan-overlay-flash" onClick={toggleTorch} title="Toggle flash" aria-label="Toggle flash">
+                <ZapIcon width={16} height={16} style={torchOn ? { color: '#FBBF24' } : undefined} />
+              </button>
+            )}
+            <button type="button" className="scan-overlay-btn scan-overlay-fullscreen" onClick={toggleFullscreen} title="Fullscreen" aria-label="Fullscreen">
+              <MaximizeIcon width={16} height={16} />
+            </button>
           </div>
           <div className="scan-status-bar">
             <StatusIcon status={decodeStatus} />
           </div>
         </div>
 
+        <div className="qr-camera-toggle-row">
+          <button
+            type="button"
+            className={`btn ${cameraActive ? 'btn-red' : 'btn-blue'}`}
+            onClick={() => (cameraActive ? stopCamera() : startCamera())}
+            disabled={cameraStarting}
+          >
+            {cameraActive ? (<><SquareIcon width={13} height={13} /> Stop Camera</>) : cameraStarting ? 'Starting…' : (<><CameraIcon width={14} height={14} /> Start Camera</>)}
+          </button>
+        </div>
+
         {panel === 'upload' && (
-          <div className="scan-manual-wrap">
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '.05em' }}>UPLOAD QR IMAGE</label>
+          <div className="card scan-manual-wrap" style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '.05em' }}>UPLOAD QR CODE OR BARCODE IMAGE</label>
             <div
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
@@ -339,9 +441,12 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
               />
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8, minHeight: 18 }}>{imageFile?.name}</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-blue" disabled={!imagePreview || decoding} onClick={decodeImage} style={!imagePreview ? { opacity: 0.5 } : undefined}>
                 {decoding ? 'Decoding…' : (<><SearchIcon width={13} height={13} /> Decode Image</>)}
+              </button>
+              <button type="button" className="btn btn-outline" disabled={!imagePreview || ocrRunning} onClick={readText} style={!imagePreview ? { opacity: 0.5 } : undefined} title="Read printed or handwritten text — no QR code or barcode needed">
+                {ocrRunning ? 'Reading…' : (<><FileTextIcon width={13} height={13} /> Read Text</>)}
               </button>
               <button type="button" className="btn btn-outline" onClick={clearUpload}>
                 <TrashIcon width={13} height={13} /> Clear
@@ -350,19 +455,57 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
                 Cancel
               </button>
             </div>
+            {ocrText !== null && (
+              <div className="ocr-result-box">
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '.04em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <FileTextIcon width={12} height={12} /> EXTRACTED TEXT — REVIEW BEFORE USING
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8, lineHeight: 1.4 }}>
+                  Handwriting can be misread — check this carefully against the original before copying anything into a form.
+                </div>
+                <textarea
+                  className="form-input"
+                  rows={4}
+                  value={ocrText}
+                  onChange={(e) => setOcrText(e.target.value)}
+                  style={{ fontSize: 12.5, fontFamily: 'monospace', resize: 'vertical' }}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => navigator.clipboard?.writeText(ocrText).catch(() => {})}
+                  >
+                    <ClipboardIcon width={12} height={12} /> Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => {
+                      setManualValue(ocrText)
+                      setOcrText(null)
+                      setPanel('manual')
+                    }}
+                    title="Paste this text into Manual Entry so you can reformat it into the expected fields"
+                  >
+                    <KeyboardIcon width={12} height={12} /> Edit in Manual Entry
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {panel === 'manual' && (
-          <div className="scan-manual-wrap">
+          <div className="card scan-manual-wrap" style={{ marginTop: 12 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '.05em' }}>PASTE QR DATA / BARCODE VALUE</label>
             <textarea
-              className="form-input"
-              rows={3}
+              className="form-input scan-manual-textarea"
+              rows={6}
               value={manualValue}
               onChange={(e) => setManualValue(e.target.value)}
               placeholder={`Paste QR payload, e.g.: {"name":"Paracetamol 500mg","category":"Medicine","qty":100,"unit":"Tablets","batch":"PCT-2026-001","expiry":"2028-06-30","supplier":"PharmaCorp","minStock":50}\nor pipe format: Paracetamol 500mg|Medicine|100|Tablets|PCT-2026-001|2028-06-30|PharmaCorp|50`}
-              style={{ fontSize: 12, fontFamily: 'monospace', resize: 'vertical', marginTop: 8 }}
+              style={{ fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6, resize: 'vertical', marginTop: 8 }}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button type="button" className="btn btn-blue" onClick={handleManualSubmit}>
@@ -378,7 +521,7 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
           </div>
         )}
 
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
+        <div className="card qr-test-samples-card">
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}><FlaskConicalIcon width={12} height={12} /> TEST SCAN SAMPLES</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {TEST_SCANS.map((s) => (
@@ -388,18 +531,70 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
             ))}
           </div>
         </div>
+
+        {/* Bottom action row — Scan History toggles the panel on the
+            right open on mobile (where it's stacked below instead of a
+            side column); Manual Entry mirrors the reference design's
+            bottom button pair. */}
+        <div className="qr-bottom-actions">
+          <button type="button" className="btn btn-outline" onClick={() => setHistoryOpen((v) => !v)}>
+            <HistoryIcon width={13} height={13} /> Scan History
+          </button>
+          <button type="button" className="btn btn-blue" onClick={() => togglePanel('manual')}>
+            <KeyboardIcon width={13} height={13} /> Manual Entry
+          </button>
+        </div>
       </div>
 
-      <div className="scan-side-panel">
-        <div className="card" style={{ height: '100%' }}>
+      {/* Right — last scanned item + history */}
+      <div className={`qr-side-panel${historyOpen ? ' history-open' : ''}`}>
+        <div className="card qr-scanned-item-card">
+          <div className="card-header">
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><TagIcon width={15} height={15} /> Scanned Item</h3>
+          </div>
+          {lastScan ? (
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>{lastScan.name}</div>
+              <div className="detail-row">
+                <span className="detail-label">Category</span>
+                <span className="detail-value">{lastScan.category}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Batch Number</span>
+                <span className="detail-value">{lastScan.batch}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Expiry Date</span>
+                <span className="detail-value">{lastScan.expiry}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Stock</span>
+                <span className="detail-value">{lastScan.stock}</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>Scanned {timeAgo(lastScan.scannedAt)}</div>
+              <button type="button" className="btn btn-blue" style={{ width: '100%', marginTop: 14 }} onClick={() => setHistoryOpen(true)}>
+                <EyeIcon width={13} height={13} /> View Item Details
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+              Nothing scanned yet — start the camera or use Manual Entry to get started.
+            </div>
+          )}
+        </div>
+
+        <div className="card qr-history-card" ref={historyCardRef}>
           <div className="card-header">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><HistoryIcon width={15} height={15} /> Scan History</h3>
+            <button type="button" className="qr-history-close-btn" onClick={() => setHistoryOpen(false)} aria-label="Close">
+              <XIcon width={14} height={14} />
+            </button>
           </div>
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {scanHistory.length === 0 && (
               <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>No scans yet</div>
             )}
-            {[...scanHistory].reverse().slice(0, 10).map((s, idx) => (
+            {scanHistory.slice(0, 10).map((s, idx) => (
               <div className="scan-history-item" key={idx}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ fontWeight: 600, fontSize: 12 }}>{s.item_name}</div>

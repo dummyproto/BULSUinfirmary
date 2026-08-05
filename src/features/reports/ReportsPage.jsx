@@ -119,6 +119,22 @@ export default function ReportsPage() {
   const [exporting, setExporting] = useState(null)
   const [source, setSource] = useState({ docs: [], consultations: [], auditLogs: [] })
 
+  // Same freeze-header-and-column-labels-while-scrolling treatment as
+  // Inventory Items/Log and Health Records — see legacy.css's note above
+  // .inv-items-scroll for why this needs a scoped, measured offset
+  // rather than plain position:sticky on thead th everywhere.
+  const headerRef = useRef(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return undefined
+    const measure = () => setHeaderHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [report])
+
   const clinicTypes = getClinicReportTypes(role, profile?.permissions)
   const inventoryTypes = getInventoryReportTypes(role, profile?.permissions)
   const hasAnyReportAccess = clinicTypes.length > 0 || inventoryTypes.length > 0
@@ -415,8 +431,8 @@ export default function ReportsPage() {
           <p>Select a report type and date range, then click Generate Report.</p>
         </div>
       ) : (
-        <div className="card">
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <div className="card" style={{ '--reports-header-h': `${headerHeight}px` }}>
+          <div ref={headerRef} className="card-header reports-sticky-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div>
               <h3>{report.title}</h3>
               <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
@@ -452,8 +468,8 @@ export default function ReportsPage() {
               </div>
             </div>
           )}
-          <div className="table-wrap">
-            <table>
+          <div className="table-wrap reports-scroll">
+            <table className="reports-table">
               <thead>
                 <tr>
                   {report.headers.map((h) => (

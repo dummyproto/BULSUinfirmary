@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { lookupEmailBySchoolId } from '@services/usersService'
 import { extractSchoolIdCode, normalizeSchoolIdCode } from '@lib/schoolId'
-import { CreditCardIcon, CameraIcon, SearchIcon, SquareIcon } from '@components/ui/icons'
+import { CreditCardIcon, CameraIcon, SearchIcon, SquareIcon, ZapIcon, MaximizeIcon } from '@components/ui/icons'
 
 export default function QrLoginScan({ onIdentified, onError }) {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
   const [scanStatus, setScanStatus] = useState('')
+  const [torchOn, setTorchOn] = useState(false)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
   const pollRef = useRef(null)
+  const viewportRef = useRef(null)
 
   useEffect(() => stopCamera, [])
 
@@ -36,7 +38,11 @@ export default function QrLoginScan({ onIdentified, onError }) {
   }
 
   async function startCamera() {
-    setCameraStarting()
+    // Was previously called with no argument at all (setCameraStarting()),
+    // so `cameraStarting` never actually became true — the button's
+    // "Starting…" label could never show, since the state it depends on
+    // was stuck at its initial `false` the whole time this function ran.
+    setCameraStarting(true)
     setScanStatus('')
     onError('')
     try {
@@ -72,6 +78,30 @@ export default function QrLoginScan({ onIdentified, onError }) {
       streamRef.current = null
     }
     setCameraActive(false)
+    setTorchOn(false)
+  }
+
+  // Best-effort — only supported on some devices/browsers (mainly
+  // Android Chrome over a rear camera). Fails silently rather than
+  // showing an error for something the person has no control over on
+  // their specific device — same as the Inventory QR Scanner's version.
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks?.()[0]
+    if (!track) return
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] })
+      setTorchOn((v) => !v)
+    } catch {
+      // Device/browser doesn't support torch control — nothing to do.
+    }
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.()
+    } else {
+      viewportRef.current?.requestFullscreen?.().catch(() => {})
+    }
   }
 
   function captureFrame() {
@@ -90,7 +120,7 @@ export default function QrLoginScan({ onIdentified, onError }) {
   return (
     <div>
       <div className="scan-viewport-wrap">
-        <div className="scan-viewport" style={{ aspectRatio: '4/3' }}>
+        <div className="scan-viewport" ref={viewportRef} style={{ aspectRatio: '4/3' }}>
           <video
             ref={videoRef}
             playsInline
@@ -111,6 +141,17 @@ export default function QrLoginScan({ onIdentified, onError }) {
           <div className="scan-corner-bl" />
           <div className="scan-corner-br" />
           {cameraActive && <div className="scan-line" />}
+
+          {/* Flash + fullscreen overlay controls, matching the redesigned
+              Inventory QR Scanner — same idea, same visual treatment. */}
+          {cameraActive && (
+            <button type="button" className="scan-overlay-btn scan-overlay-flash" onClick={toggleTorch} title="Toggle flash" aria-label="Toggle flash">
+              <ZapIcon width={16} height={16} style={torchOn ? { color: '#FBBF24' } : undefined} />
+            </button>
+          )}
+          <button type="button" className="scan-overlay-btn scan-overlay-fullscreen" onClick={toggleFullscreen} title="Fullscreen" aria-label="Fullscreen">
+            <MaximizeIcon width={16} height={16} />
+          </button>
         </div>
         <div className="scan-status-bar">
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><SearchIcon width={12} height={12} /> {scanStatus || 'Ready to scan'}</span>

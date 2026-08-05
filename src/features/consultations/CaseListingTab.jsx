@@ -173,7 +173,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                         {diag}
                       </div>
                       <div className="diag-bar-wrap">
-                        <div className="diag-bar-fill" style={{ width: `${pct}%` }} />
+                        <div className="diag-bar-fill" style={{ transform: `scaleX(${pct / 100})` }} />
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', marginLeft: 8, flexShrink: 0 }}>

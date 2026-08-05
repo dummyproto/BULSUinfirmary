@@ -3,6 +3,7 @@ import Chart from 'chart.js/auto'
 import { formatDate, formatDateTime } from '@lib/format'
 import { getInventoryStatus } from './lib/inventoryHelpers'
 import { getMonthlyMovement, getTopUsedMedicines, getDamagedBatchCount, getExpiringBatchCount, getRecentlyReceived, getRecentlyReleased } from '@services/medicineService'
+import { themedOptions, CHART_GRID_X, CHART_GRID_Y } from '@lib/chartTheme'
 import {
   InventoryIcon,
   AlertTriangleIcon,
@@ -108,11 +109,15 @@ export default function InventoryDashboardTab({ inventory, onNavigateToStatus, o
       data: {
         labels: monthlyMovement.map((m) => new Date(m.month).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })),
         datasets: [
-          { label: 'Received', data: monthlyMovement.map((m) => m.received_qty), backgroundColor: '#1E7B5E' },
-          { label: 'Released', data: monthlyMovement.map((m) => m.released_qty), backgroundColor: '#B8660A' },
+          { label: 'Received', data: monthlyMovement.map((m) => m.received_qty), backgroundColor: '#1E7B5E', borderRadius: 6, maxBarThickness: 44, categoryPercentage: 0.6, barPercentage: 0.9 },
+          { label: 'Released', data: monthlyMovement.map((m) => m.released_qty), backgroundColor: '#B8660A', borderRadius: 6, maxBarThickness: 44, categoryPercentage: 0.6, barPercentage: 0.9 },
         ],
       },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+      options: themedOptions({
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, ...CHART_GRID_Y }, x: { ...CHART_GRID_X } },
+      }),
     }
   }, [monthlyMovement])
 
@@ -122,9 +127,15 @@ export default function InventoryDashboardTab({ inventory, onNavigateToStatus, o
       type: 'bar',
       data: {
         labels: topUsed.map((m) => m.medicine_name),
-        datasets: [{ label: 'Units released (last 30 days)', data: topUsed.map((m) => Number(m.total_released)), backgroundColor: '#6A3FA0' }],
+        datasets: [{ label: 'Units released (last 30 days)', data: topUsed.map((m) => Number(m.total_released)), backgroundColor: '#6A3FA0', borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.6, barPercentage: 0.9 }],
       },
-      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
+      options: themedOptions({
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ...CHART_GRID_Y }, y: { ...CHART_GRID_X } },
+      }),
     }
   }, [topUsed])
 

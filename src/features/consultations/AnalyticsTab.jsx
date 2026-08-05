@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import Chart from 'chart.js/auto'
 import StatusBadge from '@components/ui/StatusBadge'
 import { TrendingUpIcon, TagIcon, PillIcon, RefreshCwIcon, FolderIcon, BarChartIcon } from '@components/ui/icons'
+import { themedOptions, lineAreaDataset, CHART_GRID_X, CHART_GRID_Y } from '@lib/chartTheme'
 
 const PALETTE = ['#1E7B5E', '#6A3FA0', '#2E7D52', '#B8660A', '#C0392B', '#1A7A8A', '#DB2777', '#65A30D', '#EA580C', '#6366F1']
 
@@ -78,20 +79,24 @@ export default function AnalyticsTab({ consultations, categories }) {
         return new Date(y, parseInt(mo, 10) - 1).toLocaleString('default', { month: 'short', year: '2-digit' })
       }),
       datasets: [
-        {
+        lineAreaDataset({
           label: 'Consultations',
           data: months.map((m) => monthlyCount[m] || 0),
-          borderColor: '#1E7B5E',
-          backgroundColor: 'rgba(27,111,232,0.1)',
-          borderWidth: 2.5,
-          tension: 0.4,
-          fill: true,
-          pointBackgroundColor: '#1E7B5E',
-          pointRadius: 4,
-        },
+          color: '#1E7B5E',
+          ctx: monthlyRef.current?.getContext('2d'),
+          chartHeight: 220,
+        }),
       ],
     },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } },
+    options: themedOptions({
+      responsive: true,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 }, ...CHART_GRID_Y },
+        x: { ...CHART_GRID_X },
+      },
+    }),
   })
 
   useChart(
@@ -101,14 +106,17 @@ export default function AnalyticsTab({ consultations, categories }) {
           type: 'bar',
           data: {
             labels: topDiags.map(([d]) => (d.length > 25 ? d.substring(0, 23) + '…' : d)),
-            datasets: [{ data: topDiags.map(([, c]) => c), backgroundColor: PALETTE, borderRadius: 6 }],
+            datasets: [{ data: topDiags.map(([, c]) => c), backgroundColor: PALETTE, borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.6, barPercentage: 0.9 }],
           },
-          options: {
+          options: themedOptions({
             indexAxis: 'y',
             responsive: true,
             plugins: { legend: { display: false } },
-            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
-          },
+            scales: {
+              x: { beginAtZero: true, ticks: { stepSize: 1 }, ...CHART_GRID_Y },
+              y: { ...CHART_GRID_X },
+            },
+          }),
         }
       : null
   )
@@ -120,14 +128,17 @@ export default function AnalyticsTab({ consultations, categories }) {
           type: 'bar',
           data: {
             labels: topMeds.map(([m]) => m.substring(0, 20)),
-            datasets: [{ data: topMeds.map(([, c]) => c), backgroundColor: PALETTE.slice(2), borderRadius: 6 }],
+            datasets: [{ data: topMeds.map(([, c]) => c), backgroundColor: PALETTE.slice(2), borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.6, barPercentage: 0.9 }],
           },
-          options: {
+          options: themedOptions({
             indexAxis: 'y',
             responsive: true,
             plugins: { legend: { display: false } },
-            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
-          },
+            scales: {
+              x: { beginAtZero: true, ticks: { stepSize: 1 }, ...CHART_GRID_Y },
+              y: { ...CHART_GRID_X },
+            },
+          }),
         }
       : null
   )
@@ -145,7 +156,7 @@ export default function AnalyticsTab({ consultations, categories }) {
       labels: Object.keys(visitTypes),
       datasets: [{ data: Object.values(visitTypes), backgroundColor: Object.keys(visitTypes).map((t) => VISIT_TYPE_COLORS[t] || '#94A3B8'), borderWidth: 2 }],
     },
-    options: { responsive: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } },
+    options: themedOptions({ responsive: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }),
   })
 
   return (
@@ -213,7 +224,7 @@ export default function AnalyticsTab({ consultations, categories }) {
                   </span>
                 </div>
                 <div className="diag-bar-wrap">
-                  <div className="diag-bar-fill" style={{ width: `${pct}%`, background: 'linear-gradient(90deg,var(--primary),#7C3AED)' }} />
+                  <div className="diag-bar-fill" style={{ transform: `scaleX(${pct / 100})`, background: 'linear-gradient(90deg,var(--primary),#7C3AED)' }} />
                 </div>
               </div>
             )
@@ -252,7 +263,7 @@ export default function AnalyticsTab({ consultations, categories }) {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div className="diag-bar-wrap" style={{ width: 80 }}>
-                          <div className="diag-bar-fill" style={{ width: `${pct}%` }} />
+                          <div className="diag-bar-fill" style={{ transform: `scaleX(${pct / 100})` }} />
                         </div>
                         <span style={{ fontSize: 12 }}>{pct}%</span>
                       </div>

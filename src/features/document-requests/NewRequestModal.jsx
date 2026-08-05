@@ -44,8 +44,8 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
     >
       <div className="form-grid">
         <div className="form-group full">
-          <label>DOCUMENT TYPE *</label>
-          <select className="form-select" value={form.docType} onChange={setField('docType')}>
+          <label htmlFor="new-request-doc-type">DOCUMENT TYPE *</label>
+          <select id="new-request-doc-type" name="docType" className="form-select" value={form.docType} onChange={setField('docType')}>
             <option value="">-- Select Document Type --</option>
             {DOC_TYPES.map((d) => (
               <option key={d} value={d}>
@@ -55,8 +55,10 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
           </select>
         </div>
         <div className="form-group full">
-          <label>PURPOSE / REASON *</label>
+          <label htmlFor="new-request-purpose">PURPOSE / REASON *</label>
           <textarea
+            id="new-request-purpose"
+            name="purpose"
             className="form-textarea"
             placeholder="Explain why you need this document…"
             style={{ minHeight: 70 }}
@@ -65,8 +67,10 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
           />
         </div>
         <div className="form-group">
-          <label>DATE NEEDED *</label>
+          <label htmlFor="new-request-date-needed">DATE NEEDED *</label>
           <input
+            id="new-request-date-needed"
+            name="dateNeeded"
             className="form-input"
             type="date"
             value={form.dateNeeded}

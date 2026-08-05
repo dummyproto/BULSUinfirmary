@@ -16,9 +16,9 @@ export default function ToastViewport() {
         return (
           <div
             key={t.id}
-            className={`toast ${t.type}`}
+            className={`toast ${t.type}${t.leaving ? ' leaving' : ''}`}
             role="status"
-            onClick={() => dismiss(t.id)}
+            onClick={() => !t.leaving && dismiss(t.id)}
           >
             <Icon width={16} height={16} style={{ flexShrink: 0 }} />
             <span>{t.message}</span>

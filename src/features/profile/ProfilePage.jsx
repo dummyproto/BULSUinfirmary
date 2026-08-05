@@ -25,6 +25,7 @@ import {
   AlertTriangleIcon,
   SunIcon,
   MoonIcon,
+  XIcon,
 } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
@@ -266,23 +267,50 @@ export default function ProfilePage() {
   // update to that same row, so it's gated the same way here; otherwise
   // a staff member could still click it and get a confusing RLS
   // rejection instead of the click simply not being offered.
+  async function handleRemoveAvatar(e) {
+    e.stopPropagation() // don't also trigger handleAvatarClick's file picker
+    try {
+      await updateUser(authProfile.user_id, { profile_img_url: null })
+      setUser((u) => ({ ...u, profileImg: null }))
+      show('Profile photo removed.', 'success')
+    } catch (err) {
+      show(`Failed to remove photo: ${err.message}`, 'error')
+    }
+  }
+
   const canEditOwnAvatar = role !== 'staff'
 
   return (
     <>
       <div className="profile-header" style={{ background: ROLE_GRADIENTS[role] }}>
-        <div
-          className="profile-avatar-lg"
-          role={canEditOwnAvatar ? 'button' : undefined}
-          tabIndex={canEditOwnAvatar ? 0 : undefined}
-          aria-label={canEditOwnAvatar ? 'Change profile photo' : undefined}
-          onClick={canEditOwnAvatar ? handleAvatarClick : undefined}
-          onKeyDown={canEditOwnAvatar ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleAvatarClick()) : undefined}
-          title={canEditOwnAvatar ? 'Click to change photo' : undefined}
-          style={canEditOwnAvatar ? undefined : { cursor: 'default' }}
-        >
-          {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
-          {canEditOwnAvatar && <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>}
+        <div className="profile-avatar-wrap">
+          <div
+            className="profile-avatar-lg"
+            role={canEditOwnAvatar ? 'button' : undefined}
+            tabIndex={canEditOwnAvatar ? 0 : undefined}
+            aria-label={canEditOwnAvatar ? 'Change profile photo' : undefined}
+            onClick={canEditOwnAvatar ? handleAvatarClick : undefined}
+            onKeyDown={canEditOwnAvatar ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleAvatarClick()) : undefined}
+            title={canEditOwnAvatar ? 'Click to change photo' : undefined}
+            style={canEditOwnAvatar ? undefined : { cursor: 'default' }}
+          >
+            {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
+            {canEditOwnAvatar && <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>}
+          </div>
+          {/* Sits outside .profile-avatar-lg (which needs overflow:hidden
+              to clip the circular photo) so this badge can hang off the
+              circle's edge instead of being clipped along with it. */}
+          {canEditOwnAvatar && user.profileImg && (
+            <button
+              type="button"
+              className="avatar-remove-btn"
+              onClick={handleRemoveAvatar}
+              title="Remove profile photo"
+              aria-label="Remove profile photo"
+            >
+              <XIcon width={12} height={12} />
+            </button>
+          )}
         </div>
         {canEditOwnAvatar && <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />}
         <div className="profile-info">
@@ -496,30 +524,10 @@ export default function ProfilePage() {
 
         {tab === 'settings' && (
           <div className="profile-tab-content active">
-            <div className="card" style={{ marginBottom: 14 }}>
-              <div className="card-header">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
-                </h3>
-              </div>
-              <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                    {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
-                  </div>
-                </div>
-                <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
-                  <SunIcon />
-                  <MoonIcon />
-                </button>
-              </div>
-            </div>
             <div className="two-col-equal">
               <div className="card">
                 <div className="card-header">
                   <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><CreditCardIcon width={15} height={15} /> Account Information</h3>
-                  <span style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>Read-only</span>
                 </div>
                 <div style={{ padding: 16 }}>
                   <div className="alert" style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, marginBottom: 14, padding: '8px 12px', borderRadius: 6 }}>
@@ -555,21 +563,43 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="card" style={{ alignSelf: 'start' }}>
-                <div className="card-header">
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Account Status</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Account Status</h3>
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', fontSize: 11.5 }}><CheckCircleIcon width={11} height={11} /> Account is active and secure</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-3)' }}>Role</span>
+                        <strong>{ROLE_LABELS[role]}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-3)' }}>Session</span>
+                        <strong style={{ color: 'var(--success)' }}>● Active</strong>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ padding: 14 }}>
-                  <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircleIcon width={13} height={13} /> Account is active and secure</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-3)' }}>Role</span>
-                      <strong>{ROLE_LABELS[role]}</strong>
+
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
+                    </h3>
+                  </div>
+                  <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-3)' }}>Session</span>
-                      <strong style={{ color: 'var(--success)' }}>● Active</strong>
-                    </div>
+                    <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
+                      <SunIcon />
+                      <MoonIcon />
+                    </button>
                   </div>
                 </div>
               </div>

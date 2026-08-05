@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { ClipboardIcon, CameraIcon } from '@components/ui/icons'
@@ -11,17 +12,33 @@ export default function LogTab({ logs, staff, search, onSearchChange }) {
 
   const staffName = (id) => staff.find((s) => s.user_id === id)?.name
 
+  // Same freeze-header-and-column-labels-while-scrolling treatment as
+  // Inventory Items (ItemsTab.jsx) — measured live via ResizeObserver
+  // since the header row can still wrap on narrow screens even though it
+  // usually fits on one line at typical widths.
+  const headerRef = useRef(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return undefined
+    const measure = () => setHeaderHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   return (
-    <div className="card">
-      <div className="card-header">
+    <div className="card" style={{ '--log-header-h': `${headerHeight}px` }}>
+      <div ref={headerRef} className="card-header inv-log-sticky-header" style={{ flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardIcon width={15} height={15} /> Inventory Transaction Log</h3>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search log…" width={200} />
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{filtered.length} entries</span>
         </div>
       </div>
-      <div className="table-wrap">
-        <table>
+      <div className="table-wrap inv-log-scroll">
+        <table className="inv-log-table">
           <thead>
             <tr>
               <th>Date/Time</th>

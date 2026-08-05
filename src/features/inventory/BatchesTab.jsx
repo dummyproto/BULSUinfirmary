@@ -137,11 +137,11 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
 
   return (
     <div className="card">
-      <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <FolderIcon width={15} height={15} /> Batch Tracking
         </h3>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search batch ID, item, supplier…" width={220} />
           <button type="button" className="btn btn-sm btn-teal" onClick={onAddBatch} title="Add a new batch to an item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <FolderIcon width={13} height={13} /> Add Batch
@@ -161,7 +161,7 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
       {medicineGroups.map((group) => {
         const activeTotal = group.batches.filter((b) => b.status === 'Active').reduce((sum, b) => sum + b.quantity, 0)
         return (
-          <div key={group.medicine_id} style={{ marginBottom: 4 }}>
+          <div key={group.medicine_id} style={{ marginBottom: 24 }}>
             <div style={{ padding: '10px 18px', background: 'var(--surface2)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <strong style={{ fontSize: 13 }}>{group.name}</strong>
               <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
@@ -206,7 +206,7 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
       })}
 
       {legacyBatches.length > 0 && (
-        <div>
+        <div style={{ marginTop: medicineGroups.length > 0 ? 24 : 0 }}>
           <div style={{ padding: '10px 18px', background: 'var(--surface2)', borderTop: '1px solid var(--border)' }}>
             <strong style={{ fontSize: 13 }}>Other Items (Supply / Equipment)</strong>
             <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>{legacyBatches.length} batch{legacyBatches.length !== 1 ? 'es' : ''}</span>

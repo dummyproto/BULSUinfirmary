@@ -16,11 +16,11 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
 
   return (
     <div className="card">
-      <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <TruckIcon width={15} height={15} /> Suppliers
         </h3>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search suppliers…" width={220} />
           <button type="button" className="btn btn-sm btn-teal" onClick={onAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <PlusIcon width={13} height={13} /> Add Supplier

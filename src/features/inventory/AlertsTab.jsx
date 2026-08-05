@@ -1,8 +1,8 @@
 import { formatDate } from '@lib/format'
 import { getInventoryStatus, isPastISODate, itemKey, daysUntil } from './lib/inventoryHelpers'
-import { CheckCircleIcon, AlertOctagonIcon, WrenchIcon, AlertTriangleIcon, BellIcon, TrashIcon, PlusIcon, ClipboardIcon, PackageXIcon } from '@components/ui/icons'
+import { CheckCircleIcon, AlertOctagonIcon, WrenchIcon, AlertTriangleIcon, BellIcon, PackageXIcon } from '@components/ui/icons'
 
-function AlertSection({ title, Icon, items, color, renderRow }) {
+function AlertSection({ title, Icon, items, color, onItemClick, renderRow }) {
   if (items.length === 0) return null
   return (
     <div className="card" style={{ marginBottom: 14, borderTop: `3px solid ${color}` }}>
@@ -18,10 +18,15 @@ function AlertSection({ title, Icon, items, color, renderRow }) {
               <th>Item</th>
               <th>Category</th>
               <th>Detail</th>
-              <th>Action</th>
             </tr>
           </thead>
-          <tbody>{items.map(renderRow)}</tbody>
+          <tbody>
+            {items.map((i) => (
+              <tr key={itemKey(i)} onClick={() => onItemClick(i)} style={{ cursor: 'pointer' }}>
+                {renderRow(i)}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>
@@ -32,7 +37,12 @@ function AlertSection({ title, Icon, items, color, renderRow }) {
 // same single, shared, automatically-computed status function used
 // everywhere else (Items tab, badges, etc.). Nothing here maintains its
 // own separate threshold logic anymore (Phase 8 consolidation).
-export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish }) {
+//
+// Rows have no per-row action buttons — clicking anywhere on a row calls
+// onItemClick, which the parent uses to jump to the Items tab with that
+// item's detail open, rather than exposing a different quick-action per
+// alert type here.
+export default function AlertsTab({ inventory, onItemClick }) {
   const outOfStock = inventory.filter((i) => getInventoryStatus(i) === 'Out of Stock')
   const expired = inventory.filter((i) => getInventoryStatus(i) === 'Expired')
   const needsMaint = inventory.filter(
@@ -63,8 +73,9 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={PackageXIcon}
         items={outOfStock}
         color="var(--danger)"
+        onItemClick={onItemClick}
         renderRow={(i) => (
-          <tr key={itemKey(i)}>
+          <>
             <td>
               <strong>{i.name}</strong>
             </td>
@@ -74,12 +85,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
             <td style={{ color: 'var(--danger)', fontWeight: 600 }}>
               0 {i.unit} on hand{i.latest_batch_status === 'Archived' ? ' · all batches archived' : i.latest_batch_status === 'Damaged' ? ' · last batch reported damaged' : ''}
             </td>
-            <td>
-              <button type="button" className="btn btn-sm btn-teal" onClick={() => onReplenish(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <PlusIcon width={13} height={13} /> Restock
-              </button>
-            </td>
-          </tr>
+          </>
         )}
       />
 
@@ -88,8 +94,9 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={AlertOctagonIcon}
         items={expired}
         color="var(--danger)"
+        onItemClick={onItemClick}
         renderRow={(i) => (
-          <tr key={itemKey(i)}>
+          <>
             <td>
               <strong>{i.name}</strong>
             </td>
@@ -97,12 +104,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
               <span className={`cat-badge cat-${i.category.toLowerCase()}`}>{i.category}</span>
             </td>
             <td style={{ color: 'var(--danger)', fontWeight: 600 }}>Expired: {formatDate(i.expiration_date)}</td>
-            <td>
-              <button type="button" className="btn btn-sm btn-red" onClick={() => onRemove(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <TrashIcon width={13} height={13} /> Remove ({i.quantity})
-              </button>
-            </td>
-          </tr>
+          </>
         )}
       />
 
@@ -111,8 +113,9 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={WrenchIcon}
         items={needsMaint}
         color="#7C3AED"
+        onItemClick={onItemClick}
         renderRow={(i) => (
-          <tr key={itemKey(i)}>
+          <>
             <td>
               <strong>{i.name}</strong>
             </td>
@@ -122,17 +125,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
             <td style={{ color: '#7C3AED', fontWeight: 600 }}>
               Flagged for maintenance{i.expiration_date ? ` · Last: ${formatDate(i.expiration_date)}` : ''}
             </td>
-            <td>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-sm btn-teal" onClick={() => onRestore(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <CheckCircleIcon width={13} height={13} /> Restore
-                </button>
-                <button type="button" className="btn btn-sm btn-red" onClick={() => onRemove(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <TrashIcon width={13} height={13} /> Remove
-                </button>
-              </div>
-            </td>
-          </tr>
+          </>
         )}
       />
 
@@ -141,8 +134,9 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={AlertTriangleIcon}
         items={critical}
         color="var(--danger)"
+        onItemClick={onItemClick}
         renderRow={(i) => (
-          <tr key={itemKey(i)}>
+          <>
             <td>
               <strong>{i.name}</strong>
             </td>
@@ -152,12 +146,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
             <td style={{ color: 'var(--danger)', fontWeight: 600 }}>
               {i.quantity} / {i.min_stock} (min) — at or below half of reorder point
             </td>
-            <td>
-              <button type="button" className="btn btn-sm btn-teal" onClick={() => onReplenish(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <PlusIcon width={13} height={13} /> Replenish
-              </button>
-            </td>
-          </tr>
+          </>
         )}
       />
 
@@ -166,8 +155,9 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={AlertTriangleIcon}
         items={low}
         color="var(--warning)"
+        onItemClick={onItemClick}
         renderRow={(i) => (
-          <tr key={itemKey(i)}>
+          <>
             <td>
               <strong>{i.name}</strong>
             </td>
@@ -177,12 +167,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
             <td style={{ color: 'var(--warning)', fontWeight: 600 }}>
               {i.quantity} / {i.min_stock} (min)
             </td>
-            <td>
-              <button type="button" className="btn btn-sm btn-teal" onClick={() => onReplenish(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <PlusIcon width={13} height={13} /> Replenish
-              </button>
-            </td>
-          </tr>
+          </>
         )}
       />
 
@@ -191,10 +176,11 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
         Icon={BellIcon}
         items={nearExpiry}
         color="var(--primary)"
+        onItemClick={onItemClick}
         renderRow={(i) => {
           const d = daysUntil(i.expiration_date)
           return (
-            <tr key={itemKey(i)}>
+            <>
               <td>
                 <strong>{i.name}</strong>
               </td>
@@ -204,12 +190,7 @@ export default function AlertsTab({ inventory, onRemove, onRestore, onReplenish 
               <td style={{ color: 'var(--warning)', fontWeight: 600 }}>
                 {formatDate(i.expiration_date)} ({d} days)
               </td>
-              <td>
-                <button type="button" className="btn btn-sm btn-blue" onClick={() => onReplenish(itemKey(i))} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <ClipboardIcon width={13} height={13} /> Review
-                </button>
-              </td>
-            </tr>
+            </>
           )
         }}
       />

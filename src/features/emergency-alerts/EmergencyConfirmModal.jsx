@@ -1,10 +1,14 @@
 import { createPortal } from 'react-dom'
 import { AlertOctagonIcon } from '@components/ui/icons'
+import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
+
+const EXIT_DURATION = 160
 
 export default function EmergencyConfirmModal({ isOpen, onCancel, onProceed }) {
-  if (!isOpen) return null
+  const { shouldRender, closing } = useDelayedUnmount(isOpen, EXIT_DURATION)
+  if (!shouldRender) return null
   return createPortal(
-    <div className="emg-overlay open" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div className={`emg-overlay open${closing ? ' closing' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="emg-confirm-box">
         <div className="emg-confirm-icon"><AlertOctagonIcon width={28} height={28} /></div>
         <h3>Send Emergency Alert?</h3>

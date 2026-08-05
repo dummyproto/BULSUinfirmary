@@ -3,7 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { TOPBAR_GRADIENT } from '@routes/navItems'
-import { MenuIcon, BellIcon } from '@components/ui/icons'
+import { MenuIcon, BellIcon, HelpCircleIcon } from '@components/ui/icons'
+import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
+import UserManualModal from '@components/ui/UserManualModal'
 import NotificationsModal from '@features/notifications/NotificationsModal'
 import { countUnread, listForUser, markRead, markAllRead } from '@services/notificationsService'
 import {
@@ -66,6 +68,7 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
+  const [manualOpen, setManualOpen] = useState(false)
 
   const userId = profile?.user_id ?? null
   const includesInventory = role === 'staff' || role === 'admin'
@@ -192,6 +195,15 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
       </div>
 
       <div className="topbar-right">
+        {/* Empty slot pages can portal their own contextual action
+            buttons into (e.g. Inventory Items' Add Item/Release) via
+            <TopbarActions>, instead of hardcoding page-specific buttons
+            into this shared, every-page component. Content only appears
+            here while the page that rendered it is actually mounted —
+            switching tabs/pages naturally clears it, no manual cleanup
+            needed. */}
+        <div id="topbar-page-actions" className="topbar-page-actions" />
+
         {role === 'patient' && (
           <button
             className="emg-login-header-btn"
@@ -207,26 +219,43 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
           className="icon-btn"
           role="button"
           tabIndex={0}
+          aria-label="User Manual"
+          title="User Manual"
+          onClick={() => setManualOpen(true)}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setManualOpen(true))}
+        >
+          <HelpCircleIcon />
+        </div>
+
+        <div
+          className="icon-btn"
+          role="button"
+          tabIndex={0}
           aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ''}`}
           title="Notifications"
           onClick={openNotifications}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openNotifications())}
         >
           <BellIcon />
-          {unread > 0 && <span className="notif-dot" />}
+          {unread > 0 && <span className="notif-dot">{unread > 9 ? '9+' : unread}</span>}
         </div>
 
         <div
-          className="topbar-avatar"
+          className="topbar-profile"
           role="button"
           tabIndex={0}
           aria-label="My Profile"
-          style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}
           title="My Profile"
           onClick={() => navigate('/profile')}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate('/profile'))}
         >
-          {avatarContent}
+          <div className="topbar-avatar" style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}>
+            {avatarContent}
+          </div>
+          <div className="topbar-profile-info">
+            <span className="topbar-profile-name">{profile?.name || 'My Profile'}</span>
+            <span className="topbar-profile-role">{ROLE_LABELS[role] || role}</span>
+          </div>
         </div>
       </div>
 
@@ -260,6 +289,8 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
       </Suspense>
 
       <EmergencySuccessOverlay result={emgSuccess} onClose={() => setEmgSuccess(null)} />
+
+      <UserManualModal isOpen={manualOpen} onClose={() => setManualOpen(false)} />
     </div>
   )
 }

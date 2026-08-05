@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { getOrCreateActiveConversation, addMessage, createConversation, getAiReply, listConversationsForUser, listRecentUserMessages, deleteAllConversationsForUser } from '@services/chatService'
 import { classifyIntent, getBotReply, isHealthConcernMessage } from './lib/botEngine'
 import ChatMessage from './ChatMessage'
 import ChatLogModal from './ChatLogModal'
+import BotFace from './BotFace'
 import {
   ClockIcon,
   MapPinIcon,
@@ -15,8 +17,6 @@ import {
   ConsultationIcon,
   PillIcon,
   AlertOctagonIcon,
-  UserIcon,
-  ToothIcon,
   ClipboardIcon,
   BarChartIcon,
   TrashIcon,
@@ -30,9 +30,6 @@ import {
 
 const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
-function BotAvatar(props) {
-  return <ConsultationIcon {...props} />
-}
 const BOT_NAME = 'MediBot'
 
 const TOPICS = [
@@ -66,6 +63,7 @@ function isSosTrigger(text) {
 export default function ChatbotPage() {
   const { profile, role } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const firstName = profile?.name?.split(' ')[0]
   // Scoped to this patient's own requests, same as My Requests page. Fetched
   // once on mount — the chatbot only needs a status summary, not live
@@ -170,7 +168,15 @@ export default function ChatbotPage() {
 
   async function handleSend(text) {
     const msg = text.trim()
-    if (!msg || !conversationId) return
+    // typing is true from the moment a non-SOS message is sent until its
+    // reply (AI or fallback) arrives — reusing it here as the rate limit
+    // itself, rather than a separate cooldown timer: while a reply is
+    // still pending, every additional send (rapid Enter presses, mashing
+    // the Send button) is simply ignored instead of firing a second
+    // concurrent AI API call / DB write. SOS-triggering messages never
+    // set `typing` (they return early below), so this never delays or
+    // blocks an emergency report.
+    if (!msg || !conversationId || typing) return
     setInputValue('')
     const userTs = new Date().toISOString()
     setMessages((list) => [...list, { type: 'user', text: msg, ts: userTs }])
@@ -301,10 +307,11 @@ export default function ChatbotPage() {
   // The ONLY action that actually deletes stored conversations/messages
   // (Phase 2) — deliberately separate from, and more clearly labeled
   // than, the Clear button above. Confirmed the same way every other
-  // destructive action in this codebase is (window.confirm), since this
-  // one is irreversible in a way Clear no longer is.
+  // destructive action in this codebase is (the styled confirm() dialog
+  // from ConfirmContext), since this one is irreversible in a way Clear
+  // no longer is.
   async function handleDeleteAllHistory() {
-    if (!window.confirm('Delete ALL chat history?\nThis permanently removes every past conversation and cannot be undone.')) return
+    if (!(await confirm('Delete ALL chat history?\nThis permanently removes every past conversation and cannot be undone.'))) return
     try {
       await deleteAllConversationsForUser(profile.user_id)
       const fresh = await createConversation(profile.user_id, role)
@@ -357,7 +364,7 @@ export default function ChatbotPage() {
       <div className="chat-main-panel card">
         <div className="chat-main-header">
           <div className="bot-identity">
-            <div className="bot-avatar-lg"><BotAvatar width={26} height={26} /></div>
+            <div className="bot-avatar-lg"><BotFace size={36} talking={typing} /></div>
             <div>
               <div className="bot-name">{BOT_NAME}</div>
               <div className="bot-status">
@@ -380,11 +387,11 @@ export default function ChatbotPage() {
 
         <div className="chat-messages" ref={messagesRef} onClick={handleMessagesClick}>
           {messages.map((m, i) => (
-            <ChatMessage key={m.id ?? `local-${i}`} message={m} userInitials={profile?.avatar_initials} />
+            <ChatMessage key={m.id ?? `local-${i}`} message={m} userInitials={profile?.avatar_initials} userAvatarUrl={profile?.profile_img_url} />
           ))}
           {typing && (
             <div className="msg msg-bot-wrap">
-              <div className="msg-avatar bot-av"><BotAvatar width={16} height={16} /></div>
+              <div className="msg-avatar bot-av"><BotFace size={32} talking /></div>
               <div className="typing-indicator">
                 <span />
                 <span />
@@ -397,13 +404,14 @@ export default function ChatbotPage() {
         <div className="chat-input-row">
           <input
             type="text"
-            placeholder="Ask me anything about the clinic…"
+            placeholder={typing ? 'Waiting for a reply…' : 'Ask me anything about the clinic…'}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleInputKeyPress}
             autoComplete="off"
+            disabled={typing}
           />
-          <button type="button" className="chat-send-btn" onClick={() => handleSend(inputValue)} title="Send message">
+          <button type="button" className="chat-send-btn" onClick={() => handleSend(inputValue)} title="Send message" disabled={typing}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />

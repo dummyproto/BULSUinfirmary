@@ -8,6 +8,31 @@ import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccess
 import logo from '@/assets/logo.png'
 import { MailIcon, CreditCardIcon, AlertTriangleIcon, CheckCircleIcon, ShieldIcon, UserIcon } from '@components/ui/icons'
 
+// Mirrors the `roles` restrictions declared per-route in AppRoutes.jsx —
+// duplicated here (rather than imported) because AppRoutes.jsx isn't a
+// data source, just JSX; any route NOT listed here is open to every
+// authenticated role (dashboard, profile), matching the "no roles prop"
+// default there. Used below so the post-login redirect never sends
+// someone back to a page their role can't actually see — landing there
+// straight out of a successful login is what was producing an
+// immediate, confusing "Access denied" right after signing in.
+const ROLE_RESTRICTED_ROUTES = {
+  '/patients': ['admin', 'staff'],
+  '/document-requests': ['admin', 'staff'],
+  '/inventory': ['admin', 'staff'],
+  '/reports': ['admin', 'staff'],
+  '/emergency-alerts': ['admin', 'staff'],
+  '/consultation': ['staff'],
+  '/maintenance': ['admin'],
+  '/my-requests': ['patient'],
+  '/chatbot': ['patient'],
+}
+
+function isRouteAllowedForRole(pathname, role) {
+  const allowedRoles = ROLE_RESTRICTED_ROUTES[pathname]
+  return !allowedRoles || allowedRoles.includes(role)
+}
+
 // Dev-only quick login. Deliberately has NO hardcoded fallback
 // credentials — import.meta.env.DEV gating alone isn't a reliable
 // guarantee that a literal password string won't end up somewhere in a
@@ -79,7 +104,7 @@ const ForgotPasswordModal = lazy(() => import('./ForgotPasswordModal'))
 const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
 export default function LoginPage() {
-  const { isAuthenticated, signIn } = useAuth()
+  const { isAuthenticated, role, signIn } = useAuth()
   const location = useLocation()
   const [mode, setMode] = useState('password') // 'password' | 'scan'
   const [email, setEmail] = useState('')
@@ -108,7 +133,8 @@ export default function LoginPage() {
   }, [lockUntil])
 
   if (isAuthenticated) {
-    const redirectTo = location.state?.from?.pathname || '/dashboard'
+    const fromPath = location.state?.from?.pathname
+    const redirectTo = fromPath && isRouteAllowedForRole(fromPath, role) ? fromPath : '/dashboard'
     return <Navigate to={redirectTo} replace />
   }
 

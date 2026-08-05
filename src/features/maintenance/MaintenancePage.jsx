@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import UserManagementTab from './UserManagementTab'
 import PermissionsTab from './PermissionsTab'
@@ -20,6 +21,7 @@ const TABS = [
 export default function MaintenancePage() {
   const { profile } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const currentUserId = profile?.user_id ?? null
 
   const [tab, setTab] = useState('users')
@@ -144,7 +146,7 @@ export default function MaintenancePage() {
     const user = users.find((u) => u.user_id === id)
     if (!user) return
     if (user.role === 'admin') return show('Cannot delete the System Administrator account', 'error')
-    if (!window.confirm(`Delete user "${user.name}"?\nThis action cannot be undone.`)) return
+    if (!(await confirm(`Delete user "${user.name}"?\nThis action cannot be undone.`))) return
     try {
       await deleteUser(id)
       await addAuditLog({ userId: currentUserId, action: 'DELETE_USER', details: `Deleted user: ${user.name} (ID: ${id})` })
