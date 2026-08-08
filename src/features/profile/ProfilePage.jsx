@@ -6,6 +6,7 @@ import { useTheme } from '@context/ThemeContext'
 import Spinner from '@components/ui/Spinner'
 import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
 import { compressImageFile } from '@lib/imageCompression'
+import { isPushSupported, isPushEnabledOnThisDevice, enablePushNotifications, disablePushNotifications } from '@lib/pushNotifications'
 import EditProfileModal from './EditProfileModal'
 import EditFamilyModal from './EditFamilyModal'
 import ChangePasswordModal from './ChangePasswordModal'
@@ -28,6 +29,7 @@ import {
   AlertTriangleIcon,
   SunIcon,
   MoonIcon,
+  BellIcon,
 } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
@@ -101,6 +103,47 @@ export default function ProfilePage() {
 
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
+
+  const [pushSupported] = useState(isPushSupported())
+  const [pushOn, setPushOn] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
+
+  // Checks this specific device's actual subscription state on mount —
+  // deliberately not assumed from anything stored server-side, since a
+  // person's account can be logged in on several devices independently,
+  // each with its own real on/off state (this device's browser data
+  // could be cleared, notifications could be re-permitted after being
+  // blocked, etc., all without the app ever being told).
+  useEffect(() => {
+    if (!pushSupported) return
+    isPushEnabledOnThisDevice().then(setPushOn)
+  }, [pushSupported])
+
+  async function handleTogglePush() {
+    if (!authProfile?.user_id) return
+    setPushLoading(true)
+    try {
+      if (pushOn) {
+        await disablePushNotifications()
+        setPushOn(false)
+        show('Push notifications turned off for this device.', 'info')
+      } else {
+        const ok = await enablePushNotifications(authProfile.user_id)
+        setPushOn(ok)
+        if (ok) {
+          show('Push notifications turned on for this device.', 'success')
+        } else if (Notification.permission === 'denied') {
+          show('Notifications are blocked for this site in your browser settings — enable them there first.', 'error')
+        } else {
+          show('Push notifications weren\u2019t enabled.', 'error')
+        }
+      }
+    } catch (err) {
+      show(`Failed to update push notifications: ${err.message}`, 'error')
+    } finally {
+      setPushLoading(false)
+    }
+  }
 
   // Reads the initial tab from ?tab=personal|family|settings so the new
   // profile dropdown (Topbar.jsx) can link straight to a specific tab
@@ -601,6 +644,37 @@ export default function ProfilePage() {
                     <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
                       <SunIcon />
                       <MoonIcon />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><BellIcon width={15} height={15} /> Push Notifications</h3>
+                  </div>
+                  <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>
+                        {!pushSupported ? 'Not available on this device' : pushOn ? 'On for this device' : 'Off for this device'}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {!pushSupported
+                          ? 'iPhone/iPad: add this site to your Home Screen first (Share button → Add to Home Screen), then this option will work.'
+                          : pushOn
+                            ? 'You\u2019ll get a notification on this device even when the app isn\u2019t open.'
+                            : 'Turn on to get notifications on this device even when the app isn\u2019t open.'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={`push-toggle-btn${pushOn ? ' on' : ''}`}
+                      disabled={!pushSupported || pushLoading}
+                      onClick={handleTogglePush}
+                      title="Toggle push notifications"
+                      aria-label="Toggle push notifications"
+                      style={!pushSupported ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                    >
+                      <BellIcon width={17} height={17} />
                     </button>
                   </div>
                 </div>

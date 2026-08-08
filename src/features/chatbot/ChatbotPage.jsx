@@ -86,13 +86,38 @@ export default function ChatbotPage() {
   const [typing, setTyping] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   // Mobile-only — the Topic Categories / Clinic Contacts / Medical
-  // Disclaimer panel is hidden by default below 900px (no room next to
-  // the chat itself), so this toggles it open as an off-canvas drawer.
-  // Irrelevant above that breakpoint, where the panel is always visible
-  // as a static side column — see chat-panel-toggle-btn's CSS, which is
-  // only shown on mobile in the first place.
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  // Disclaimer panel renders as an off-canvas drawer below 900px (no
+  // room next to the chat itself). Starts OPEN (not closed-until-tapped)
+  // per product decision — someone landing on the Chatbot page on a
+  // phone should see this info immediately, not have to discover the
+  // Info button first. Still fully closable via the × button or by
+  // tapping the backdrop (chat-panel-overlay), and reopenable via Info.
+  // Irrelevant above the 900px breakpoint, where the panel is always
+  // visible as a static side column regardless of this state — see
+  // chat-panel-toggle-btn's CSS, which is only shown on mobile in the
+  // first place.
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(true)
   const [emgOpen, setEmgOpen] = useState(false)
+
+  // See MobileBottomNav.jsx's handleItemClick — tapping "Chat-Bot" there
+  // while already on this page dispatches this event instead of causing
+  // a route change, specifically so the drawer has a way to close from
+  // outside this component's own tree.
+  useEffect(() => {
+    function handleTabTap() {
+      setMobilePanelOpen(false)
+    }
+    window.addEventListener('mobile-chatbot-tab-tap', handleTabTap)
+    return () => window.removeEventListener('mobile-chatbot-tab-tap', handleTabTap)
+  }, [])
+  // Mobile-only swipe support for the Topic Categories / Clinic Contacts /
+  // Medical Disclaimer drawer. Previously the ONLY way to open it was the
+  // "Info" button in the header — no touch gesture existed at all — so
+  // this adds a deliberate, mostly-horizontal swipe as a second entry
+  // point without removing the button, the × close, or the backdrop tap.
+  // Lives on a ref (not state) since touch-start coordinates don't need
+  // to trigger a re-render themselves.
+  const panelTouchStartRef = useRef(null)
   const [emgDescription, setEmgDescription] = useState('')
   // Recent messages from the user's OTHER (past) conversations — light,
   // eager-loaded alongside the active conversation, used only for the
@@ -357,10 +382,38 @@ export default function ChatbotPage() {
     show('Log exported as CSV', 'success')
   }
 
+  // ── Mobile drawer swipe gesture ──
+  // touchend fires for the vertical scroll inside .chat-messages too, so
+  // this only acts once a gesture is clearly horizontal (not someone
+  // scrolling the conversation) and deliberate (a real swipe, not a tap
+  // that drifted a few px) — otherwise scrolling the chat would risk
+  // randomly toggling the drawer.
+  function handlePanelTouchStart(e) {
+    const t = e.touches[0]
+    panelTouchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() }
+  }
+
+  function handlePanelTouchEnd(e) {
+    const start = panelTouchStartRef.current
+    panelTouchStartRef.current = null
+    if (!start) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    const elapsed = Date.now() - start.time
+    const isDeliberateHorizontalSwipe = elapsed < 800 && Math.abs(dx) >= 50 && Math.abs(dx) >= Math.abs(dy) * 1.2
+    if (!isDeliberateHorizontalSwipe) return
+    // Swipe left (dx < 0) opens the drawer sliding in from the right;
+    // swipe right (dx > 0) closes it — matches the direction the panel
+    // itself slides via .chat-side-panels' transform:translateX.
+    if (dx < 0 && !mobilePanelOpen) setMobilePanelOpen(true)
+    else if (dx > 0 && mobilePanelOpen) setMobilePanelOpen(false)
+  }
+
   if (loadingHistory) return <Spinner label="Loading your conversation…" />
 
   return (
-    <div className="chatbot-layout">
+    <div className="chatbot-layout" onTouchStart={handlePanelTouchStart} onTouchEnd={handlePanelTouchEnd}>
       <div className="chat-main-panel card">
         <div className="chat-main-header">
           <div className="bot-identity">
@@ -465,7 +518,7 @@ export default function ChatbotPage() {
         </div>
 
         <div className="card chat-side-card" style={{ background: 'var(--warning-light)', border: '1px solid #f15757' }}>
-          <div style={{ padding: 12, fontSize: 11.5, color: '#580303', lineHeight: 1.5 }}>
+          <div className="chat-disclaimer-text" style={{ padding: 12, fontSize: 11.5, lineHeight: 1.5 }}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangleIcon width={13} height={13} /> Medical Disclaimer</strong>
             <br />
             <br />

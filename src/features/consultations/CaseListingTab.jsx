@@ -29,7 +29,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
   const set = (patch) => onFiltersChange({ ...filters, ...patch })
 
   return (
-    <>
+    <div className="case-list-page">
       <div className="stats-row cols-4" style={{ marginBottom: 16 }}>
         <div className="stat-card">
           <div className="stat-num">{totalCases}</div>
@@ -113,7 +113,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
           </div>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className={showMore ? '' : 'compact-table'}>
               <thead>
                 <tr>
                   <th>#</th>
@@ -123,7 +123,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                   {showMore && <th>Visit Type</th>}
                   <th>Diagnosis</th>
                   {showMore && <th>Medications</th>}
-                  <th>Action</th>
+                  <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,14 +152,14 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                       </td>
                     )}
                     <td>
-                      <span className="diag-pill">{c.diagnosis || (c.assessment || '').substring(0, 35) || '—'}</span>
+                      <span className="diag-pill" title={c.diagnosis || c.assessment || ''}>{c.diagnosis || (c.assessment || '').substring(0, 35) || '—'}</span>
                     </td>
                     {showMore && (
-                      <td style={{ fontSize: 11, color: 'var(--text-2)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ fontSize: 11, color: 'var(--text-2)', maxWidth: 180, whiteSpace: 'normal', wordBreak: 'break-word' }}>
                         {c.medications || 'None'}
                       </td>
                     )}
-                    <td>
+                    <td style={{ textAlign: 'right' }}>
                       <button type="button" className="btn btn-sm btn-outline" onClick={() => onView(c.consultation_id)} title="View" aria-label="View">
                         <EyeIcon width={13} height={13} />
                       </button>
@@ -169,12 +169,17 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
               </tbody>
             </table>
           </div>
+          {showMore && (
+            <div className="case-list-scroll-hint show">
+              <ChevronDownIcon width={12} height={12} style={{ transform: 'rotate(-90deg)' }} /> Swipe left/right on the table to see all columns
+            </div>
+          )}
           <div style={{ padding: '10px 18px', fontSize: 12, color: 'var(--text-3)' }}>
             Showing <strong>{filtered.length}</strong> of {totalCases} total cases
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 280, flexShrink: 0 }}>
+        <div className="cases-diagnosis-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 280, flexShrink: 0 }}>
           <div className="card">
             <div className="card-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><TagIcon width={15} height={15} /> Cases by Diagnosis</h3>
@@ -206,6 +211,6 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }

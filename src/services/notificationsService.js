@@ -122,4 +122,25 @@ export async function notify({ targetUserId, targetRole, message, type = 'info',
     .from('notifications')
     .insert({ user_id: targetUserId ?? null, target_role: targetRole ?? null, message, type, module: module ?? null })
   if (error) throw error
+
+  // Best-effort — a push failure (not configured, no subscriptions for
+  // this target, a transient network error) must never break the core
+  // in-app notification above, which is why this is a separate,
+  // swallowed try/catch rather than something that could make notify()
+  // itself throw.
+  try {
+    await supabase.functions.invoke('send-push', {
+      body: {
+        targetUserId: targetUserId ?? undefined,
+        targetRole: targetRole ?? undefined,
+        title: 'Bulsu Infirmary',
+        body: message,
+        url: module || '/dashboard',
+      },
+    })
+  } catch {
+    // Push not configured yet, or genuinely failed to send — the
+    // in-app notification (already inserted above) still exists
+    // regardless, so there's nothing to roll back or retry here.
+  }
 }
