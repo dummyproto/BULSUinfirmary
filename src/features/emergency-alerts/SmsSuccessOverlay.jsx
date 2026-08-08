@@ -22,7 +22,9 @@ export default function SmsSuccessOverlay({ result, onClose }) {
         </div>
         <h3>Message Sent!</h3>
         <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 6 }}>
-          Notification sent to <strong>{shown.patient.parent_name}</strong> ({shown.patient.parent_relation})
+          Notification sent to <strong>{shown.patient.parent_name || 'the parent/guardian'}</strong>
+          {shown.patient.parent_relation ? ` (${shown.patient.parent_relation})` : ''}
+          {shown.patient.parent_phone ? ` at ${shown.patient.parent_phone}` : ''}
         </p>
         <div className="sms-sent-preview">{shown.message}</div>
         <button type="button" className="btn btn-blue btn-full" style={{ marginTop: 16 }} onClick={onClose}>

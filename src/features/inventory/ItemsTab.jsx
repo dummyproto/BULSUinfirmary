@@ -3,7 +3,8 @@ import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
 import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil } from './lib/inventoryHelpers'
-import { InventoryIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon } from '@components/ui/icons'
+import { InventoryIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 const CATEGORIES = ['All', 'Medicine', 'Supply', 'Equipment']
 const STATUSES = ['All', 'Available', 'Low Stock', 'Critical Stock', 'Out of Stock', 'Near Expiry', 'Expired', 'Damaged', 'Archived', 'Needs Maintenance']
@@ -19,7 +20,7 @@ function buildRows(sections) {
     rows.push({ kind: 'section', key: `section-${section.type}`, section })
     let lastCategory = null
     // Tracks, per category group, how many items share each name and
-    // how many of those this row is (1-indexed) — lets ItemRow show a
+    // how many of those this row is (1-indexed) — lets ItemListCard show a
     // "Batch 2 of 3" style badge whenever a name repeats (e.g. multiple
     // deliveries of the same medicine, each tracked as its own batch for
     // FIFO dispensing — see sortInventoryByCategory's comment). Without
@@ -83,8 +84,17 @@ export default function ItemsTab({
   // fuller picture. colSpan on the section/category/empty-state rows
   // has to track this too, or they'd only span part of the table width
   // once columns are hidden.
-  const [showMore, setShowMore] = useState(false)
-  const visibleCols = showMore ? 9 : 4
+  const [showMore, setShowMore] = useState(defaultShowMore)
+
+  // List/Grid toggle — persisted so switching pages/reloading doesn't
+  // silently reset it back to whichever one wasn't chosen. Both views
+  // reuse the exact same `sections`/`rows` data — grid renders ItemCard,
+  // list renders ItemListCard — same filters, same section/category
+  // grouping, same action handlers, just different presentation.
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('inv_items_view_mode') || 'list')
+  useEffect(() => {
+    localStorage.setItem('inv_items_view_mode', viewMode)
+  }, [viewMode])
 
   // Both the title/filter row AND the table's column headers freeze in
   // place while scrolling (see .inv-items-sticky-header / thead th's
@@ -143,7 +153,7 @@ export default function ItemsTab({
   }
 
   return (
-    <div className="card" style={{ '--items-header-h': `${headerHeight}px` }}>
+    <div className="card inv-items-card" style={{ '--items-header-h': `${headerHeight}px` }}>
       <div ref={headerRef} className="card-header inv-items-sticky-header" style={{ flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
   <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
     <InventoryIcon width={15} height={15} /> Inventory Items
@@ -174,10 +184,27 @@ export default function ItemsTab({
         <XCircleIcon width={13} height={13} /> Clear Filters
       </button>
     )}
-    <button type="button" className="btn btn-sm btn-outline" onClick={() => setShowMore((v) => !v)} title="Show or hide Category, Unit, Level, and Expiry/Maint. columns">
-      {showMore ? <><ChevronUpIcon width={13} height={13} /> View Less</> : <><ChevronDownIcon width={13} height={13} /> View More</>}
-    </button>
-    <div style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
+    <div className="inv-view-toggle" role="group" aria-label="Switch between list and grid view">
+      <button type="button" className={`inv-view-toggle-btn${viewMode === 'list' ? ' active' : ''}`} onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}>
+        <ListIcon width={14} height={14} />
+      </button>
+      <button type="button" className={`inv-view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`} onClick={() => setViewMode('grid')} title="Grid view" aria-label="Grid view" aria-pressed={viewMode === 'grid'}>
+        <GridIcon width={14} height={14} />
+      </button>
+    </div>
+    {viewMode === 'list' && (
+      <button
+        type="button"
+        className="btn btn-sm btn-outline inv-view-more-btn"
+        onClick={() => setShowMore((v) => !v)}
+        title="Show or hide Category, Unit, Level, and Expiry/Maint. columns"
+        aria-label={showMore ? 'View Less — hide Category, Unit, Level, and Expiry/Maint. columns' : 'View More — show Category, Unit, Level, and Expiry/Maint. columns'}
+      >
+        {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+        <span>{showMore ? 'View Less' : 'View More'}</span>
+      </button>
+    )}
+    <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
       <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
         <PlusIcon width={13} height={13} /> Add Item
       </button>
@@ -193,95 +220,107 @@ export default function ItemsTab({
         </div>
       )}
       <div className="table-wrap inv-items-scroll">
-        <table className="inv-items-table">
-          <thead>
-            <tr>
-              <th>Item Name / Batch</th>
-              {showMore && <th>Category</th>}
-              <th>Stock</th>
-              {showMore && <th>Unit</th>}
-              {showMore && <th>Level</th>}
-              {showMore && <th>Expiry / Maint.</th>}
-              {showMore && <th>Supplier</th>}
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={visibleCols} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>
-                  {filtersActive ? (
-                    <>
-                      No items match your current filters.
-                      <br />
-                      <button type="button" className="btn btn-sm btn-outline" onClick={clearFilters} style={{ marginTop: 10 }}>
-                        <XCircleIcon width={13} height={13} /> Clear Filters
-                      </button>
-                    </>
-                  ) : (
-                    'No items in inventory yet.'
-                  )}
-                </td>
-              </tr>
-            )}
-            {(() => {
-              // Tracks item rows only — section/category header rows
-              // don't count towards this, so the stripe pattern alternates
-              // cleanly item-by-item instead of being thrown off by
-              // however many group headers happen to sit between them.
-              // Computed purely from each row's own position (no mutable
-              // counter reassigned across iterations) — a previous version
-              // used `let itemIndex` incremented inline, which the linter
-              // flagged (react-hooks/immutability) as unsafe to reassign
-              // once render has started, even though it was actually safe
-              // here (freshly re-initialized every render). This avoids
-              // the pattern entirely rather than arguing with the rule.
-              return rows.map((row, i) => {
-                if (row.kind === 'section') {
-                  return (
-                    <tr className={`inv-expiry-row ${row.section.type}`} key={row.key}>
-                      <td colSpan={visibleCols}>
-                        <span>{row.section.label}</span>
-                        <small>{row.section.note}</small>
-                      </td>
-                    </tr>
-                  )
-                }
-                if (row.kind === 'category') {
-                  return (
-                    <tr className={`inv-category-row cat-row-${(row.category || '').toLowerCase()}`} key={row.key}>
-                      <td colSpan={visibleCols}>
-                        <span>{row.category || 'Uncategorized'}</span>
-                        <small>{row.summary}</small>
-                      </td>
-                    </tr>
-                  )
-                }
-                const itemIndex = rows.slice(0, i + 1).filter((r) => r.kind !== 'section' && r.kind !== 'category').length - 1
-                return (
-                  <ItemRow
-                    key={row.key}
-                    item={row.item}
-                    showMore={showMore}
-                    striped={itemIndex % 2 === 1}
-                    onEdit={onEdit}
-                    onRelease={onRelease}
-                    onRemove={onRemove}
-                    onRestore={onRestore}
-                    onReplenish={onReplenish}
-                  />
-                )
-              })
-            })()}
-          </tbody>
-        </table>
+        {viewMode === 'list' ? (
+          <ItemCardList
+            rows={rows}
+            filtered={filtered}
+            filtersActive={filtersActive}
+            clearFilters={clearFilters}
+            showMore={showMore}
+            onEdit={onEdit}
+            onRelease={onRelease}
+            onRemove={onRemove}
+            onRestore={onRestore}
+            onReplenish={onReplenish}
+          />
+        ) : (
+          <ItemGrid
+            rows={rows}
+            filtered={filtered}
+            filtersActive={filtersActive}
+            clearFilters={clearFilters}
+            onEdit={onEdit}
+            onRelease={onRelease}
+            onRemove={onRemove}
+            onRestore={onRestore}
+            onReplenish={onReplenish}
+          />
+        )}
       </div>
     </div>
   )
 }
 
-function ItemRow({ item: i, showMore, striped, onEdit, onRelease, onRemove, onRestore, onReplenish }) {
+// List view — same sections/rows data as grid view, rendered as a
+// vertical stack of individual, self-contained cards (each with its own
+// border/shadow/spacing) instead of a continuous table with divider
+// lines. Section/category headers render as the same plain text
+// dividers ItemGrid already uses, for visual consistency between the
+// two view modes.
+function ItemCardList({ rows, filtered, filtersActive, clearFilters, showMore, onEdit, onRelease, onRemove, onRestore, onReplenish }) {
+  return (
+    <div style={{ padding: '0 16px 16px' }}>
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>
+          {filtersActive ? (
+            <>
+              No items match your current filters.
+              <br />
+              <button type="button" className="btn btn-sm btn-outline" onClick={clearFilters} style={{ marginTop: 10 }}>
+                <XCircleIcon width={13} height={13} /> Clear Filters
+              </button>
+            </>
+          ) : (
+            'No items in inventory yet.'
+          )}
+        </div>
+      ) : (
+        <div>
+          {rows.map((row, index) => {
+            if (row.kind === 'section') {
+              return (
+                <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: index === 0 ? 0 : 14, marginBottom: 10 }}>
+                  <div style={{ padding: '10px 14px' }}>
+                    <span>{row.section.label}</span>
+                    <small style={{ marginLeft: 8 }}>{row.section.note}</small>
+                  </div>
+                </div>
+              )
+            }
+            if (row.kind === 'category') {
+              return (
+                <div key={row.key} className={`inv-category-row cat-row-${(row.category || '').toLowerCase()}`} style={{ borderRadius: 6, marginTop: 10, marginBottom: 10 }}>
+                  <div style={{ padding: '8px 14px' }}>
+                    <span>{row.category || 'Uncategorized'}</span>
+                    <small style={{ marginLeft: 8 }}>{row.summary}</small>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <ItemListCard
+                key={row.key}
+                item={row.item}
+                showMore={showMore}
+                onEdit={onEdit}
+                onRelease={onRelease}
+                onRemove={onRemove}
+                onRestore={onRestore}
+                onReplenish={onReplenish}
+              />
+            )
+          })}
+          <div className="inv-list-footer-note">
+            <InfoIcon width={14} height={14} />
+            Items are grouped by category. Only non-expired and usable items are shown.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ItemListCard({ item: i, showMore, onEdit, onRelease, onRemove, onRestore, onReplenish }) {
   const st = getInventoryStatus(i)
   const pct = Math.min(100, Math.round((i.quantity / Math.max(i.min_stock, 1)) * 100))
   const barCls = st === 'Available' ? 'high' : ['Low Stock', 'Critical Stock'].includes(st) ? 'medium' : 'low'
@@ -289,109 +328,329 @@ function ItemRow({ item: i, showMore, striped, onEdit, onRelease, onRemove, onRe
   const expColor = daysLeft !== null ? (daysLeft < 0 ? 'var(--danger)' : daysLeft <= 30 ? 'var(--warning)' : 'var(--text)') : 'var(--text-3)'
 
   return (
-    <tr className={`inv-item-row${striped ? ' inv-item-row-alt' : ''}`}>
-      <td>
-        <div style={{ fontWeight: 600 }}>{i.name}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-3)', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 5 }}>
-          {i.batch_no && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <TagIcon width={10} height={10} /> {i.batch_no}
-            </span>
-          )}
-          {i.received_date && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <DownloadIcon width={10} height={10} /> {formatDate(i.received_date)}
-            </span>
-          )}
-          {i.purchase_reference && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Purchase Reference">
-              <ClipboardIcon width={10} height={10} /> {i.purchase_reference}
-            </span>
-          )}
-          {i.is_fifo && i.category === 'Medicine' && <span className="fifo-tag">FIFO</span>}
-        </div>
-      </td>
-      {showMore && (
-        <td>
-          <span className={`cat-badge cat-${i.category.toLowerCase()}`}>{i.category}</span>
-        </td>
-      )}
-      <td style={{ fontWeight: 700, color: st === 'Expired' ? 'var(--danger)' : st === 'Low Stock' ? 'var(--warning)' : 'var(--success)', fontSize: 16 }}>
-        {i.quantity}
-      </td>
-      {showMore && <td style={{ color: 'var(--text-2)' }}>{i.unit}</td>}
-      {showMore && (
-        <td style={{ minWidth: 120 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div className="stock-bar" style={{ flex: 1 }}>
-              <div className={`stock-fill ${barCls}`} style={{ width: `${pct}%` }} />
-            </div>
-            <span style={{ fontSize: 10, color: 'var(--text-3)', width: 28 }}>{pct}%</span>
+    <div className="inv-item-list-card">
+      <div className={`inv-item-list-card-main${showMore ? ' has-more' : ''}`}>
+        {i.image_url ? (
+          <img src={i.image_url} alt="" className="inv-item-list-card-photo" />
+        ) : (
+          <div className="inv-item-list-card-photo inv-item-row-photo-placeholder">
+            {i.category === 'Medicine' ? <PillIcon width={18} height={18} /> : i.category === 'Equipment' ? <WrenchIcon width={18} height={18} /> : <InventoryIcon width={18} height={18} />}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>Min: {i.min_stock}</div>
-        </td>
-      )}
-      {showMore && (
-        <td style={{ color: expColor, fontSize: 12 }}>
-          {i.category === 'Equipment' ? (
-            i.expiration_date ? (
+        )}
+
+        <div className="inv-item-list-card-info">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 16 }}>{i.name}</span>
+            {i.is_fifo && i.category === 'Medicine' && <span className="fifo-tag">FIFO</span>}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 5 }}>
+            {i.batch_no && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <TagIcon width={10} height={10} /> {i.batch_no}
+              </span>
+            )}
+            {i.received_date && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <DownloadIcon width={10} height={10} /> {formatDate(i.received_date)}
+              </span>
+            )}
+            {i.purchase_reference && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Purchase Reference">
+                <ClipboardIcon width={10} height={10} /> {i.purchase_reference}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {showMore && (
+          <div className="inv-item-list-card-category">
+            <div className="inv-item-list-card-label">Category</div>
+            <span className={`cat-badge cat-${i.category.toLowerCase()}`}>{i.category}</span>
+          </div>
+        )}
+
+        <div className="inv-item-list-card-stock">
+          <div className="inv-item-list-card-label">Stock</div>
+          <div style={{ fontWeight: 700, fontSize: 22, color: st === 'Expired' ? 'var(--danger)' : st === 'Low Stock' ? 'var(--warning)' : 'var(--success)' }}>{i.quantity}</div>
+        </div>
+
+        {showMore && (
+          <div className="inv-item-list-card-unit">
+            <div className="inv-item-list-card-label">Unit</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{i.unit}</div>
+          </div>
+        )}
+
+        {showMore && (
+          <div className="inv-item-list-card-level">
+            <div className="inv-item-list-card-label">Level</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="stock-bar" style={{ width: 60 }}>
+                <div className={`stock-fill ${barCls}`} style={{ width: `${pct}%` }} />
+              </div>
+              <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{pct}%</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>Min: {i.min_stock}</div>
+          </div>
+        )}
+
+        {showMore && (
+          <div className="inv-item-list-card-expiry" style={{ color: expColor }}>
+            <div className="inv-item-list-card-label">{i.category === 'Equipment' ? 'Maintenance' : 'Expiry / Maint.'}</div>
+            {i.category === 'Equipment' ? (
+              i.expiration_date ? (
+                <div style={{ fontWeight: daysLeft !== null && daysLeft <= 30 ? 700 : 400, fontSize: 12 }}>{formatDate(i.expiration_date)}</div>
+              ) : (
+                <span style={{ color: 'var(--text-3)', fontSize: 12 }}>No maintenance date</span>
+              )
+            ) : i.expiration_date ? (
               <>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '.05em', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <WrenchIcon width={10} height={10} /> MAINTENANCE
-                </div>
-                <div style={{ fontWeight: daysLeft !== null && daysLeft <= 30 ? 700 : 400 }}>{formatDate(i.expiration_date)}</div>
-                <div style={{ fontSize: 10 }}>{daysLeft !== null ? (daysLeft < 0 ? 'OVERDUE' : daysLeft === 0 ? 'Today' : `${daysLeft} days`) : '—'}</div>
+                <div style={{ fontWeight: daysLeft !== null && daysLeft <= 30 ? 700 : 400, fontSize: 12 }}>{formatDate(i.expiration_date)}</div>
+                <div style={{ fontSize: 10 }}>{daysLeft !== null ? (daysLeft < 0 ? 'EXPIRED' : daysLeft === 0 ? 'Today' : `${daysLeft} days`) : '—'}</div>
               </>
             ) : (
-              <span style={{ color: 'var(--text-3)' }}>N/A</span>
-            )
-          ) : i.expiration_date ? (
-            <>
-              <div style={{ fontWeight: daysLeft !== null && daysLeft <= 30 ? 700 : 400 }}>{formatDate(i.expiration_date)}</div>
-              <div style={{ fontSize: 10 }}>{daysLeft !== null ? (daysLeft < 0 ? 'EXPIRED' : daysLeft === 0 ? 'Today' : `${daysLeft} days`) : '—'}</div>
-            </>
-          ) : (
-            <span style={{ color: 'var(--text-3)' }}>N/A</span>
-          )}
-        </td>
-      )}
-      {showMore && <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{i.supplier || '—'}</td>}
-      <td>
-        <StatusBadge status={st} />
-      </td>
-      <td>
+              <span style={{ color: 'var(--text-3)', fontSize: 12 }}>No expiry</span>
+            )}
+          </div>
+        )}
+
+        {showMore && (
+          <div className="inv-item-list-card-supplier">
+            <div className="inv-item-list-card-label">Supplier</div>
+            {i.supplier ? (
+              <span className="supplier-chip">
+                <span className="supplier-chip-dot" /> {i.supplier}
+              </span>
+            ) : (
+              <span style={{ color: 'var(--text-3)' }}>—</span>
+            )}
+          </div>
+        )}
+
+        <div className="inv-item-list-card-status">
+          <div className="inv-item-list-card-label">Status</div>
+          <StatusBadge status={st} />
+        </div>
+
         <div className="inv-action-group-icons">
           {st === 'Needs Maintenance' ? (
             <>
               <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onRestore(itemKey(i))} title="Return this equipment to active inventory" aria-label="Restore">
                 <CheckCircleIcon width={14} height={14} />
+                <span>Restore</span>
               </button>
               <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title="Remove this maintenance item" aria-label="Remove">
                 <TrashIcon width={14} height={14} />
+                <span>Remove</span>
               </button>
             </>
           ) : st === 'Expired' ? (
             <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title={`Remove expired stock from inventory (${i.quantity})`} aria-label="Remove expired stock">
               <TrashIcon width={14} height={14} />
+              <span>Remove</span>
             </button>
           ) : (
             <>
               <button type="button" className="btn btn-sm btn-green inv-action-btn" onClick={() => onReplenish?.(itemKey(i))} title="Add stock to this item" aria-label="Add stock">
                 <PlusIcon width={14} height={14} />
+                <span>Add Stock</span>
               </button>
               <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEdit(itemKey(i))} title="Edit item details" aria-label="Edit">
                 <EditIcon width={14} height={14} />
+                <span>Edit</span>
               </button>
               <button type="button" className="btn btn-sm btn-orange inv-action-btn" onClick={() => onRelease(itemKey(i))} title="Release or dispense stock" aria-label="Release">
                 <MinusIcon width={14} height={14} />
+                <span>Release</span>
               </button>
               <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title="Remove this item from inventory" aria-label="Remove">
                 <TrashIcon width={14} height={14} />
+                <span>Remove</span>
               </button>
             </>
           )}
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
+  )
+}
+
+// Grid view — same sections/rows data as the table above (identical
+// filtering, sorting, and section/category grouping), just rendered as
+// cards instead of table rows. Section and category headers render as
+// plain text dividers above each group of cards rather than colSpan'd
+// table rows, since a grid has no columns to span.
+function ItemGrid({ rows, filtered, filtersActive, clearFilters, onEdit, onRelease, onRemove, onRestore, onReplenish }) {
+  if (filtered.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>
+        {filtersActive ? (
+          <>
+            No items match your current filters.
+            <br />
+            <button type="button" className="btn btn-sm btn-outline" onClick={clearFilters} style={{ marginTop: 10 }}>
+              <XCircleIcon width={13} height={13} /> Clear Filters
+            </button>
+          </>
+        ) : (
+          'No items in inventory yet.'
+        )}
+      </div>
+    )
+  }
+
+  // Groups consecutive 'item' rows into runs, each rendered inside ONE
+  // shared grid container — section/category header rows break a run
+  // and start a new one. Without this grouping, each card would end up
+  // in its own single-item grid div (one child = no actual multi-column
+  // layout), rather than all cards in a group sharing one real grid.
+  const groups = []
+  let currentRun = null
+  rows.forEach((row) => {
+    if (row.kind === 'item') {
+      if (!currentRun) {
+        currentRun = { kind: 'run', key: `run-${row.key}`, items: [] }
+        groups.push(currentRun)
+      }
+      currentRun.items.push(row)
+    } else {
+      currentRun = null
+      groups.push(row)
+    }
+  })
+
+  return (
+    <div style={{ padding: 16 }}>
+      {groups.map((row) => {
+        if (row.kind === 'section') {
+          return (
+            <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: 14, marginBottom: 10 }}>
+              <div style={{ padding: '10px 14px' }}>
+                <span>{row.section.label}</span>
+                <small style={{ marginLeft: 8 }}>{row.section.note}</small>
+              </div>
+            </div>
+          )
+        }
+        if (row.kind === 'category') {
+          return (
+            <div key={row.key} className={`inv-category-row cat-row-${(row.category || '').toLowerCase()}`} style={{ borderRadius: 6, marginTop: 10, marginBottom: 10 }}>
+              <div style={{ padding: '8px 14px' }}>
+                <span>{row.category || 'Uncategorized'}</span>
+                <small style={{ marginLeft: 8 }}>{row.summary}</small>
+              </div>
+            </div>
+          )
+        }
+        return (
+          <div key={row.key} className="inv-item-grid">
+            {row.items.map((itemRow) => (
+              <ItemCard key={itemRow.key} item={itemRow.item} onEdit={onEdit} onRelease={onRelease} onRemove={onRemove} onRestore={onRestore} onReplenish={onReplenish} />
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ItemCard({ item: i, onEdit, onRelease, onRemove, onRestore, onReplenish }) {
+  const st = getInventoryStatus(i)
+  const pct = Math.min(100, Math.round((i.quantity / Math.max(i.min_stock, 1)) * 100))
+  const barCls = st === 'Available' ? 'high' : ['Low Stock', 'Critical Stock'].includes(st) ? 'medium' : 'low'
+  const daysLeft = daysUntil(i.expiration_date)
+  const expColor = daysLeft !== null ? (daysLeft < 0 ? 'var(--danger)' : daysLeft <= 30 ? 'var(--warning)' : 'var(--text)') : 'var(--text-3)'
+
+  return (
+    <div className="inv-item-card">
+      {i.image_url ? (
+        <img src={i.image_url} alt="" className="inv-item-card-photo" />
+      ) : (
+        <div className="inv-item-card-photo inv-item-card-photo-placeholder">
+          {i.category === 'Medicine' ? <PillIcon width={26} height={26} /> : i.category === 'Equipment' ? <WrenchIcon width={26} height={26} /> : <InventoryIcon width={26} height={26} />}
+        </div>
+      )}
+      <div className="inv-item-card-top">
+        <span className={`cat-badge cat-${i.category.toLowerCase()}`}>{i.category}</span>
+        <StatusBadge status={st} />
+      </div>
+      <div className="inv-item-card-name">{i.name}</div>
+      <div className="inv-item-card-meta">
+        {i.batch_no && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <TagIcon width={10} height={10} /> {i.batch_no}
+          </span>
+        )}
+        {i.is_fifo && i.category === 'Medicine' && <span className="fifo-tag">FIFO</span>}
+      </div>
+
+      <div className="inv-item-card-stock">
+        <span style={{ fontWeight: 700, fontSize: 20, color: st === 'Expired' ? 'var(--danger)' : st === 'Low Stock' ? 'var(--warning)' : 'var(--success)' }}>{i.quantity}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{i.unit}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+        <div className="stock-bar" style={{ flex: 1 }}>
+          <div className={`stock-fill ${barCls}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{pct}%</span>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>Min: {i.min_stock}</div>
+
+      <div style={{ fontSize: 11, color: expColor, marginTop: 8 }}>
+        {i.category === 'Equipment' ? (
+          i.expiration_date ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <WrenchIcon width={10} height={10} /> Maint: {formatDate(i.expiration_date)}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--text-3)' }}>No maintenance date</span>
+          )
+        ) : i.expiration_date ? (
+          <>Expires: {formatDate(i.expiration_date)} {daysLeft !== null && (daysLeft < 0 ? '(EXPIRED)' : daysLeft === 0 ? '(Today)' : `(${daysLeft}d)`)}</>
+        ) : (
+          <span style={{ color: 'var(--text-3)' }}>No expiry</span>
+        )}
+      </div>
+      {i.supplier && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Supplier: {i.supplier}</div>}
+
+      <div className="inv-action-group-icons" style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+        {st === 'Needs Maintenance' ? (
+          <>
+            <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onRestore(itemKey(i))} title="Return this equipment to active inventory" aria-label="Restore">
+              <CheckCircleIcon width={14} height={14} />
+              <span>Restore</span>
+            </button>
+            <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title="Remove this maintenance item" aria-label="Remove">
+              <TrashIcon width={14} height={14} />
+              <span>Remove</span>
+            </button>
+          </>
+        ) : st === 'Expired' ? (
+          <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title={`Remove expired stock from inventory (${i.quantity})`} aria-label="Remove expired stock">
+            <TrashIcon width={14} height={14} />
+            <span>Remove</span>
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn btn-sm btn-green inv-action-btn" onClick={() => onReplenish?.(itemKey(i))} title="Add stock to this item" aria-label="Add stock">
+              <PlusIcon width={14} height={14} />
+              <span>Add Stock</span>
+            </button>
+            <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEdit(itemKey(i))} title="Edit item details" aria-label="Edit">
+              <EditIcon width={14} height={14} />
+              <span>Edit</span>
+            </button>
+            <button type="button" className="btn btn-sm btn-orange inv-action-btn" onClick={() => onRelease(itemKey(i))} title="Release or dispense stock" aria-label="Release">
+              <MinusIcon width={14} height={14} />
+              <span>Release</span>
+            </button>
+            <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onRemove(itemKey(i))} title="Remove this item from inventory" aria-label="Remove">
+              <TrashIcon width={14} height={14} />
+              <span>Remove</span>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   )
 }

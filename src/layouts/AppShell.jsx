@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import MobileBottomNav from './MobileBottomNav'
 import EmergencyAlertListener from './EmergencyAlertListener'
 import SessionTimeoutManager from './SessionTimeoutManager'
 import ToastViewport from '@components/ui/ToastViewport'
@@ -15,6 +16,12 @@ function useCurrentPageTitle() {
   const { pathname } = useLocation()
   const items = NAV_ITEMS[role] || []
   const match = items.find((item) => item.path === pathname)
+  // /profile isn't a NAV_ITEMS entry (it's reached via the Topbar profile
+  // dropdown, not the sidebar/bottom-nav), so it always fell through to
+  // the generic "Dashboard" fallback meant for genuinely unmatched
+  // paths — misleading here specifically, since it looks like the actual
+  // Dashboard page rather than the profile page it actually is.
+  if (pathname === '/profile') return 'Personal Dashboard'
   return match?.label || 'Dashboard'
 }
 
@@ -46,6 +53,7 @@ export default function AppShell() {
       <ToastViewport />
       <EmergencyAlertListener />
       <SessionTimeoutManager />
+      <MobileBottomNav />
       <ScrollToTopButton targetRef={pageContentRef} />
     </>
   )

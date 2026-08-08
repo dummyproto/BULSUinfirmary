@@ -13,7 +13,7 @@ export default function SearchInput({ value, onChange, placeholder, width = 210,
   const fieldId = id || `search-input-${autoId}`
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="search-input-wrap" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <input
         id={fieldId}
         name={name || fieldId}

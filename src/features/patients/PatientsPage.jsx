@@ -6,7 +6,7 @@ import SearchInput from '@components/ui/SearchInput'
 import Spinner from '@components/ui/Spinner'
 import { listUsers } from '@services/usersService'
 import PatientDetailModal from './PatientDetailModal'
-import { GraduationCapIcon, EyeIcon } from '@components/ui/icons'
+import { GraduationCapIcon, EyeIcon, ChevronDownIcon } from '@components/ui/icons'
 
 export default function PatientsPage() {
   const { show } = useToast()
@@ -66,7 +66,9 @@ export default function PatientsPage() {
       <div className="card" style={{ '--patients-header-h': `${headerHeight}px` }}>
         <div ref={headerRef} className="card-header patients-sticky-header">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><GraduationCapIcon width={15} height={15} /> Patient Directory</h3>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by name, user ID, or course…" width={240} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by name, user ID, or course…" width={240} />
+          </div>
         </div>
         <div className="table-wrap patients-scroll">
           <table className="patients-table">
@@ -77,7 +79,7 @@ export default function PatientsPage() {
                 <th>Course</th>
                 <th>Year Level</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -89,7 +91,7 @@ export default function PatientsPage() {
                 </tr>
               )}
               {filtered.map((p) => (
-                <tr key={p.user_id}>
+                <tr key={p.user_id} className="patient-row" onClick={() => setSelected(p)}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Avatar user={p} size={26} />
@@ -104,10 +106,21 @@ export default function PatientsPage() {
                   <td>
                     <StatusBadge status={p.active ? 'Active' : 'Inactive'} color={p.active ? 'green' : 'gray'} />
                   </td>
-                  <td>
-                    <button type="button" className="btn btn-sm btn-outline" onClick={() => setSelected(p)}>
-                      <EyeIcon width={13} height={13} /> View Record
-                    </button>
+                  <td style={{ textAlign: 'right' }}>
+                    <div className="inv-action-group-icons patient-row-action" style={{ justifyContent: 'flex-end' }}>
+                      <button type="button" className="btn btn-xs btn-outline inv-action-btn" onClick={() => setSelected(p)} title="View Record" aria-label="View Record">
+                        <EyeIcon width={14} height={14} />
+                        <span>View</span>
+                      </button>
+                    </div>
+                    {/* Mobile-only tap affordance — the row itself is
+                        clickable there (see onClick on <tr> above), so
+                        the full icon+label button (built for an
+                        explicit, standalone click target) reads as
+                        oversized and leaves a large empty gap next to
+                        the name. A plain chevron communicates "tap to
+                        view" the way a native mobile list item does. */}
+                    <ChevronDownIcon width={16} height={16} className="patient-row-chevron" aria-hidden="true" />
                   </td>
                 </tr>
               ))}

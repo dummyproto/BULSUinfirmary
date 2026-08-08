@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
 import { batchKey, getBatchStatus, daysUntil } from './lib/inventoryHelpers'
-import { FolderIcon, MinusIcon, PlusIcon, EditIcon, TrashIcon, RefreshCwIcon, AlertTriangleIcon, QrCodeIcon } from '@components/ui/icons'
+import { FolderIcon, MinusIcon, PlusIcon, EditIcon, TrashIcon, RefreshCwIcon, AlertTriangleIcon, QrCodeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 function statusColor(status) {
   if (status === 'Expired' || status === 'Recalled' || status === 'Damaged') return 'badge-red'
@@ -10,7 +12,7 @@ function statusColor(status) {
   return 'badge-green'
 }
 
-function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveBatch, onUnarchiveBatch, onReportDamaged, onViewQR, showItemColumn }) {
+function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveBatch, onUnarchiveBatch, onReportDamaged, onViewQR, showItemColumn, showMore }) {
   const status = getBatchStatus(b)
   const daysLeft = daysUntil(b.expiration_date)
   const archived = b.status === 'Archived'
@@ -27,41 +29,51 @@ function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveB
           <strong>{b.item_name}</strong>
         </td>
       )}
-      <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{b.quantity}</td>
-      <td style={{ fontSize: 12 }}>{b.received_date ? formatDate(b.received_date) : '—'}</td>
-      <td
-        style={{
-          fontSize: 12,
-          fontWeight: status !== 'Available' && status !== 'No Expiry' ? 700 : 400,
-          color: status === 'Expired' ? 'var(--danger)' : status === 'Near Expiry' ? 'var(--warning)' : 'var(--text)',
-        }}
-      >
-        {b.expiration_date ? formatDate(b.expiration_date) : 'N/A'}
-      </td>
-      <td style={{ fontSize: 12, color: daysLeft !== null && daysLeft < 0 ? 'var(--danger)' : daysLeft !== null && daysLeft <= 30 ? 'var(--warning)' : 'var(--text-2)' }}>
-        {daysLeft === null ? '—' : daysLeft < 0 ? <strong>EXPIRED</strong> : daysLeft === 0 ? <strong>Today</strong> : `${daysLeft}d`}
-      </td>
-      <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{b.supplier || '—'}</td>
-      <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{b.purchase_reference || '—'}</td>
+      {showMore && (
+        <>
+          <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{b.quantity}</td>
+          <td style={{ fontSize: 12 }}>{b.received_date ? formatDate(b.received_date) : '—'}</td>
+          <td
+            style={{
+              fontSize: 12,
+              fontWeight: status !== 'Available' && status !== 'No Expiry' ? 700 : 400,
+              color: status === 'Expired' ? 'var(--danger)' : status === 'Near Expiry' ? 'var(--warning)' : 'var(--text)',
+            }}
+          >
+            {b.expiration_date ? formatDate(b.expiration_date) : 'N/A'}
+          </td>
+          <td style={{ fontSize: 12, color: daysLeft !== null && daysLeft < 0 ? 'var(--danger)' : daysLeft !== null && daysLeft <= 30 ? 'var(--warning)' : 'var(--text-2)' }}>
+            {daysLeft === null ? '—' : daysLeft < 0 ? <strong>EXPIRED</strong> : daysLeft === 0 ? <strong>Today</strong> : `${daysLeft}d`}
+          </td>
+        </>
+      )}
+      {showMore && (
+        <>
+          <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{b.supplier || '—'}</td>
+          <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{b.purchase_reference || '—'}</td>
+          <td>
+            <span className={`badge ${statusColor(status)} badge-no-dot`} style={{ fontSize: 11 }}>
+              {status}
+            </span>
+          </td>
+        </>
+      )}
       <td>
-        <span className={`badge ${statusColor(status)} badge-no-dot`} style={{ fontSize: 11 }}>
-          {status}
-        </span>
-      </td>
-      <td>
-        <div className="inv-action-group">
+        <div className="inv-action-group-icons">
           {isMedicine && (
             <div className="inv-action-secondary">
-              <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onViewQR(batchKey(b))} title="View / download this batch's QR code" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <QrCodeIcon width={13} height={13} /> QR
+              <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onViewQR(batchKey(b))} title="View / download this batch's QR code" aria-label="View / download this batch's QR code">
+                <QrCodeIcon width={14} height={14} />
+                <span>QR</span>
               </button>
             </div>
           )}
           {archived ? (
             isMedicine && (
               <div className="inv-action-primary">
-                <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onUnarchiveBatch(batchKey(b))} title="Restore this batch to active" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <RefreshCwIcon width={13} height={13} /> Unarchive
+                <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onUnarchiveBatch(batchKey(b))} title="Restore this batch to active" aria-label="Restore this batch to active">
+                  <RefreshCwIcon width={14} height={14} />
+                  <span>Restore</span>
                 </button>
               </div>
             )
@@ -69,34 +81,39 @@ function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveB
             <>
               {isMedicine && (
                 <div className="inv-action-primary">
-                  <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEditBatch(batchKey(b))} title="Edit this batch's details" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <EditIcon width={13} height={13} /> Edit
+                  <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEditBatch(batchKey(b))} title="Edit this batch's details" aria-label="Edit this batch's details">
+                    <EditIcon width={14} height={14} />
+                    <span>Edit</span>
                   </button>
                 </div>
               )}
               <div className="inv-action-secondary">
-                <button type="button" className="btn btn-sm btn-teal inv-action-btn" onClick={() => onReplenishBatch(batchKey(b))} title="Add stock to this batch" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <PlusIcon width={13} height={13} /> Replenish
+                <button type="button" className="btn btn-sm btn-teal inv-action-btn" onClick={() => onReplenishBatch(batchKey(b))} title="Add stock to this batch" aria-label="Add stock to this batch">
+                  <PlusIcon width={14} height={14} />
+                  <span>Add Stock</span>
                 </button>
               </div>
               {!['Expired', 'Depleted', 'Damaged'].includes(status) && (
                 <div className="inv-action-secondary">
-                  <button type="button" className="btn btn-sm btn-orange inv-action-btn" onClick={() => onReleaseBatch(batchKey(b))} title="Release stock from this batch" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <MinusIcon width={13} height={13} /> Release
+                  <button type="button" className="btn btn-sm btn-orange inv-action-btn" onClick={() => onReleaseBatch(batchKey(b))} title="Release stock from this batch" aria-label="Release stock from this batch">
+                    <MinusIcon width={14} height={14} />
+                    <span>Release</span>
                   </button>
                 </div>
               )}
               {isMedicine && (
                 <div className="inv-action-secondary">
-                  <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onReportDamaged(batchKey(b))} title="Report a quantity of this batch as damaged" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <AlertTriangleIcon width={13} height={13} /> Damaged
+                  <button type="button" className="btn btn-sm btn-outline inv-action-btn" onClick={() => onReportDamaged(batchKey(b))} title="Report a quantity of this batch as damaged" aria-label="Report a quantity of this batch as damaged">
+                    <AlertTriangleIcon width={14} height={14} />
+                    <span>Damaged</span>
                   </button>
                 </div>
               )}
               {isMedicine && (
                 <div className="inv-action-destructive">
-                  <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onArchiveBatch(batchKey(b))} title="Archive this batch — removes it from active stock, keeps its history" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <TrashIcon width={13} height={13} /> Archive
+                  <button type="button" className="btn btn-sm btn-red inv-action-btn" onClick={() => onArchiveBatch(batchKey(b))} title="Archive this batch — removes it from active stock, keeps its history" aria-label="Archive this batch — removes it from active stock, keeps its history">
+                    <TrashIcon width={14} height={14} />
+                    <span>Archive</span>
                   </button>
                 </div>
               )}
@@ -109,6 +126,7 @@ function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveB
 }
 
 export default function BatchesTab({ batches, search, onSearchChange, onAddBatch, onReleaseBatchPicker, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveBatch, onUnarchiveBatch, onReportDamaged, onViewQR }) {
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const q = search.toLowerCase()
   const filtered = search
     ? batches.filter((b) => b.batch_code.toLowerCase().includes(q) || b.item_name.toLowerCase().includes(q) || (b.supplier || '').toLowerCase().includes(q))
@@ -143,11 +161,21 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
         </h3>
         <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search batch ID, item, supplier…" width={220} />
-          <button type="button" className="btn btn-sm btn-teal" onClick={onAddBatch} title="Add a new batch to an item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button type="button" className="btn btn-xs btn-teal" onClick={onAddBatch} title="Add a new batch to an item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <FolderIcon width={13} height={13} /> Add Batch
           </button>
-          <button type="button" className="btn btn-sm btn-orange" onClick={onReleaseBatchPicker} title="Choose a batch and release stock" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button type="button" className="btn btn-xs btn-orange" onClick={onReleaseBatchPicker} title="Choose a batch and release stock" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <MinusIcon width={13} height={13} /> Release Batch
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline inv-view-more-btn"
+            onClick={() => setShowMore((v) => !v)}
+            title="Show or hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns"
+            aria-label={showMore ? 'View Less — hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns' : 'View More — show Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns'}
+          >
+            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+            <span>{showMore ? 'View Less' : 'View More'}</span>
           </button>
         </div>
       </div>
@@ -169,18 +197,22 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
               </span>
             </div>
             <div className="table-wrap">
-              <table>
+              <table className={showMore ? undefined : 'compact-table'}>
                 <thead>
                   <tr>
                     <th>Batch / Lot</th>
-                    <th>Qty in Batch</th>
-                    <th>Received Date</th>
-                    <th>Expiry Date</th>
-                    <th>Days Left</th>
-                    <th>Supplier</th>
-                    <th>Purchase Ref.</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    {showMore && (
+                      <>
+                        <th>Qty in Batch</th>
+                        <th>Received Date</th>
+                        <th>Expiry Date</th>
+                        <th>Days Left</th>
+                        <th>Supplier</th>
+                        <th>Purchase Ref.</th>
+                        <th>Status</th>
+                      </>
+                    )}
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -189,6 +221,7 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
                       key={batchKey(b)}
                       b={b}
                       showItemColumn={false}
+                      showMore={showMore}
                       onEditBatch={onEditBatch}
                       onReplenishBatch={onReplenishBatch}
                       onReleaseBatch={onReleaseBatch}
@@ -212,24 +245,28 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
             <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>{legacyBatches.length} batch{legacyBatches.length !== 1 ? 'es' : ''}</span>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className={showMore ? undefined : 'compact-table'}>
               <thead>
                 <tr>
                   <th>Batch ID</th>
                   <th>Item Name</th>
-                  <th>Qty in Batch</th>
-                  <th>Received Date</th>
-                  <th>Expiry Date</th>
-                  <th>Days Left</th>
-                  <th>Supplier</th>
-                  <th>Purchase Ref.</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  {showMore && (
+                    <>
+                      <th>Qty in Batch</th>
+                      <th>Received Date</th>
+                      <th>Expiry Date</th>
+                      <th>Days Left</th>
+                      <th>Supplier</th>
+                      <th>Purchase Ref.</th>
+                      <th>Status</th>
+                    </>
+                  )}
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {legacyBatches.map((b) => (
-                  <BatchRow key={batchKey(b)} b={b} showItemColumn onReplenishBatch={onReplenishBatch} onReleaseBatch={onReleaseBatch} />
+                  <BatchRow key={batchKey(b)} b={b} showItemColumn showMore={showMore} onReplenishBatch={onReplenishBatch} onReleaseBatch={onReleaseBatch} />
                 ))}
               </tbody>
             </table>

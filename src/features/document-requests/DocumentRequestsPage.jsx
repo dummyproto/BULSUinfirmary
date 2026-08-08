@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useToast } from '@context/ToastContext'
 import Tabs from '@components/ui/Tabs'
+import StatusFilterDropdown from '@components/ui/StatusFilterDropdown'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import Spinner from '@components/ui/Spinner'
@@ -10,7 +11,8 @@ import { listDocumentRequests, updateDocumentRequestStatus } from '@services/doc
 import { notify } from '@services/notificationsService'
 import DocDetailModal from './DocDetailModal'
 import DocActionModal from './DocActionModal'
-import { EyeIcon, CheckCircleIcon, XCircleIcon, SettingsIcon } from '@components/ui/icons'
+import { EyeIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Declined']
 
@@ -22,6 +24,7 @@ export default function DocumentRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('All')
   const [search, setSearch] = useState('')
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const [detailId, setDetailId] = useState(null)
   const [action, setAction] = useState(null) // { type: 'approve'|'process'|'decline', id }
 
@@ -41,18 +44,24 @@ export default function DocumentRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const tabFiltered = tab === 'All' ? requests : requests.filter((r) => r.status === tab)
+  // patient_id is SET NULL when the requesting account is deleted
+  // (migration 019) — those rows still exist for audit/history purposes
+  // (see listDocumentRequests()'s 'Deleted User' fallback, used
+  // elsewhere), but shouldn't show up in this active-management view.
+  const visibleRequests = requests.filter((r) => r.patient_id !== null)
+
+  const tabFiltered = tab === 'All' ? visibleRequests : visibleRequests.filter((r) => r.status === tab)
   const filtered = search
     ? tabFiltered.filter((r) => r.patient_name?.toLowerCase().includes(search.toLowerCase()))
     : tabFiltered
 
   const counts = useMemo(() => {
-    const c = { All: requests.length }
+    const c = { All: visibleRequests.length }
     TABS.slice(1).forEach((t) => {
-      c[t] = requests.filter((r) => r.status === t).length
+      c[t] = visibleRequests.filter((r) => r.status === t).length
     })
     return c
-  }, [requests])
+  }, [visibleRequests])
 
   const tabItems = TABS.map((t) => ({
     key: t,
@@ -115,9 +124,17 @@ export default function DocumentRequestsPage() {
       <div className="page-header">
         <div>
           <h2>Document Requests</h2>
-          <p>{requests.length} total requests in the system</p>
+          <p>{visibleRequests.length} total requests in the system</p>
         </div>
-        <Tabs tabs={tabItems} active={tab} onChange={setTab} />
+        <div className="status-filter-tabs-wrap">
+          <Tabs tabs={tabItems} active={tab} onChange={setTab} />
+        </div>
+        {/* Mobile-only equivalent of the chip row above — see the same
+            pattern (and full reasoning) in MyRequestsPage.jsx, which
+            StatusFilterDropdown was originally built for. */}
+        <div className="status-filter-select-wrap">
+          <StatusFilterDropdown options={tabItems} value={tab} onChange={setTab} />
+        </div>
       </div>
 
       <div className="card">
@@ -129,6 +146,16 @@ export default function DocumentRequestsPage() {
             </span>
           </div>
           <SearchInput value={search} onChange={setSearch} placeholder="Search by patient name…" />
+          <button
+            type="button"
+            className="btn btn-sm btn-outline inv-view-more-btn"
+            onClick={() => setShowMore((v) => !v)}
+            title="Show or hide User ID, Purpose, and Date Needed columns"
+            aria-label={showMore ? 'View Less — hide User ID, Purpose, and Date Needed columns' : 'View More — show User ID, Purpose, and Date Needed columns'}
+          >
+            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+            <span>{showMore ? 'View Less' : 'View More'}</span>
+          </button>
         </div>
 
         <div className="table-wrap">
@@ -136,10 +163,14 @@ export default function DocumentRequestsPage() {
             <thead>
               <tr>
                 <th>Patient</th>
-                <th>User ID</th>
+                {showMore && <th>User ID</th>}
                 <th>Document Type</th>
-                <th>Purpose</th>
-                <th>Date Needed</th>
+                {showMore && (
+                  <>
+                    <th>Purpose</th>
+                    <th>Date Needed</th>
+                  </>
+                )}
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -147,7 +178,7 @@ export default function DocumentRequestsPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                  <td colSpan={showMore ? 7 : 4} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                     No {tab.toLowerCase()} requests
                   </td>
                 </tr>
@@ -157,21 +188,27 @@ export default function DocumentRequestsPage() {
                   <td>
                     <strong>{d.patient_name}</strong>
                   </td>
-                  <td>
-                    <code style={{ fontSize: 11 }}>{d.student_number}</code>
-                  </td>
+                  {showMore && (
+                    <td>
+                      <code style={{ fontSize: 11 }}>{d.student_number}</code>
+                    </td>
+                  )}
                   <td>{d.doc_type}</td>
-                  <td
-                    style={{
-                      maxWidth: 120,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {d.purpose || '—'}
-                  </td>
-                  <td>{formatDate(d.date_needed)}</td>
+                  {showMore && (
+                    <>
+                      <td
+                        style={{
+                          maxWidth: 120,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {d.purpose || '—'}
+                      </td>
+                      <td>{formatDate(d.date_needed)}</td>
+                    </>
+                  )}
                   <td>
                     <StatusBadge status={d.status} />
                   </td>

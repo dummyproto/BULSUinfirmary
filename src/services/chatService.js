@@ -66,13 +66,23 @@ export async function getOrCreateActiveConversation(userId, role) {
 }
 
 export async function listMessages(conversationId) {
+  // Capped at the 300 most recent messages — this is on the hot page-
+  // load path (getOrCreateActiveConversation resumes the user's active
+  // conversation on every visit to the chatbot), previously with no
+  // limit, so a long-running conversation would only get slower to
+  // resume the longer someone kept using it. Fetching descending +
+  // limit, then reversing, is what gets the most recent N messages
+  // specifically (not the oldest N) while still handing back
+  // oldest-first order, which is what the chat UI actually needs to
+  // render correctly.
   const { data, error } = await supabase
     .from('chat_messages')
     .select('*')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(300)
   if (error) throw error
-  return data.map(flattenMessage)
+  return data.map(flattenMessage).reverse()
 }
 
 /**
@@ -107,11 +117,18 @@ export async function addMessage({ conversationId, senderType, message, status =
  * one `IN (...)` query), not one query per conversation.
  */
 export async function listConversationsForUser(userId) {
+  // Capped at the 50 most recent conversations — this (and the messages
+  // query right below, which only ever fetches messages for whatever
+  // conversation IDs come back here) was previously unbounded on both
+  // counts. Not on the hot page-load path (only fetched when the Chat
+  // Log modal is actually opened), but still a real, growing slowdown
+  // for anyone with a long chat history.
   const { data: conversations, error } = await supabase
     .from('chat_conversations')
     .select('*')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
+    .limit(50)
   if (error) throw error
   if (conversations.length === 0) return []
 

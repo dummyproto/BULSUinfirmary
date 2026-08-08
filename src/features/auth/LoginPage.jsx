@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail } from '@services/usersService'
+import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
@@ -109,6 +110,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState('password') // 'password' | 'scan'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -196,6 +198,7 @@ export default function LoginPage() {
       // normalize for the lockout tracker; the actual signIn() call
       // needs the same normalization, not just a matching lockout key.
       const normalizedEmail = email.trim().toLowerCase()
+      persistRememberMeChoice(rememberMe)
       await signIn(normalizedEmail, password)
       clearAttempts(email)
       setLockUntil(0)
@@ -371,7 +374,16 @@ export default function LoginPage() {
               required
               style={error ? { borderColor: '#EF4444' } : undefined}
             />
-            <div style={{ textAlign: 'right', marginTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+              <label className="login-remember-me" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer', color: '#B4A89E' }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                Remember me
+              </label>
               <a className="login-forgot-link" onClick={() => setForgotOpen(true)} style={{ fontSize: 12.5, cursor: 'pointer' }}>
                 Forgot password?
               </a>

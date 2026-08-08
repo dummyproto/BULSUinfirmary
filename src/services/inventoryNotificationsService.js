@@ -179,6 +179,10 @@ export async function listInventoryNotifications({ unreadOnly = false, type = nu
   let query = supabase.from('inventory_notifications').select(WITH_JOINS).order('created_at', { ascending: false })
   if (unreadOnly) query = query.eq('is_read', false)
   if (type) query = query.eq('notification_type', type)
+  // Also called unfiltered as part of InventoryPage's initial parallel
+  // load (see the Notifications tab), same reasoning as the batch
+  // queries above.
+  query = query.limit(300)
   const { data, error } = await query
   if (error) throw error
   return data.map(flatten)
@@ -192,6 +196,12 @@ export async function countUnreadInventoryNotifications() {
 
 export async function markInventoryNotificationRead(id) {
   const { error } = await supabase.from('inventory_notifications').update({ is_read: true }).eq('id', id)
+  if (error) throw error
+}
+
+/** Deletes a single inventory notification — the × per row in NotificationsModal.jsx. */
+export async function deleteInventoryNotification(id) {
+  const { error } = await supabase.from('inventory_notifications').delete().eq('id', id)
   if (error) throw error
 }
 

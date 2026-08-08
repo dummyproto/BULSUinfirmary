@@ -33,6 +33,7 @@ import {
   updateInventoryItem,
   deleteInventoryItem,
   listInventoryLogs,
+  deleteInventoryLogs,
   addInventoryLog,
   listScanHistory,
   addScanHistory,
@@ -62,8 +63,8 @@ import {
   getMedicineBatchById,
   runExpirationCheck,
 } from '@services/medicineService'
-import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply } from '@services/supplyService'
-import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment } from '@services/equipmentService'
+import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply, deactivateSupply } from '@services/supplyService'
+import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment, deactivateEquipment } from '@services/equipmentService'
 import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
@@ -85,6 +86,7 @@ export default function InventoryPage() {
   const { show } = useToast()
   const confirm = useConfirm()
   const currentUserId = profile?.user_id ?? null
+  const canDeleteLogs = profile?.role === 'admin' || !!profile?.permissions?.delete_logs
 
   const [tab, setTab] = useState('items')
   const [loading, setLoading] = useState(true)
@@ -196,11 +198,28 @@ export default function InventoryPage() {
         setSuppliers(supplierList)
         setInventoryNotifications(notifList)
         setUnreadNotifCount(unread)
-        await checkExpirationAlerts()
-        // Expiration check may have just generated new notifications the
-        // fetch above (which ran in parallel with page load, before any
-        // check happened) wouldn't have seen yet — refresh once more.
-        if (!cancelled) await refreshInventoryNotifications()
+        // Loading ends here — everything the page actually renders is
+        // already set above. checkExpirationAlerts() (a server-side
+        // RPC) and the notification refresh it can trigger were
+        // previously awaited before setLoading(false) ran, meaning the
+        // spinner stayed up for this extra sequential round-trip even
+        // though the inventory list itself was already fully ready to
+        // show. Running it in the background instead means the page
+        // becomes interactive as soon as its own data arrives — any
+        // fresh expiration-triggered notification just shows up a
+        // moment later once this finishes, rather than the whole page
+        // waiting on it first.
+        if (!cancelled) setLoading(false)
+        checkExpirationAlerts()
+          .then(() => {
+            if (!cancelled) return refreshInventoryNotifications()
+          })
+          .catch(() => {
+            // Non-critical — see the try/catch this mirrors elsewhere in
+            // this file for the same reasoning. A failed background
+            // expiration check must never disrupt the page the person
+            // is already looking at.
+          })
       })
       .catch((err) => show(`Failed to load inventory: ${err.message}`, 'error'))
       .finally(() => {
@@ -228,6 +247,22 @@ export default function InventoryPage() {
   }
   async function refreshLogs() {
     setLogs(await listInventoryLogs())
+  }
+  async function handleDeleteInventoryLogs(ids) {
+    const ok = await confirm(
+      ids.length === 1
+        ? 'Delete this log entry?\nThis cannot be undone.'
+        : `Delete ${ids.length} log entries?\nThis cannot be undone.`,
+      { confirmLabel: 'Delete', danger: true }
+    )
+    if (!ok) return
+    try {
+      await deleteInventoryLogs(ids)
+      setLogs((list) => list.filter((l) => !ids.includes(l.inventory_log_id)))
+      show(ids.length === 1 ? 'Log entry deleted' : `${ids.length} log entries deleted`, 'success')
+    } catch (err) {
+      show(`Failed to delete: ${err.message}`, 'error')
+    }
   }
   async function refreshBatches() {
     const [legacyBatches, medBatches, supplyBatchList, equipmentBatchList] = await Promise.all([
@@ -279,7 +314,7 @@ export default function InventoryPage() {
             })
             consolidated++
           } else {
-            const medicine = await createMedicine({ medicine_name: f.name, unit: f.unit, min_stock: f.minStock || 0, active: true })
+            const medicine = await createMedicine({ medicine_name: f.name, unit: f.unit, min_stock: f.minStock || 0, active: true, image_url: f.photoUrl || null })
             if (f.quantity > 0) {
               await replenishMedicineAsNewBatch({
                 medicineId: medicine.medicine_id,
@@ -309,6 +344,7 @@ export default function InventoryPage() {
             supplier: supplierRow?.supplier_name || match.supplier,
             expiration_date: mergeDisplayExpirationDate(match.expiration_date, f.expiry || null),
             received_date: f.received || match.received_date,
+            image_url: f.photoUrl || match.image_url,
           })
           working = working.map((i) => (i.inventory_id === updated.inventory_id ? updated : i))
           if (f.quantity > 0) await addInventoryLog({ inventoryId: match.inventory_id, actionType: 'Replenish', quantityChange: f.quantity, previousQuantity: match.quantity, newQuantity: match.quantity + f.quantity, staffId: currentUserId, notes: 'Merged into existing inventory item' })
@@ -326,6 +362,7 @@ export default function InventoryPage() {
             supplier: supplierRow?.supplier_name || null,
             is_fifo: false,
             needs_maintenance: false,
+            image_url: f.photoUrl || null,
           })
           working = [...working, created]
           if (f.quantity > 0) await addInventoryLog({ inventoryId: created.inventory_id, actionType: 'Replenish', quantityChange: f.quantity, previousQuantity: 0, newQuantity: f.quantity, staffId: currentUserId, notes: 'Initial stock' })
@@ -352,9 +389,62 @@ export default function InventoryPage() {
         // do — editing here only ever updates the medicine's own
         // permanent fields (name/unit/min_stock); quantity/expiry live on
         // its batches and are never touched by this form.
-        await updateMedicine(item._id, { medicine_name: form.name, unit: form.unit, min_stock: form.minStock })
+        await updateMedicine(item._id, { medicine_name: form.name, unit: form.unit, min_stock: form.minStock, image_url: form.photoUrl || null })
         await addMedicineMovement({ medicineId: item._id, actionType: 'Edit', quantityChange: 0, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Item details updated (unit: ${form.unit}, minStock: ${form.minStock})` })
         show('Medicine updated successfully', 'success')
+        await Promise.all([refreshInventory(), refreshLogs()])
+        setEditItemId(null)
+        return
+      }
+
+      if (item._source === 'equipment' || item._source === 'supply') {
+        // Same reasoning as the Equipment/Supply branches already fixed
+        // elsewhere in this file (handleReplenish, handleRemove,
+        // handleRestoreSubmit): these items live in their own normalized
+        // tables now, so item.inventory_id is always null — falling
+        // through to updateInventoryItem()/deleteInventoryItem() below
+        // (which target the legacy `inventory` table) sends a PATCH with
+        // a null id, which Postgres rejects outright ("invalid input
+        // syntax for type integer: null").
+        //
+        // quantity is NOT sent here — Postgres itself confirmed it isn't
+        // a real column on `supplies` ("Could not find the 'quantity'
+        // column of 'supplies' in the schema cache"), and since a PATCH
+        // fails atomically on any invalid column, sending it (even
+        // unchanged, as item.quantity) was silently failing the ENTIRE
+        // save — which is why min_stock/image_url appeared to do
+        // nothing too. This handler edits item *details*, not stock
+        // count, so quantity was never actually needed here regardless —
+        // Replenish/Release own that job. expiration_date is likewise NOT
+        // sent for either table now — Postgres confirmed it missing on
+        // BOTH 'supplies' AND 'equipment' (two separate, direct errors,
+        // not a guess this time), so the earlier "Equipment only" carve-
+        // out was wrong too.
+        //
+        // name/unit/min_stock/image_url ARE sent — all four confirmed
+        // real columns (equipment_name/supply_name/unit/min_stock/
+        // image_url all showed up directly in information_schema.columns,
+        // supply_name additionally confirmed via an existing working
+        // join in supplyService.js). The name column itself differs per
+        // table (equipment_name vs supply_name), unlike every other
+        // field here which shares the same name on both tables.
+        const updateFn = item._source === 'equipment' ? updateEquipment : updateSupply
+        const nameField = item._source === 'equipment' ? 'equipment_name' : 'supply_name'
+        const patch = { [nameField]: form.name, unit: form.unit, min_stock: form.minStock, image_url: form.photoUrl || null }
+        await updateFn(item._id, patch)
+        try {
+          // equipmentId/supplyId (migration 028) — not inventoryId, which
+          // is always null for these items and is exactly why this insert
+          // used to fail every time. Still wrapped in try/catch: not
+          // critical enough to undo a save that already succeeded, in
+          // case this item somehow predates the migration.
+          await addInventoryLog({ [item._source === 'equipment' ? 'equipmentId' : 'supplyId']: item._id, actionType: 'Edit', quantityChange: 0, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Item details updated (unit: ${form.unit}, minStock: ${form.minStock})` })
+        } catch {
+          // Non-critical — see the same try/catch elsewhere in this file
+          // for why (inventory_logs.inventory_id has no row for these
+          // items to reference).
+        }
+        show('Item updated successfully', 'success')
         await Promise.all([refreshInventory(), refreshLogs()])
         setEditItemId(null)
         return
@@ -372,6 +462,7 @@ export default function InventoryPage() {
           supplier: supplierRow?.supplier_name || match.supplier,
           expiration_date: mergeDisplayExpirationDate(match.expiration_date, form.expiry),
           received_date: form.received || match.received_date,
+          image_url: form.photoUrl || match.image_url,
         })
         await deleteInventoryItem(item.inventory_id)
         if (item.quantity > 0) {
@@ -382,6 +473,7 @@ export default function InventoryPage() {
         await updateInventoryItem(item.inventory_id, {
           name: form.name, category: form.category, unit: form.unit, min_stock: form.minStock,
           batch_no: form.batchNo, expiration_date: form.expiry, received_date: form.received, supplier: supplierRow?.supplier_name || null,
+          image_url: form.photoUrl || null,
         })
         await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Edit', quantityChange: 0, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Item details updated (category: ${form.category}, unit: ${form.unit}, minStock: ${form.minStock})` })
         show('Item updated successfully', 'success')
@@ -417,34 +509,19 @@ export default function InventoryPage() {
       }
 
       if (item._source === 'equipment' || item._source === 'supply') {
-        // Equipment/Supply now live in their own normalized tables
-        // (equipment / supplies) — see equipmentService.js / supplyService.js.
-        // Only patching `quantity` + `expiration_date` here: those are the
-        // two fields every item type (medicine/equipment/supply/legacy)
-        // consistently exposes and that this form actually collects.
-        // batch_no/received_date/supplier — unlike the legacy `inventory`
-        // table — aren't confirmed real columns on `equipment`/`supplies`
-        // themselves (they may only exist on the batch tables, joined into
-        // the read view), so they're deliberately left out rather than
-        // risking another failed PATCH from a nonexistent column.
-        const updateFn = item._source === 'equipment' ? updateEquipment : updateSupply
-        await updateFn(item._id, {
-          quantity: item.quantity + form.qty,
-          expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
-        })
-        // Best-effort log only — inventory_logs.inventory_id is a FK into
-        // the legacy `inventory` table, which has no row for this item
-        // (item.inventory_id is always null here), so this insert may be
-        // rejected. That must never undo the replenish that already
-        // succeeded above.
-        try {
-          await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: item.quantity, newQuantity: item.quantity + form.qty, staffId: currentUserId, notes: form.notes })
-        } catch {
-          // Non-critical — see comment above.
-        }
-        await Promise.all([refreshInventory(), refreshLogs()])
-        show(`${item.name} replenished by ${form.qty} ${item.unit}`, 'success')
-        setReplenishItemId(null)
+        // Both `quantity` and `expiration_date` are now confirmed NOT to
+        // be real columns on either `equipment` or `supplies` — direct
+        // Postgres errors for both fields, on both tables, not a guess.
+        // That means stock for these two categories is almost certainly
+        // computed from equipment_batches/supply_batches (the same
+        // pattern medicines' quantity already uses via medicine_batches),
+        // not stored on the item's own row — so replenishing correctly
+        // needs to write to those batch tables instead, which this
+        // handler was never built to do. Failing loudly and clearly here
+        // is safer than silently sending a doomed PATCH and surfacing
+        // whatever confusing "column not found" error Postgres happens
+        // to report first.
+        show(`Restocking ${item._source === 'equipment' ? 'Equipment' : 'Supply'} items isn't supported yet — this needs to go through the Batches tab instead.`, 'error')
         return
       }
 
@@ -553,6 +630,33 @@ export default function InventoryPage() {
         return
       }
 
+      if (item._source === 'equipment' || item._source === 'supply') {
+        // Equipment/Supply live in their own normalized tables now —
+        // item.inventory_id is always null for these, so the legacy
+        // deleteInventoryItem()/addInventoryLog() path below (which
+        // targets the old `inventory` table) both fails outright: the
+        // log insert violates inventory_logs_has_subject (no valid
+        // subject column set), and even if it didn't, deleting by a
+        // null id wouldn't actually remove anything from the equipment/
+        // supplies tables the item really lives in. Deactivating here
+        // instead mirrors exactly how Medicine removal already works
+        // above (deactivate, don't hard-delete — batch/movement history
+        // stays intact).
+        const deactivateFn = item._source === 'equipment' ? deactivateEquipment : deactivateSupply
+        await deactivateFn(item._id)
+        try {
+          // equipmentId/supplyId (migration 028) — not inventoryId, which
+          // is always null for these items and is exactly why this insert
+          // used to fail every time.
+          await addInventoryLog({ [item._source === 'equipment' ? 'equipmentId' : 'supplyId']: item._id, actionType: 'Removed', quantityChange: -item.quantity, previousQuantity: item.quantity, newQuantity: 0, staffId: currentUserId, notes: `"${item.name}" removed from inventory (${item.quantity} ${item.unit})` })
+        } catch {
+          // Non-critical — see comment above.
+        }
+        show(`${item.name} removed`, 'success')
+        await Promise.all([refreshInventory(), refreshLogs()])
+        return
+      }
+
       if (getInventoryStatus(item) === 'Expired') {
         const raw = window.prompt(`Expired stock: ${item.quantity} ${item.unit}\nHow many do you want to remove?`, String(item.quantity))
         if (raw === null) return
@@ -602,33 +706,17 @@ export default function InventoryPage() {
   // tracked as inventory — they're recorded in the log's notes/quantity
   // delta for audit purposes, rather than living on as a second row.
   const restoringItem = inventory.find((i) => itemKey(i) === restoreItemId) || null
-  async function handleRestoreSubmit(form) {
-    const item = restoringItem
-    const heldBack = item.quantity - form.restoreQty
-    try {
-      await updateEquipment(item._id, { quantity: form.restoreQty, expiration_date: form.expiry, needs_maintenance: false })
-      const notes =
-        heldBack > 0
-          ? `${form.restoreQty} ${item.unit} restored to active inventory; ${heldBack} ${item.unit} held back and removed from tracked inventory. ${form.notes}`
-          : `${form.restoreQty} ${item.unit} restored to active inventory. ${form.notes}`
-      // Best-effort log — inventory_logs.inventory_id is a FK into the
-      // legacy `inventory` table, which has no row for this item, so this
-      // insert may be rejected. Must never undo the restore that already
-      // succeeded above.
-      try {
-        await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Maintained', quantityChange: form.restoreQty - item.quantity, previousQuantity: item.quantity, newQuantity: form.restoreQty, staffId: currentUserId, notes })
-      } catch {
-        // Non-critical — see comment above.
-      }
-      await Promise.all([refreshInventory(), refreshLogs()])
-      if (heldBack > 0) {
-        show(`${form.restoreQty} ${item.unit} restored · ${heldBack} ${item.unit} held back and removed from tracked inventory`, 'success')
-      } else {
-        show(`${item.name} fully restored to active inventory`, 'success')
-      }
-    } catch (err) {
-      show(`Failed to restore item: ${err.message}`, 'error')
-    }
+  async function handleRestoreSubmit() {
+    // Both `quantity` and `expiration_date` are confirmed NOT to be real
+    // columns on `equipment` (direct Postgres errors, not a guess) — the
+    // same underlying issue as handleReplenish's Equipment/Supply branch
+    // above. This handler's whole premise (set quantity to the number of
+    // units actually returned to active stock) can't work as a direct
+    // column write when quantity isn't stored on the row at all — it's
+    // almost certainly computed from equipment_batches, so a real fix
+    // needs to write there instead. Failing clearly here rather than
+    // attempting the doomed PATCH.
+    show('Restoring Equipment from maintenance isn\'t supported yet — this needs to go through the Batches tab instead.', 'error')
     setRestoreItemId(null)
   }
 
@@ -1217,7 +1305,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <div className="tab-row" style={{ marginBottom: 16 }}>
+      <div className="tab-row inv-subnav-tabs" style={{ marginBottom: 16 }}>
         {tabItems.map((t) => (
           <button key={t.key} type="button" className={`tab-btn${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <t.Icon width={14} height={14} /> {t.label}
@@ -1286,7 +1374,7 @@ export default function InventoryPage() {
         </div>
       )}
       {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} /></div>}
-      {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} /></div>}
+      {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} canDelete={canDeleteLogs} onDelete={handleDeleteInventoryLogs} /></div>}
       {tab === 'alerts' && (
         <div>
           <AlertsTab inventory={inventory} onItemClick={handleAlertItemClick} />
@@ -1307,7 +1395,7 @@ export default function InventoryPage() {
 
       <AddItemModal isOpen={addItemOpen} onClose={() => setAddItemOpen(false)} onSaveAll={handleSaveAllStaged} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
 
-      <EditItemModal key={editItemId ?? 'edit-item-closed'} isOpen={editItemId !== null} item={editingItem} onClose={() => setEditItemId(null)} onSave={handleEditSave} suppliers={suppliers} />
+      <EditItemModal key={editItemId ?? 'edit-item-closed'} isOpen={editItemId !== null} item={editingItem} onClose={() => setEditItemId(null)} onSave={handleEditSave} suppliers={suppliers} onError={(msg) => show(msg, 'error')} />
 
       <ReplenishModal key={replenishItemId ?? 'replenish-item-closed'} isOpen={replenishItemId !== null} item={replenishingItem} onClose={() => setReplenishItemId(null)} onSubmit={handleReplenish} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
 

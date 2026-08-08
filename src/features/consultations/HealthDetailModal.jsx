@@ -84,26 +84,28 @@ export default function HealthDetailModal({ isOpen, onClose, consultation, atten
         <span className="detail-label">Medications</span>
         <span className="detail-value">
           {c.prescribed_meds?.length > 0 ? (
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--surface2)' }}>
-                  <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Medicine</th>
-                  <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Dosage</th>
-                  <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Frequency</th>
-                  <th style={{ padding: '5px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Qty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {c.prescribed_meds.map((m) => (
-                  <tr key={m.name}>
-                    <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)' }}>{m.name}</td>
-                    <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>{m.dosage || '—'}</td>
-                    <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>{m.frequency || '—'}</td>
-                    <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', textAlign: 'right', fontWeight: 700 }}>{m.qty}</td>
+            <div className="table-wrap">
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface2)' }}>
+                    <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Medicine</th>
+                    <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Dosage</th>
+                    <th style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Frequency</th>
+                    <th style={{ padding: '5px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Qty</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {c.prescribed_meds.map((m) => (
+                    <tr key={m.name}>
+                      <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)' }}>{m.name}</td>
+                      <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>{m.dosage || '—'}</td>
+                      <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>{m.frequency || '—'}</td>
+                      <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', textAlign: 'right', fontWeight: 700 }}>{m.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             c.medications || 'None'
           )}

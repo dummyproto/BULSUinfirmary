@@ -8,11 +8,11 @@ export default function PermissionsTab({ users, onTogglePerm }) {
   return (
     <div className="card">
       <div className="card-header">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Staff Print Permissions</h3>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldIcon width={15} height={15} /> Staff Permissions</h3>
       </div>
       <div style={{ padding: 18 }}>
         <div className="alert alert-info" style={{ marginBottom: 14 }}>
-          Configure which staff members can print specific types of documents.
+          Configure which staff members can print specific document types, and whether they can delete Alert Log or SMS Log entries.
         </div>
         {staff.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-3)' }}>No staff accounts</div>}
         {staff.map((su) => (

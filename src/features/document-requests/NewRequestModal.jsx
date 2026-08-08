@@ -46,7 +46,7 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
         <div className="form-group full">
           <label htmlFor="new-request-doc-type">DOCUMENT TYPE *</label>
           <select id="new-request-doc-type" name="docType" className="form-select" value={form.docType} onChange={setField('docType')}>
-            <option value="">-- Select Document Type --</option>
+            <option value=""></option>
             {DOC_TYPES.map((d) => (
               <option key={d} value={d}>
                 {d}

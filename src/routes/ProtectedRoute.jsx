@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
@@ -15,11 +15,21 @@ export default function ProtectedRoute({ roles }) {
   const { isAuthenticated, role, loading } = useAuth()
   const { show } = useToast()
   const location = useLocation()
+  const shownRef = useRef(false)
 
   const forbidden = isAuthenticated && !!roles && !roles.includes(role)
 
   useEffect(() => {
-    if (forbidden) show('Access denied', 'error')
+    if (forbidden && !shownRef.current) {
+      show('Access denied', 'error')
+      shownRef.current = true
+    } else if (!forbidden) {
+      // Reset so a later, genuinely new forbidden attempt (e.g. this
+      // same mounted route becomes forbidden again after a role change)
+      // still shows the toast — this only guards against firing twice
+      // for the *same* forbidden transition, not forever.
+      shownRef.current = false
+    }
   }, [forbidden, show])
 
   if (loading) return <Spinner label="Loading session…" />

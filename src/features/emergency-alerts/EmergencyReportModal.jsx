@@ -182,7 +182,7 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
         <div className="emg-form-row">
           <div className="emg-form-field">
             <label>
-              Student Number <span className="emg-req">*</span>
+              Patient Number <span className="emg-req">*</span>
             </label>
             <input type="text" className="emg-input" value={profile.student_number || ''} readOnly />
           </div>
@@ -196,9 +196,9 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
       ) : (
         <div className="emg-form-field" style={{ marginBottom: 10 }}>
           <label>
-            Select Student (that&apos;s you) <span className="emg-req">*</span>
+            Select Patient (that&apos;s you) <span className="emg-req">*</span>
           </label>
-          <EmergencyPatientPicker selected={reporter} onSelect={setReporter} onClear={() => setReporter(null)} placeholder="Search by name or student number…" />
+          <EmergencyPatientPicker selected={reporter} onSelect={setReporter} onClear={() => setReporter(null)} placeholder="Search by name or patient number…" />
         </div>
       )}
 
@@ -207,13 +207,13 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
           <div className="emg-section-label">Affected Person Details</div>
           <div className="emg-form-field" style={{ marginBottom: 10 }}>
             <label>
-              Select Student <span className="emg-req">*</span>
+              Select Patient <span className="emg-req">*</span>
             </label>
             <EmergencyPatientPicker
               selected={affected}
               onSelect={setAffected}
               onClear={() => setAffected(null)}
-              placeholder="Search by name or student number…"
+              placeholder="Search by name or patient number…"
               excludeUserId={reporterUser?.user_id}
             />
           </div>

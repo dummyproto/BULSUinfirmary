@@ -44,6 +44,10 @@ function flattenConsultation(row) {
 export async function listConsultations({ patientId } = {}) {
   let query = supabase.from('consultations').select(SELECT_WITH_PATIENT).order('visit_date', { ascending: false })
   if (patientId) query = query.eq('patient_id', patientId)
+  // Same reasoning as listDocumentRequests() — unbounded when called
+  // clinic-wide (no patientId), the staff-facing case, and this table
+  // only ever grows with every visit logged across every patient.
+  query = query.limit(300)
   const { data, error } = await query
   if (error) throw error
   return data.map(flattenConsultation)

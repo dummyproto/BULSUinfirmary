@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useToast } from '@context/ToastContext'
+import { useConfirm } from '@context/ConfirmContext'
 import { useAuth } from '@context/AuthContext'
 import Spinner from '@components/ui/Spinner'
 import { formatDate, formatDateTime } from '@lib/format'
@@ -108,7 +109,9 @@ async function loadInventorySnapshot() {
 
 export default function ReportsPage() {
   const { show } = useToast()
+  const confirm = useConfirm()
   const { role, profile } = useAuth()
+  const canReset = role === 'admin' || !!profile?.permissions?.reset_reports
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [reportType, setReportType] = useState('doc')
@@ -341,7 +344,18 @@ export default function ReportsPage() {
     }
   }
 
-  function handleReset() {
+  async function handleReset() {
+    if (!canReset) return
+    // Nothing at risk of being lost if no report has been generated yet
+    // (or it was already cleared) — only ask when there's something on
+    // screen that this would actually throw away.
+    if (report) {
+      const ok = await confirm(
+        'Reset the report filters?\nThis clears the report currently on screen. It has not been saved anywhere, so this cannot be undone — you\u2019d need to generate it again.',
+        { confirmLabel: 'Reset' }
+      )
+      if (!ok) return
+    }
     setReportType('doc')
     setDateFrom(firstOfMonthStr())
     setDateTo(todayStr())
@@ -379,9 +393,11 @@ export default function ReportsPage() {
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <BarChartIcon width={15} height={15} /> Report Configuration
           </h3>
-          <button type="button" className="btn btn-sm btn-outline" onClick={handleReset}>
-            <RefreshCwIcon width={13} height={13} /> Reset
-          </button>
+          {canReset && (
+            <button type="button" className="btn btn-sm btn-outline" onClick={handleReset}>
+              <RefreshCwIcon width={13} height={13} /> Reset
+            </button>
+          )}
         </div>
         <div style={{ padding: 18, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ minWidth: 200 }}>

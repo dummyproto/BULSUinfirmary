@@ -52,7 +52,7 @@ export default function ScrollToTopButton({ targetRef, threshold = 300 }) {
       title="Back to top"
       aria-label="Scroll to top"
     >
-      <ChevronUpIcon width={20} height={20} />
+      <ChevronUpIcon width={16} height={16} />
     </button>
   )
 }

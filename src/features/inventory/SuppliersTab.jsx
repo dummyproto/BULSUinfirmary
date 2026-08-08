@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import SearchInput from '@components/ui/SearchInput'
-import { TruckIcon, PlusIcon, EditIcon, TrashIcon, PhoneIcon, MailIcon } from '@components/ui/icons'
+import { TruckIcon, PlusIcon, EditIcon, TrashIcon, PhoneIcon, MailIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 export default function SuppliersTab({ suppliers, batches, search, onSearchChange, onAdd, onEdit, onDelete }) {
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const q = search.toLowerCase()
   const filtered = search
     ? suppliers.filter(
@@ -22,8 +25,18 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
         </h3>
         <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search suppliers…" width={220} />
-          <button type="button" className="btn btn-sm btn-teal" onClick={onAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button type="button" className="btn btn-xs btn-teal" onClick={onAdd} title="Add Supplier" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <PlusIcon width={13} height={13} /> Add Supplier
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline inv-view-more-btn"
+            onClick={() => setShowMore((v) => !v)}
+            title="Show or hide Contact Person, Phone, Email, Address, Remarks, and Batches columns"
+            aria-label={showMore ? 'View Less — hide Contact Person, Phone, Email, Address, Remarks, and Batches columns' : 'View More — show Contact Person, Phone, Email, Address, Remarks, and Batches columns'}
+          >
+            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+            <span>{showMore ? 'View Less' : 'View More'}</span>
           </button>
         </div>
       </div>
@@ -34,17 +47,21 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
         </div>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className={showMore ? undefined : 'compact-table'}>
             <thead>
               <tr>
                 <th>Supplier</th>
-                <th>Contact Person</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Address</th>
-                <th>Remarks</th>
-                <th>Batches</th>
-                <th>Actions</th>
+                {showMore && (
+                  <>
+                    <th>Contact Person</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Address</th>
+                    <th>Remarks</th>
+                    <th>Batches</th>
+                  </>
+                )}
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -55,37 +72,42 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
                     <td>
                       <strong>{s.supplier_name}</strong>
                     </td>
-                    <td style={{ fontSize: 12 }}>{s.contact_person || '—'}</td>
-                    <td style={{ fontSize: 12 }}>
-                      {s.phone ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <PhoneIcon width={11} height={11} /> {s.phone}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td style={{ fontSize: 12 }}>
-                      {s.email ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <MailIcon width={11} height={11} /> {s.email}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.address || '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.remarks || '—'}</td>
+                    {showMore && (
+                      <>
+                        <td style={{ fontSize: 12 }}>{s.contact_person || '—'}</td>
+                        <td style={{ fontSize: 12 }}>
+                          {s.phone ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <PhoneIcon width={11} height={11} /> {s.phone}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12 }}>
+                          {s.email ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <MailIcon width={11} height={11} /> {s.email}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.address || '—'}</td>
+                        <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.remarks || '—'}</td>
+                        <td>
+                          <span className={`badge ${count > 0 ? 'badge-blue' : 'badge-gray'} badge-no-dot`} style={{ fontSize: 11 }}>
+                            {count} batch{count === 1 ? '' : 'es'}
+                          </span>
+                        </td>
+                      </>
+                    )}
                     <td>
-                      <span className={`badge ${count > 0 ? 'badge-blue' : 'badge-gray'} badge-no-dot`} style={{ fontSize: 11 }}>
-                        {count} batch{count === 1 ? '' : 'es'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="inv-action-group">
+                      <div className="inv-action-group-icons">
                         <div className="inv-action-primary">
-                          <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEdit(s)} title="Edit supplier" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                            <EditIcon width={13} height={13} /> Edit
+                          <button type="button" className="btn btn-sm btn-blue inv-action-btn" onClick={() => onEdit(s)} title="Edit supplier" aria-label="Edit supplier">
+                            <EditIcon width={14} height={14} />
+                            <span>Edit</span>
                           </button>
                         </div>
                         <div className="inv-action-destructive">
@@ -95,9 +117,11 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
                             onClick={() => onDelete(s)}
                             disabled={count > 0}
                             title={count > 0 ? `Can't delete — used by ${count} batch${count === 1 ? '' : 'es'}` : 'Delete supplier'}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, opacity: count > 0 ? 0.5 : 1 }}
+                            aria-label={count > 0 ? `Can't delete — used by ${count} batch${count === 1 ? '' : 'es'}` : 'Delete supplier'}
+                            style={{ opacity: count > 0 ? 0.5 : 1 }}
                           >
-                            <TrashIcon width={13} height={13} /> Delete
+                            <TrashIcon width={14} height={14} />
+                            <span>Delete</span>
                           </button>
                         </div>
                       </div>

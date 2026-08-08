@@ -162,7 +162,7 @@ export default function InventoryDashboardTab({ inventory, onNavigateToStatus, o
         <StatCard label="Damaged Inventory" value={damagedCount === null ? '…' : damagedCount} sub="batches" Icon={TrashIcon} color="red" onClick={onNavigateToBatches} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="two-col-equal">
         <div className="card">
           <div className="card-header">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

@@ -7,7 +7,8 @@ import UserManagementTab from './UserManagementTab'
 import PermissionsTab from './PermissionsTab'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
-import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, togglePermission } from '@services/usersService'
+import ChangePasswordModal from './ChangePasswordModal'
+import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, resetUserPassword, togglePermission } from '@services/usersService'
 import { addAuditLog } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
@@ -30,6 +31,8 @@ export default function MaintenancePage() {
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [editId, setEditId] = useState(null)
+  const [pwUserId, setPwUserId] = useState(null)
+  const [pwSaving, setPwSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +56,7 @@ export default function MaintenancePage() {
   }
 
   const editingUser = users.find((u) => u.user_id === editId) || null
+  const pwUser = users.find((u) => u.user_id === pwUserId) || null
   const tabItems = TABS.map((t) => (t.key === 'users' ? { ...t, label: `${t.label} (${users.length})` } : t))
 
   async function handleAddUser(record) {
@@ -163,6 +167,32 @@ export default function MaintenancePage() {
     }
   }
 
+  async function handleChangePassword(newPassword) {
+    const user = pwUser
+    if (!user) return
+    setPwSaving(true)
+    try {
+      await resetUserPassword(user.user_id, newPassword)
+      await addAuditLog({ userId: currentUserId, action: 'RESET_PASSWORD', details: `Reset password for user: ${user.name} (ID: ${user.user_id})` })
+      show(`Password updated for ${user.name}`, 'success')
+      setPwUserId(null)
+      try {
+        await notify({
+          targetUserId: user.user_id,
+          message: 'Your password was reset by an administrator. If this wasn\u2019t expected, contact the clinic immediately.',
+          type: 'warning',
+          module: '/profile',
+        })
+      } catch {
+        // Non-critical — the password reset itself already succeeded.
+      }
+    } catch (err) {
+      show(`Failed to update password: ${err.message}`, 'error')
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
   async function handleTogglePerm(userId, key) {
     const user = users.find((u) => u.user_id === userId)
     const next = !user?.permissions?.[key]
@@ -212,6 +242,7 @@ export default function MaintenancePage() {
           onEdit={setEditId}
           onToggleActive={handleToggleActive}
           onDelete={handleDelete}
+          onChangePassword={setPwUserId}
         />
       )}
       {tab === 'perms' && <PermissionsTab users={users} onTogglePerm={handleTogglePerm} />}
@@ -219,6 +250,15 @@ export default function MaintenancePage() {
       <AddUserModal isOpen={addOpen} existingUsers={users} onClose={() => setAddOpen(false)} onSave={handleAddUser} onError={(msg) => show(msg, 'error')} />
 
       <EditUserModal key={editId ?? 'edit-user-closed'} isOpen={editId !== null} user={editingUser} onClose={() => setEditId(null)} onSave={handleEditSave} />
+
+      <ChangePasswordModal
+        key={pwUserId ?? 'change-password-closed'}
+        isOpen={pwUserId !== null}
+        user={pwUser}
+        saving={pwSaving}
+        onClose={() => setPwUserId(null)}
+        onSave={handleChangePassword}
+      />
     </>
   )
 }

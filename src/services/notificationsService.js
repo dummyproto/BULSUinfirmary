@@ -23,11 +23,17 @@ function userOrRoleFilter(userId, role) {
 export async function listForUser(userId, role) {
   const filter = userOrRoleFilter(userId, role)
   if (!filter) return []
+  // Capped — this runs every time the notification bell opens, on
+  // every page, for every user, previously with no limit at all. A
+  // bell dropdown showing the 100 most recent is already more than
+  // anyone realistically scrolls through; unbounded here just meant
+  // this got slower for every user the longer the app has been in use.
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
     .or(filter)
     .order('created_at', { ascending: false })
+    .limit(100)
   if (error) throw error
   return data
 }
@@ -46,6 +52,12 @@ export async function countUnread(userId, role) {
 
 export async function markRead(id) {
   const { error } = await supabase.from('notifications').update({ is_read: true }).eq('notification_id', id)
+  if (error) throw error
+}
+
+/** Deletes a single notification — the × per row in NotificationsModal.jsx. */
+export async function deleteNotification(id) {
+  const { error } = await supabase.from('notifications').delete().eq('notification_id', id)
   if (error) throw error
 }
 

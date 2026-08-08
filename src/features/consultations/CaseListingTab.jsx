@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import { formatDate } from '@lib/format'
-import { ClipboardIcon, TagIcon, EyeIcon } from '@components/ui/icons'
+import { ClipboardIcon, TagIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 export default function CaseListingTab({ consultations, filters, onFiltersChange, onView }) {
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const { search, diagFilter, dateFrom, dateTo } = filters
 
   const diagCount = {}
@@ -52,7 +55,7 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
         <div className="card" style={{ flex: 1, minWidth: 0 }}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardIcon width={15} height={15} /> Case List</h3>
-           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginLeft: 'auto', alignItems: 'flex-end' }}>
+           <div className="case-list-filters" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginLeft: 'auto', alignItems: 'flex-end' }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Search</div>
               <input
@@ -97,6 +100,16 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                 style={{ width: 140, fontSize: 12, padding: '5px 8px' }}
               />
             </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline inv-view-more-btn"
+              onClick={() => setShowMore((v) => !v)}
+              title="Show or hide User ID, Visit Type, and Medications columns"
+              aria-label={showMore ? 'View Less — hide User ID, Visit Type, and Medications columns' : 'View More — show User ID, Visit Type, and Medications columns'}
+            >
+              {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+              <span>{showMore ? 'View Less' : 'View More'}</span>
+            </button>
           </div>
           </div>
           <div className="table-wrap">
@@ -105,18 +118,18 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                 <tr>
                   <th>#</th>
                   <th>Patient</th>
-                  <th>User ID</th>
+                  {showMore && <th>User ID</th>}
                   <th>Date</th>
-                  <th>Visit Type</th>
+                  {showMore && <th>Visit Type</th>}
                   <th>Diagnosis</th>
-                  <th>Medications</th>
+                  {showMore && <th>Medications</th>}
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                    <td colSpan={showMore ? 8 : 5} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                       No cases match filters
                     </td>
                   </tr>
@@ -127,19 +140,25 @@ export default function CaseListingTab({ consultations, filters, onFiltersChange
                     <td>
                       <strong>{c.patient_name}</strong>
                     </td>
-                    <td>
-                      <code style={{ fontSize: 11 }}>{c.student_number}</code>
-                    </td>
+                    {showMore && (
+                      <td>
+                        <code style={{ fontSize: 11 }}>{c.student_number}</code>
+                      </td>
+                    )}
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{formatDate(c.visit_date)}</td>
-                    <td>
-                      <StatusBadge status={c.visit_type} />
-                    </td>
+                    {showMore && (
+                      <td>
+                        <StatusBadge status={c.visit_type} />
+                      </td>
+                    )}
                     <td>
                       <span className="diag-pill">{c.diagnosis || (c.assessment || '').substring(0, 35) || '—'}</span>
                     </td>
-                    <td style={{ fontSize: 11, color: 'var(--text-2)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.medications || 'None'}
-                    </td>
+                    {showMore && (
+                      <td style={{ fontSize: 11, color: 'var(--text-2)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.medications || 'None'}
+                      </td>
+                    )}
                     <td>
                       <button type="button" className="btn btn-sm btn-outline" onClick={() => onView(c.consultation_id)} title="View" aria-label="View">
                         <EyeIcon width={13} height={13} />

@@ -7,6 +7,13 @@ export async function listAuditLogs({ from, to } = {}) {
     .order('created_at', { ascending: false })
   if (from) query = query.gte('created_at', from)
   if (to) query = query.lte('created_at', to)
+  // Safety-net cap — from/to already narrow this down when a caller
+  // passes them, but this is the system-wide audit trail, the one table
+  // in this app most guaranteed to grow forever with normal use. A hard
+  // limit here means a call made without a date range (or with an
+  // unexpectedly wide one) can never balloon into fetching the entire
+  // history at once.
+  query = query.limit(500)
   const { data, error } = await query
   if (error) throw error
   return data.map((l) => ({ ...l, user_name: l.user?.name ?? null }))

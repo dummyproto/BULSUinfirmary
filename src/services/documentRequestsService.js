@@ -23,6 +23,11 @@ function flattenRequest(row) {
 export async function listDocumentRequests({ patientId } = {}) {
   let query = supabase.from('document_requests').select(SELECT_WITH_PATIENT).order('created_at', { ascending: false })
   if (patientId) query = query.eq('patient_id', patientId)
+  // Capped — when called without patientId (the staff-facing "all
+  // requests clinic-wide" view), this was unbounded and only grows over
+  // time. Scoped-to-one-patient calls stay naturally small regardless,
+  // so this limit is really only load-bearing for the unfiltered case.
+  query = query.limit(300)
   const { data, error } = await query
   if (error) throw error
   return data.map(flattenRequest)

@@ -68,6 +68,9 @@ function flattenSupplyBatch(b) {
 export async function listSupplyBatches(supplyId) {
   let query = supabase.from('supply_batches').select(SUPPLY_BATCH_WITH_JOINS).order('created_at', { ascending: false })
   if (supplyId) query = query.eq('supply_id', supplyId)
+  // Same reasoning as listInventoryBatches()/listEquipmentBatches() —
+  // called unfiltered as part of InventoryPage's initial parallel load.
+  query = query.limit(500)
   const { data, error } = await query
   if (error) throw error
   return data.map(flattenSupplyBatch)

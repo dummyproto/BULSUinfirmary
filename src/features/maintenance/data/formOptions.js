@@ -4,4 +4,6 @@ export const PRINT_PERMISSIONS = [
   ['print_inventory', 'Inventory Reports'],
   ['print_documents', 'Document Requests'],
   ['print_health', 'Health Records'],
+  ['delete_logs', 'Delete Alert/SMS/Inventory Logs'],
+  ['reset_reports', 'Reset Reports Page'],
 ]

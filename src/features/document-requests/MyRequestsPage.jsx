@@ -3,6 +3,7 @@ import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
 import Tabs from '@components/ui/Tabs'
+import StatusFilterDropdown from '@components/ui/StatusFilterDropdown'
 import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
 import Modal from '@components/ui/Modal'
@@ -10,7 +11,8 @@ import { formatDate } from '@lib/format'
 import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
 import NewRequestModal from './NewRequestModal'
-import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon } from '@components/ui/icons'
+import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined']
 
@@ -85,6 +87,7 @@ export default function MyRequestsPage() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('All')
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const [newRequestOpen, setNewRequestOpen] = useState(false)
   const [detailId, setDetailId] = useState(null)
 
@@ -183,7 +186,19 @@ export default function MyRequestsPage() {
       </div>
 
       <div style={{ marginBottom: 14 }}>
-        <Tabs tabs={tabItems} active={tab} onChange={setTab} />
+        <div className="status-filter-tabs-wrap">
+          <Tabs tabs={tabItems} active={tab} onChange={setTab} />
+        </div>
+        {/* Mobile-only equivalent of the chip row above — six chips
+            (All/Pending/Processing/Approved/Claimed/Declined) wrap to two
+            rows on a phone-width screen, which reads as cluttered and
+            pushes the request list further down. This single-line
+            dropdown carries the same options/counts in far less space.
+            Hidden on desktop/tablet via .status-filter-select-wrap's CSS
+            — see the sibling .status-filter-tabs-wrap rule for the flip. */}
+        <div className="status-filter-select-wrap">
+          <StatusFilterDropdown options={tabItems} value={tab} onChange={setTab} />
+        </div>
       </div>
 
       <div className="card">
@@ -191,25 +206,41 @@ export default function MyRequestsPage() {
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <DocumentIcon width={15} height={15} /> Request History
           </h3>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{filtered.length} record(s)</span>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{filtered.length} record(s)</span>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline inv-view-more-btn"
+              onClick={() => setShowMore((v) => !v)}
+              title="Show or hide Purpose, Date Requested, Date Needed, and Notes columns"
+              aria-label={showMore ? 'View Less — hide Purpose, Date Requested, Date Needed, and Notes columns' : 'View More — show Purpose, Date Requested, Date Needed, and Notes columns'}
+            >
+              {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+              <span>{showMore ? 'View Less' : 'View More'}</span>
+            </button>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Document Type</th>
-                <th>Purpose</th>
-                <th>Date Requested</th>
-                <th>Date Needed</th>
+                {showMore && (
+                  <>
+                    <th>Purpose</th>
+                    <th>Date Requested</th>
+                    <th>Date Needed</th>
+                  </>
+                )}
                 <th>Status</th>
-                <th>Notes</th>
+                {showMore && <th>Notes</th>}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                  <td colSpan={showMore ? 7 : 3} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                     No {tab.toLowerCase()} requests
                   </td>
                 </tr>
@@ -219,13 +250,19 @@ export default function MyRequestsPage() {
                   <td>
                     <strong>{d.doc_type}</strong>
                   </td>
-                  <td>{d.purpose || '—'}</td>
-                  <td>{formatDate(d.date_requested)}</td>
-                  <td>{formatDate(d.date_needed)}</td>
+                  {showMore && (
+                    <>
+                      <td>{d.purpose || '—'}</td>
+                      <td>{formatDate(d.date_requested)}</td>
+                      <td>{formatDate(d.date_needed)}</td>
+                    </>
+                  )}
                   <td>
                     <StatusBadge status={d.status} />
                   </td>
-                  <td style={{ fontSize: 12, maxWidth: 220, whiteSpace: 'normal', wordBreak: 'break-word' }}>{renderNotes(d)}</td>
+                  {showMore && (
+                    <td style={{ fontSize: 12, maxWidth: 220, whiteSpace: 'normal', wordBreak: 'break-word' }}>{renderNotes(d)}</td>
+                  )}
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       <button type="button" className="btn btn-sm btn-outline" title="View details" onClick={() => setDetailId(d.doc_request_id)}>

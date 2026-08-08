@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { useTheme } from '@context/ThemeContext'
 import Spinner from '@components/ui/Spinner'
 import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
+import { compressImageFile } from '@lib/imageCompression'
 import EditProfileModal from './EditProfileModal'
 import EditFamilyModal from './EditFamilyModal'
 import ChangePasswordModal from './ChangePasswordModal'
+import AvatarMenu from './AvatarMenu'
 import { getUserByEmail, updateUser, updatePatientProfile, updateStaffProfile } from '@services/usersService'
 import {
   UserIcon,
@@ -25,7 +28,6 @@ import {
   AlertTriangleIcon,
   SunIcon,
   MoonIcon,
-  XIcon,
 } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
@@ -100,7 +102,21 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
 
-  const [tab, setTab] = useState('personal')
+  // Reads the initial tab from ?tab=personal|family|settings so the new
+  // profile dropdown (Topbar.jsx) can link straight to a specific tab
+  // instead of always landing on Personal Info first. Falls back to
+  // 'personal' for a bare /profile visit or an unrecognized value.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab')
+  const [tab, setTabState] = useState(['personal', 'family', 'settings'].includes(initialTab) ? initialTab : 'personal')
+  function setTab(next) {
+    setTabState(next)
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.set('tab', next)
+      return params
+    })
+  }
   const [editOpen, setEditOpen] = useState(false)
   const [familyEdit, setFamilyEdit] = useState(null) // { section, initial }
   const [pwOpen, setPwOpen] = useState(false)
@@ -139,23 +155,25 @@ export default function ProfilePage() {
     if (!allowed.includes(file.type)) return show('Only JPG, PNG, GIF, or WEBP images are allowed', 'error')
     if (file.size > 2 * 1024 * 1024) return show('Image must be smaller than 2MB', 'error')
 
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      // NOTE: stores the image as a base64 data URL directly in
-      // `users.profile_img_url` (a TEXT column) — works for a demo, but a
-      // real deployment should upload to Supabase Storage and store the
-      // resulting URL instead. Setting up a Storage bucket + policies is a
-      // separate piece of infrastructure outside this table-CRUD service
-      // layer, so it wasn't built here.
-      try {
-        await updateUser(authProfile.user_id, { profile_img_url: ev.target.result })
-        setUser((u) => ({ ...u, profileImg: ev.target.result }))
-        show('Profile photo updated!', 'success')
-      } catch (err) {
-        show(`Failed to save photo: ${err.message}`, 'error')
-      }
+    // NOTE: stores the image as a base64 data URL directly in
+    // `users.profile_img_url` (a TEXT column) — works for a demo, but a
+    // real deployment should upload to Supabase Storage and store the
+    // resulting URL instead. Setting up a Storage bucket + policies is a
+    // separate piece of infrastructure outside this table-CRUD service
+    // layer, so it wasn't built here.
+    //
+    // compressImageFile auto-compresses to under 1MB before it ever
+    // reaches that column — the 2MB check above is just an early reject
+    // for absurdly large files; the real ceiling on what actually gets
+    // stored is the compressor's own target.
+    try {
+      const compressedDataUrl = await compressImageFile(file, { maxBytes: 1024 * 1024 })
+      await updateUser(authProfile.user_id, { profile_img_url: compressedDataUrl })
+      setUser((u) => ({ ...u, profileImg: compressedDataUrl }))
+      show('Profile photo updated!', 'success')
+    } catch (err) {
+      show(`Failed to save photo: ${err.message}`, 'error')
     }
-    reader.readAsDataURL(file)
   }
 
   async function handleSaveProfile(updates) {
@@ -267,8 +285,7 @@ export default function ProfilePage() {
   // update to that same row, so it's gated the same way here; otherwise
   // a staff member could still click it and get a confusing RLS
   // rejection instead of the click simply not being offered.
-  async function handleRemoveAvatar(e) {
-    e.stopPropagation() // don't also trigger handleAvatarClick's file picker
+  async function handleRemoveAvatar() {
     try {
       await updateUser(authProfile.user_id, { profile_img_url: null })
       setUser((u) => ({ ...u, profileImg: null }))
@@ -284,32 +301,17 @@ export default function ProfilePage() {
     <>
       <div className="profile-header" style={{ background: ROLE_GRADIENTS[role] }}>
         <div className="profile-avatar-wrap">
-          <div
-            className="profile-avatar-lg"
-            role={canEditOwnAvatar ? 'button' : undefined}
-            tabIndex={canEditOwnAvatar ? 0 : undefined}
-            aria-label={canEditOwnAvatar ? 'Change profile photo' : undefined}
-            onClick={canEditOwnAvatar ? handleAvatarClick : undefined}
-            onKeyDown={canEditOwnAvatar ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleAvatarClick()) : undefined}
-            title={canEditOwnAvatar ? 'Click to change photo' : undefined}
-            style={canEditOwnAvatar ? undefined : { cursor: 'default' }}
-          >
-            {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
-            {canEditOwnAvatar && <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>}
-          </div>
-          {/* Sits outside .profile-avatar-lg (which needs overflow:hidden
-              to clip the circular photo) so this badge can hang off the
-              circle's edge instead of being clipped along with it. */}
-          {canEditOwnAvatar && user.profileImg && (
-            <button
-              type="button"
-              className="avatar-remove-btn"
-              onClick={handleRemoveAvatar}
-              title="Remove profile photo"
-              aria-label="Remove profile photo"
-            >
-              <XIcon width={12} height={12} />
-            </button>
+          {canEditOwnAvatar ? (
+            <AvatarMenu hasImage={!!user.profileImg} onAdd={handleAvatarClick} onRemove={handleRemoveAvatar}>
+              <div className="profile-avatar-lg">
+                {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
+                <div className="avatar-upload-overlay"><CameraIcon width={16} height={16} /></div>
+              </div>
+            </AvatarMenu>
+          ) : (
+            <div className="profile-avatar-lg" style={{ cursor: 'default' }}>
+              {user.profileImg ? <img src={user.profileImg} alt="Profile" /> : <span>{user.avatarInitials}</span>}
+            </div>
           )}
         </div>
         {canEditOwnAvatar && <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />}

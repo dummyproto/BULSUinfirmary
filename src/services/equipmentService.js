@@ -59,6 +59,10 @@ function flattenEquipmentBatch(b) {
 export async function listEquipmentBatches(equipmentId) {
   let query = supabase.from('equipment_batches').select(EQUIPMENT_BATCH_WITH_JOINS).order('created_at', { ascending: false })
   if (equipmentId) query = query.eq('equipment_id', equipmentId)
+  // Same reasoning as listInventoryBatches() in inventoryService.js —
+  // called unfiltered as part of InventoryPage's initial parallel load,
+  // so an unbounded fetch here directly slows down every page visit.
+  query = query.limit(500)
   const { data, error } = await query
   if (error) throw error
   return data.map(flattenEquipmentBatch)

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import { EditIcon } from '@components/ui/icons'
 import SearchableSelect from '@components/ui/SearchableSelect'
+import ItemPhotoUpload from './ItemPhotoUpload'
 
 function buildForm(item, suppliers) {
   const matched = item.supplier ? suppliers.find((s) => s.supplier_name === item.supplier) : null
@@ -15,10 +16,16 @@ function buildForm(item, suppliers) {
     received: item.received_date || new Date().toISOString().slice(0, 10),
     supplierId: matched ? String(matched.supplier_id) : '',
     supplierName: item.supplier || '',
+    // Medicine reads image_url straight off the medicine record (via
+    // medicine_inventory_view); legacy Supply/Equipment items read it
+    // off the same-named column added to the `inventory` table —
+    // whichever source this item came from, the app-level shape already
+    // exposes it as item.image_url either way.
+    photoUrl: item.image_url || '',
   }
 }
 
-export default function EditItemModal({ isOpen, item, onClose, onSave, suppliers }) {
+export default function EditItemModal({ isOpen, item, onClose, onSave, suppliers, onError }) {
   const [form, setForm] = useState(() => (item ? buildForm(item, suppliers) : null))
 
   if (!isOpen || !form) return null
@@ -55,6 +62,7 @@ export default function EditItemModal({ isOpen, item, onClose, onSave, suppliers
       }
     >
       <div className="form-grid">
+        <ItemPhotoUpload value={form.photoUrl} onChange={(url) => setField('photoUrl')(url)} onError={onError} />
         <div className="form-group full">
           <label>ITEM NAME *</label>
           <input className="form-input" value={form.name} onChange={(e) => setField('name')(e.target.value)} />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import Toggle from '@components/ui/Toggle'
 import SearchableSelect from '@components/ui/SearchableSelect'
+import ItemPhotoUpload from './ItemPhotoUpload'
 import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon } from '@components/ui/icons'
 
 const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
@@ -18,6 +19,7 @@ const EMPTY_FORM = {
   supplierId: '',
   supplierName: '',
   fifo: true,
+  photoUrl: '',
 }
 
 export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, suppliers }) {
@@ -30,6 +32,19 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
   function stageItem() {
     if (!form.name.trim()) return onError('Item name is required')
     if (!form.unit.trim()) return onError('Unit is required')
+    // Quantity is marked required (see the "QUANTITY *" label below) but
+    // was silently defaulting an empty field to 0 via `|| 0` further
+    // down instead of actually blocking the save — an item with no
+    // quantity typed in at all would stage successfully as if it had 0
+    // on hand, no different from someone who deliberately entered 0.
+    // Checking the raw string here (not the parsed number) is what
+    // distinguishes "field left empty" from "genuinely typed 0" — a
+    // real Out of Stock item with 0 on hand is still a valid, intended
+    // entry and shouldn't be blocked by this.
+    if (form.quantity === '') return onError('Quantity is required')
+    if (!form.expiry) return onError('Expiration date is required')
+    if (!form.batchNo.trim()) return onError('Batch number is required')
+    if (!form.supplierId) return onError('Supplier is required')
     const entry = { ...form, name: form.name.trim(), unit: form.unit.trim(), quantity: parseInt(form.quantity, 10) || 0, minStock: parseInt(form.minStock, 10) || 10 }
 
     if (editIdx !== null) {
@@ -101,6 +116,7 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
           {editIdx !== null ? 'EDIT STAGED ITEM' : 'NEW ITEM'}
         </div>
         <div className="form-grid">
+          <ItemPhotoUpload value={form.photoUrl} onChange={(url) => setField('photoUrl')(url)} onError={onError} />
           <div className="form-group full">
             <label>ITEM NAME *</label>
             <input className="form-input" placeholder="e.g., Paracetamol 500mg" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
@@ -116,7 +132,7 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
           <div className="form-group">
             <label>UNIT *</label>
             <select className="form-select" value={form.unit} onChange={(e) => setField('unit')(e.target.value)}>
-              <option value="">-- Select Unit --</option>
+              <option value=""></option>
               {UNITS.map((u) => (
                 <option value={u} key={u}>
                   {u}
@@ -133,11 +149,11 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
             <input className="form-input" type="number" min="0" value={form.minStock} onChange={(e) => setField('minStock')(e.target.value.replace(/[^0-9]/g, ''))} />
           </div>
           <div className="form-group">
-            <label>BATCH NUMBER</label>
+            <label>BATCH NUMBER *</label>
             <input className="form-input" placeholder="e.g., AMX-001" value={form.batchNo} onChange={(e) => setField('batchNo')(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>{form.category === 'Equipment' ? 'MAINTENANCE DATE' : 'EXPIRATION DATE'}</label>
+            <label>{form.category === 'Equipment' ? 'MAINTENANCE DATE *' : 'EXPIRATION DATE *'}</label>
             <input className="form-input" type="date" value={form.expiry} onChange={(e) => setField('expiry')(e.target.value)} />
           </div>
           <div className="form-group">
@@ -145,7 +161,7 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
             <input className="form-input" type="date" value={form.received} onChange={(e) => setField('received')(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>SUPPLIER</label>
+            <label>SUPPLIER *</label>
             <SearchableSelect
               options={suppliers.map((s) => ({ value: String(s.supplier_id), label: s.supplier_name, sub: s.contact_person || '' }))}
               value={form.supplierId}
@@ -196,11 +212,18 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
                 background: 'var(--surface)',
               }}
             >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{it.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                  {it.category} · {it.quantity} {it.unit} · Min {it.minStock}
-                  {it.batchNo ? ` · Batch: ${it.batchNo}` : ''}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {it.photoUrl ? (
+                  <img src={it.photoUrl} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 34, height: 34, borderRadius: 7, background: 'var(--surface2)', flexShrink: 0 }} />
+                )}
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{it.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {it.category} · {it.quantity} {it.unit} · Min {it.minStock}
+                    {it.batchNo ? ` · Batch: ${it.batchNo}` : ''}
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>

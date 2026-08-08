@@ -268,7 +268,14 @@ export async function finalizeSelfRegistration(authUser) {
 
   if (m.qr_code) {
     try {
-      const { error: claimError } = await supabase.rpc('claim_registration_qr', { p_code: m.qr_code, p_user_id: user.user_id })
+      const { error: claimError } = await supabase.rpc('claim_registration_qr', {
+        p_code: m.qr_code,
+        p_user_id: user.user_id,
+        p_student_number: m.student_number || null,
+        p_full_name: m.name || null,
+        p_course: m.course || null,
+        p_year_level: m.year_level || null,
+      })
       if (claimError) throw claimError
     } catch {
       // Non-critical — see doc comment above. The account is fully
@@ -297,7 +304,7 @@ function flattenUser(row) {
     avatar_initials: row.avatar_initials || initialsFor(row.name || '?'),    department: staff_profiles?.department ?? null,
     position: staff_profiles?.position ?? null,
     permissions: staff_permissions
-? { print_inventory: staff_permissions.print_inventory, print_documents: staff_permissions.print_documents, print_health: staff_permissions.print_health }      : null,
+? { print_inventory: staff_permissions.print_inventory, print_documents: staff_permissions.print_documents, print_health: staff_permissions.print_health, delete_logs: staff_permissions.delete_logs, reset_reports: staff_permissions.reset_reports }      : null,
     student_number: patient_profiles?.student_number ?? null,
     course: patient_profiles?.course ?? null,
     year_level: patient_profiles?.year_level ?? null,
@@ -449,4 +456,28 @@ export async function deleteUser(userId) {
 export async function togglePermission(userId, key, value) {
   const { error } = await supabase.from('staff_permissions').update({ [key]: value }).eq('user_id', userId)
   if (error) throw error
+}
+
+/**
+ * Admin "change password" for any user (System Maintenance -> User
+ * Management). Same reasoning as deleteUser() above — public.users has
+ * no password of its own to update (Supabase Auth owns that, in
+ * auth.users), and the browser can never safely hold the service-role
+ * key that operation requires, so this goes through the
+ * reset-user-password/ Edge Function instead of a direct table write.
+ */
+export async function resetUserPassword(userId, newPassword) {
+  const { data: user, error: lookupError } = await supabase
+    .from('users')
+    .select('auth_user_id')
+    .eq('user_id', userId)
+    .single()
+  if (lookupError) throw lookupError
+  if (!user?.auth_user_id) throw new Error('This user has no linked login account.')
+
+  const { data, error: fnError } = await supabase.functions.invoke('reset-user-password', {
+    body: { authUserId: user.auth_user_id, newPassword },
+  })
+  if (fnError) throw fnError
+  if (data?.error) throw new Error(data.error)
 }

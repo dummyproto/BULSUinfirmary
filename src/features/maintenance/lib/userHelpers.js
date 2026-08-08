@@ -9,7 +9,7 @@ export function validatePassword(pw) {
 import { KeyIcon, BriefcaseIcon, GraduationCapIcon } from '@components/ui/icons'
 
 export function roleBadgeInfo(role) {
-  const color = { admin: 'red', staff: 'blue', patient: 'gray' }[role] || 'gray'
+  const color = { admin: 'red', staff: 'blue', patient: 'green' }[role] || 'gray'
   const label = { admin: 'Admin', staff: 'Staff', patient: 'Patient' }[role] || role
   const Icon = { admin: KeyIcon, staff: BriefcaseIcon, patient: GraduationCapIcon }[role] || null
   return { color, label, Icon }

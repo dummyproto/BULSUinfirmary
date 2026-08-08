@@ -127,7 +127,9 @@ export async function deleteSupplier(id) {
 
 // ── MEDICINE BATCHES ──
 export async function listMedicineBatches() {
-  const { data, error } = await supabase.from('medicine_batches').select(BATCH_WITH_JOINS).order('created_at', { ascending: false })
+  // Same reasoning as the other three batch-list functions — called
+  // unfiltered as part of InventoryPage's initial parallel load.
+  const { data, error } = await supabase.from('medicine_batches').select(BATCH_WITH_JOINS).order('created_at', { ascending: false }).limit(500)
   if (error) throw error
   return data.map(flattenBatch)
 }

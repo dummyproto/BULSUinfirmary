@@ -7,10 +7,14 @@ import { supabase } from './supabaseClient'
 // workarounds needed here.
 
 export async function listInventoryBatches() {
+  // Same reasoning as the cap added to listInventoryLogs() — unbounded
+  // before, only ever used to feed the Batches tab's recent-activity
+  // view, not a full archive.
   const { data, error } = await supabase
     .from('inventory_batches')
     .select('*, item:inventory!inventory_batches_inventory_id_fkey ( name, category, unit, min_stock )')
     .order('created_at', { ascending: false })
+    .limit(500)
   if (error) throw error
   return data.map((b) => ({ ...b, item_name: b.item?.name ?? 'Unknown', item_category: b.item?.category ?? '—', item_unit: b.item?.unit ?? '' }))
 }
@@ -65,17 +69,40 @@ export async function deleteInventoryItem(id) {
 }
 
 export async function listInventoryLogs() {
+  // Capped at the 300 most recent entries — this was previously
+  // unbounded (fetching every row ever logged, with a 5-table join,
+  // on every single page load), which only gets more expensive as the
+  // table naturally grows over months/years of normal use. The Log tab
+  // this feeds is meant for recent activity, not a full historical
+  // archive — listInventoryLogsInRange() right below already exists as
+  // the actual date-scoped path for reports that genuinely need a
+  // wider window.
   const { data, error } = await supabase
     .from('inventory_logs')
-    .select('*, staff:users!inventory_logs_staff_id_fkey ( name ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number )')
+    .select('*, staff:users!inventory_logs_staff_id_fkey ( name ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number ), equipment:equipment ( equipment_name ), supply:supplies ( supply_name )')
     .order('created_at', { ascending: false })
+    .limit(300)
   if (error) throw error
   return data.map((l) => ({
     ...l,
     staff_name: l.staff?.name ?? null,
-    item_name: l.item?.name ?? l.medicine?.medicine_name ?? null,
+    item_name: l.item?.name ?? l.medicine?.medicine_name ?? l.equipment?.equipment_name ?? l.supply?.supply_name ?? null,
     medicine_batch_number: l.medicine_batch?.batch_number ?? null,
   }))
+}
+
+// Row-level security (migration 029) is what actually enforces this —
+// admin, or staff with the delete_logs permission (Maintenance ->
+// Staff Permissions, same flag used for Alert Log/SMS Log). Postgres
+// silently deletes zero rows for an unauthorized caller rather than
+// raising an error, so the count is checked explicitly and an error
+// thrown — without that, an unauthorized attempt would appear to
+// succeed in the UI while nothing was actually removed.
+export async function deleteInventoryLogs(ids) {
+  const { error, count } = await supabase.from('inventory_logs').delete({ count: 'exact' }).in('inventory_log_id', ids)
+  if (error) throw error
+  if (count === 0) throw new Error("You don't have permission to delete inventory log entries.")
+  return count
 }
 
 // Date-range-scoped sibling of listInventoryLogs — for the Inventory
@@ -85,7 +112,7 @@ export async function listInventoryLogs() {
 export async function listInventoryLogsInRange(from, to) {
   const { data, error } = await supabase
     .from('inventory_logs')
-    .select('*, staff:users!inventory_logs_staff_id_fkey ( name ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number )')
+    .select('*, staff:users!inventory_logs_staff_id_fkey ( name ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number ), equipment:equipment ( equipment_name ), supply:supplies ( supply_name )')
     .gte('created_at', `${from}T00:00:00`)
     .lte('created_at', `${to}T23:59:59`)
     .order('created_at', { ascending: false })
@@ -93,16 +120,20 @@ export async function listInventoryLogsInRange(from, to) {
   return data.map((l) => ({
     ...l,
     staff_name: l.staff?.name ?? null,
-    item_name: l.item?.name ?? l.medicine?.medicine_name ?? null,
+    item_name: l.item?.name ?? l.medicine?.medicine_name ?? l.equipment?.equipment_name ?? l.supply?.supply_name ?? null,
     medicine_batch_number: l.medicine_batch?.batch_number ?? null,
   }))
 }
 
-export async function addInventoryLog({ inventoryId, actionType, quantityChange, previousQuantity, newQuantity, staffId, notes, consultationId }) {
+export async function addInventoryLog({ inventoryId, medicineId, medicineBatchId, equipmentId, supplyId, actionType, quantityChange, previousQuantity, newQuantity, staffId, notes, consultationId }) {
   const { data, error } = await supabase
     .from('inventory_logs')
     .insert({
-      inventory_id: inventoryId,
+      inventory_id: inventoryId ?? null,
+      medicine_id: medicineId ?? null,
+      medicine_batch_id: medicineBatchId ?? null,
+      equipment_id: equipmentId ?? null,
+      supply_id: supplyId ?? null,
       action_type: actionType,
       quantity_change: quantityChange,
       previous_quantity: previousQuantity ?? null,
@@ -119,7 +150,9 @@ export async function addInventoryLog({ inventoryId, actionType, quantityChange,
 }
 
 export async function listScanHistory() {
-  const { data, error } = await supabase.from('scan_history').select('*').order('scanned_at', { ascending: false })
+  // Same reasoning as listInventoryLogs()/listInventoryBatches() above —
+  // unbounded before, only ever used to feed a recent-activity view.
+  const { data, error } = await supabase.from('scan_history').select('*').order('scanned_at', { ascending: false }).limit(300)
   if (error) throw error
   return data
 }

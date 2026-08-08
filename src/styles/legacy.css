@@ -18,12 +18,12 @@
   /* TEXT: Warm near-blacks and browns */
   --text:#1A1310;--text-2:#2E2420;--text-3:#6E6358;
   /* SIDEBAR: Deep warm charcoal, not cold navy */
-  --sidebar-bg:#1C1812;--sidebar-w:240px;
+  --sidebar-bg:#1C1812;--sidebar-w:240px;--sidebar-collapsed-w:76px;
   --radius:10px;--radius-lg:16px;
   --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
   --shadow-lg:0 8px 32px rgba(0,0,0,.12);
   --topbar-h:60px;
-  --transition:all .2s cubic-bezier(.4,0,.2,1);
+  --transition:all .15s cubic-bezier(.4,0,.2,1);
   --viewport-width:100vw;--viewport-height:100vh;
 }
 
@@ -349,11 +349,11 @@
 
 /* ── DARK MODE: Category badges — fix dark text on dark bg ── */
 [data-theme="dark"] .cat-medicine  { background: rgba(139,92,246,.22); color: #C4B5FD; }
-[data-theme="dark"] .cat-supply    { background: rgba(16,185,129,.18); color: #6EE7B7; }
+[data-theme="dark"] .cat-supply    { background: rgba(245,158,11,.2); color: #FCD34D; }
 [data-theme="dark"] .cat-equipment { background: rgba(59,130,246,.18); color: #93C5FD; }
 
 /* ── DARK MODE: Status badges ── */
-[data-theme="dark"] .badge-blue   { background: rgba(61,191,150,.18); color: #5EEAD4; }
+[data-theme="dark"] .badge-blue   { background: rgba(59,130,246,.18); color: #93C5FD; }
 [data-theme="dark"] .badge-green  { background: rgba(61,191,120,.18); color: #86EFAC; }
 [data-theme="dark"] .badge-orange { background: rgba(229,150,30,.18);  color: #FCD34D; }
 [data-theme="dark"] .badge-red    { background: rgba(224,90,78,.18);   color: #FCA5A5; }
@@ -471,7 +471,7 @@
 .theme-toggle-btn .icon-sun,
 .theme-toggle-btn .icon-moon {
   position: absolute;
-  transition: opacity .25s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  transition: opacity .18s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
 }
 .theme-toggle-btn .icon-sun { opacity: 0; transform: rotate(90deg) scale(.6); }
 .theme-toggle-btn .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
@@ -481,7 +481,7 @@
 /* Global smooth theme transition */
 *, *::before, *::after {
   transition-property: background-color, border-color, color, box-shadow;
-  transition-duration: .22s;
+  transition-duration: .16s;
   transition-timing-function: cubic-bezier(.4,0,.2,1);
 }
 /* Don't slow down layout/transform transitions */
@@ -490,8 +490,20 @@
   transition: var(--transition) !important;
 }
 
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);color:#1A1310;font-family:'DM Sans',sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+@media(max-width:768px){
+  /* Safety net against horizontal overflow on mobile — a single element
+     rendering even 1px wider than the viewport (a long unbroken string,
+     a table that hasn't wrapped in a scroll container, a fixed pixel
+     width somewhere) is enough to make the ENTIRE page horizontally
+     scrollable, which is much harder to reliably prevent by auditing
+     every individual component than by capping it here at the root.
+     Doesn't fix the underlying oversized element, but does stop it from
+     dragging the whole page sideways with it. */
+  html,body{overflow-x:hidden;max-width:100vw}
+  #root,.app-container{overflow-x:hidden;max-width:100vw}
+}
 [data-theme="dark"] body { color: var(--text); }
 a{text-decoration:none;color:inherit}
 button{font-family:'DM Sans',sans-serif}
@@ -515,27 +527,176 @@ button{font-family:'DM Sans',sans-serif}
 .main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;background:transparent;min-width:0;position:relative;z-index:2}
 /* Page content scrollable region with padding */
 .page-content{flex:1;overflow-y:auto;padding:24px;position:relative;z-index:2}
+/* Mobile bottom tab bar (MobileBottomNav.jsx) — floating oval "glass"
+   pill, visible only below the mobile breakpoint. Desktop/tablet keep
+   using the Sidebar exclusively; this doesn't replace it, it's an
+   additional quick-access surface for the primary nav items specifically
+   sized for one-thumb reach on a phone, same pattern most mobile apps
+   already use instead of a slide-out drawer for everyday navigation.
+   The Sidebar's hamburger-triggered drawer still exists underneath for
+   anything that doesn't fit here (Logout, any role's less-common items). */
+.mobile-bottom-nav{
+  display:none;
+  position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);
+  z-index:200;
+  background:linear-gradient(180deg,rgba(60,52,40,.32) 0%,rgba(22,18,13,.32) 55%);
+  -webkit-backdrop-filter:blur(32px) saturate(180%);backdrop-filter:blur(32px) saturate(180%);
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:999px;
+  box-shadow:
+    0 10px 32px rgba(0,0,0,.35),
+    0 2px 8px rgba(0,0,0,.2),
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -1px 0 rgba(0,0,0,.15);
+  padding:8px;gap:2px;
+  align-items:center;
+  max-width:94vw;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+.mobile-bottom-nav::-webkit-scrollbar{display:none}
+.mobile-bottom-nav-item{
+  display:flex;align-items:center;justify-content:center;
+  width:42px;height:42px;border-radius:50%;flex-shrink:0;
+  color:#B8AFA5;text-decoration:none;
+  transition:color .15s ease,background .15s ease,transform .15s cubic-bezier(.34,1.56,.64,1);
+}
+/* Icon-only, matching the reference — the label text stays in the DOM
+   (visually hidden) as this link's accessible name for screen readers,
+   rather than being removed outright. */
+.mobile-bottom-nav-item span{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+}
+.mobile-bottom-nav-item:hover{color:#F5F0EC;background:rgba(255,255,255,.08)}
+.mobile-bottom-nav-item.active{color:#18130F;background:#F5F0EC;transform:scale(1.05)}
+.mobile-bottom-nav-item.nav-item-emg{color:#FCA5A5}
+.mobile-bottom-nav-item.nav-item-emg.active{color:#fff;background:#E05A4E}
+/* Light theme — the dark, heavily-transparent glass panel and light-gray
+   icons above are tuned for a dark background; against a light page
+   they'd read as a muddy gray smear with poor icon contrast. Panel
+   flips to a light glass tint with a dark-tinted border/shadow, and
+   icons switch to a dark warm gray. Active state and emergency red are
+   left shared between both themes — a solid white circle with a dark
+   icon, and a solid red circle with a white icon, already read clearly
+   against either background. */
+[data-theme="light"] .mobile-bottom-nav{
+  background:linear-gradient(180deg,rgba(255,255,255,.55) 0%,rgba(245,240,235,.55) 55%);
+  border:1px solid rgba(0,0,0,.1);
+  box-shadow:
+    0 10px 28px rgba(0,0,0,.16),
+    0 2px 8px rgba(0,0,0,.08),
+    inset 0 1px 0 rgba(255,255,255,.7),
+    inset 0 -1px 0 rgba(0,0,0,.05);
+}
+[data-theme="light"] .mobile-bottom-nav-item{color:#5A5148}
+[data-theme="light"] .mobile-bottom-nav-item:hover{color:#1A1310;background:rgba(0,0,0,.06)}
+[data-theme="light"] .mobile-bottom-nav-item.nav-item-emg{color:#C0392B}
+@media(max-width:768px){
+  .mobile-bottom-nav{display:flex}
+  /* Room at the bottom of the scrollable page area so the last bit of
+     content (e.g. a table's final row, a form's submit button) never
+     ends up hidden underneath the now-fixed bottom bar. ~64px covers
+     the bar's own height plus its padding/safe-area inset with a small
+     margin to spare. */
+  .page-content{padding-bottom:76px}
+}
 
 /* ========== SIDEBAR: Navigation and user info ========== */
-/* Main sidebar container: dark theme, full height. Near-black base tone
-   at .72 opacity — high enough that the dark color actually dominates
-   over whatever's blended in behind it (at lower opacity, a light page
-   behind the sidebar was diluting the near-black tone into a washed-out
-   medium gray instead of reading as dark) — combined with a strong
-   blur so it still reads as glass, not a flat opaque panel. Text colors
-   throughout are unconditionally light in both app themes (see the
-   removed-override note further down), so this stays readable
-   regardless of what's blended in behind it. */
+/* Main sidebar container — genuinely transparent glass by design: a
+   low-opacity near-black tint over a strong blur+saturate, so page
+   content behind it is visibly (if softly) diffused through rather than
+   fully obscured. Text colors throughout are unconditionally light in
+   both app themes (see the removed-override note further down); a
+   subtle text-shadow on nav items (further down this file) keeps them
+   legible against whatever's now showing through, since the background
+   itself no longer provides much contrast on its own. */
 .sidebar{
   width:var(--sidebar-w);min-width:var(--sidebar-w);
-  background:rgba(6,5,4,.72);display:flex;flex-direction:column;
-  height:100%;border-right:1px solid rgba(255,255,255,.08);
-  transition:var(--transition);position:relative;z-index:100;
-  -webkit-backdrop-filter:blur(38px);backdrop-filter:blur(38px);
+  background:linear-gradient(180deg,rgba(40,32,22,.32) 0%,rgba(6,5,4,.38) 60%);
+  display:flex;flex-direction:column;
+  height:100%;border-right:1px solid rgba(255,255,255,.2);
+  transition:width .16s cubic-bezier(.4,0,.2,1),min-width .16s cubic-bezier(.4,0,.2,1);
+  position:relative;z-index:100;
+  -webkit-backdrop-filter:blur(44px) saturate(180%);backdrop-filter:blur(44px) saturate(180%);
+  box-shadow:inset -1px 0 0 rgba(255,255,255,.08);
   overflow:hidden;
+}
+/* Light theme — the sidebar is always dark regardless of page theme
+   (see removed-override note further down), but at the transparency
+   above, a light page behind it washes the dark tint out toward gray,
+   taking the light-gray nav text down with it. Higher opacity here
+   keeps the dark tone dominant and the text readable; dark mode keeps
+   the more transparent version since a dark page behind it doesn't
+   have this problem. */
+[data-theme="light"] .sidebar{
+  background:linear-gradient(180deg,rgba(48,38,26,.62) 0%,rgba(6,5,4,.7) 60%);
 }
 /* Collapsed state: hide sidebar on desktop */
 .sidebar.collapsed{width:0;min-width:0;overflow:hidden}
+/* Hover-to-expand icon rail (desktop only, ≥1025px — mobile/tablet keep
+   their own separate slide-in drawer behavior further down this file,
+   unaffected by any of this). Replaces the old manual hamburger-click
+   toggle entirely: the sidebar now always starts as a narrow icon-only
+   rail and smoothly widens on hover, no button needed — same
+   interaction Instagram's own left nav uses. .sidebar.collapsed above
+   still exists but nothing sets it anymore now that the toggle button
+   is gone; left in place as inert, harmless CSS rather than ripped out,
+   since removing it entirely isn't necessary for this to work. */
+@media(min-width:769px){
+  /* !important on the width/position declarations below is deliberate,
+     not sloppy — this range (769px+) overlaps with several older
+     landscape/tablet/aspect-ratio breakpoints elsewhere in this file
+     (e.g. "481-1024px landscape", "481-896px landscape", "aspect-ratio
+     3/4") that also set .sidebar's width, some of which sit later in
+     source order and would otherwise win the cascade and silently
+     override this rail behavior back to a full-width sidebar on
+     whatever range they happen to overlap. !important guarantees this
+     wins regardless of where in the file a conflicting rule sits,
+     rather than needing every one of those older rules hunted down and
+     edited individually.
+     position:fixed (overlaying, not pushing) is the key difference from
+     a naive flex-width hover effect — in the reference video, Instagram's
+     main content sits in the exact same pixel position whether the
+     sidebar is narrow or expanded; only the sidebar itself widens,
+     floating on top of the content underneath rather than shoving it
+     rightward on every hover. Reserving space via .app-container's own
+     padding-left (permanently sized to the collapsed rail width) is
+     what keeps content from starting underneath the sidebar by default,
+     without needing the sidebar to participate in flex layout at all. */
+  .app-container{padding-left:var(--sidebar-collapsed-w,76px)!important}
+  .sidebar{
+    position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+    width:var(--sidebar-collapsed-w,76px)!important;min-width:var(--sidebar-collapsed-w,76px)!important;
+  }
+  .sidebar:hover{
+    width:var(--sidebar-w)!important;min-width:var(--sidebar-w)!important;
+    box-shadow:12px 0 32px rgba(0,0,0,.4);
+  }
+  .sidebar-logo-text,.nav-label{
+    opacity:0;width:0;overflow:hidden;white-space:nowrap;
+    transition:opacity .12s ease,width .16s cubic-bezier(.4,0,.2,1);
+  }
+  .sidebar:hover .sidebar-logo-text,.sidebar:hover .nav-label{opacity:1;width:auto}
+  /* Icon-only rail centers each nav item's icon instead of the usual
+     left-aligned icon+label row, and the badge (rate-limit style
+     unread counters) moves to a small corner dot so it doesn't need
+     label-width to sit next to. */
+  .nav-item{justify-content:center}
+  .sidebar:hover .nav-item{justify-content:flex-start}
+  .sidebar-logo{justify-content:center}
+  .sidebar:hover .sidebar-logo{justify-content:flex-start}
+  .nav-badge{
+    position:absolute;top:6px;right:10px;
+    margin-left:0;min-width:8px;width:8px;height:8px;padding:0;
+    font-size:0;overflow:hidden;border-radius:50%;
+  }
+  .sidebar:hover .nav-badge{
+    position:static;min-width:20px;width:auto;height:auto;
+    padding:2px 6px;font-size:10px;overflow:visible;border-radius:10px;
+  }
+}
 /* Sidebar logo section with clinic branding */
 .sidebar-logo{
   padding:18px 16px 14px;display:flex;align-items:center;gap:10px;
@@ -558,7 +719,7 @@ button{font-family:'DM Sans',sans-serif}
   background:rgba(255,255,255,.06);cursor:pointer;
   align-items:center;justify-content:center;
   color:#C0B8B0;
-  transition:background .2s ease,color .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1);
+  transition:background .15s ease,color .15s ease,transform .15s cubic-bezier(.34,1.56,.64,1);
 }
 .sidebar-close-btn:hover{background:rgba(255,255,255,.14);color:#EDE8E0;transform:rotate(90deg) scale(1.1)}
 /* Navigation items container */
@@ -570,9 +731,10 @@ button{font-family:'DM Sans',sans-serif}
 .nav-item{
   display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
   cursor:pointer;color:#C0B8B0;font-size:13px;font-weight:500;
+  text-shadow:0 1px 3px rgba(0,0,0,.5);
   transition:var(--transition);position:relative;-webkit-user-select:none;user-select:none;white-space:nowrap;
 }
-.nav-icon svg{width:16px;height:16px;flex-shrink:0}
+.nav-icon svg{width:16px;height:16px;flex-shrink:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 .nav-item:hover{background:#2A211A;color:#F5F0EC;transform:translateX(3px)}
 .nav-item:active{transform:translateX(3px) scale(.97)}
 /* Active nav item with left indicator bar */
@@ -635,7 +797,7 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ── TOPBAR ── */
 .topbar{
-  height:var(--topbar-h);background:rgba(250,248,245,.55);border-bottom:1px solid rgba(208,200,188,.9);
+  min-height:var(--topbar-h);background:rgba(250,248,245,.55);border-bottom:1px solid rgba(208,200,188,.9);
   display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;
   -webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);position:relative;z-index:10;
 }
@@ -645,7 +807,7 @@ button{font-family:'DM Sans',sans-serif}
   display:none; /* hidden by default; portrait rule below shows it */
   align-items:center;justify-content:center;
   color:#2E2420;flex-shrink:0;
-  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
+  transition:background .12s ease, color .12s ease, transform .1s cubic-bezier(.34,1.56,.64,1), box-shadow .12s ease;
   box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .hamburger-btn:hover{
@@ -655,7 +817,7 @@ button{font-family:'DM Sans',sans-serif}
   transform:scale(1.06);
 }
 /* Animate the three SVG lines into an X when sidebar is open */
-.hamburger-btn svg line{transition:transform .25s cubic-bezier(.4,0,.2,1), opacity .2s ease}
+.hamburger-btn svg line{transition:transform .18s cubic-bezier(.4,0,.2,1), opacity .15s ease}
 .hamburger-btn.is-open svg line:nth-child(1){transform:translateY(6px) rotate(45deg);transform-origin:center}
 .hamburger-btn.is-open svg line:nth-child(2){opacity:0;transform:scaleX(0)}
 .hamburger-btn.is-open svg line:nth-child(3){transform:translateY(-6px) rotate(-45deg);transform-origin:center}
@@ -689,7 +851,7 @@ button{font-family:'DM Sans',sans-serif}
   width:38px;height:38px;border-radius:10px;border:1.5px solid rgba(208,200,188,.9);
   background:rgba(250,248,245,.97);cursor:pointer;display:flex;align-items:center;
   justify-content:center;color:#2E2420;
-  transition:background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
+  transition:background .12s ease, color .12s ease, transform .1s cubic-bezier(.34,1.56,.64,1), box-shadow .12s ease;
   position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);
 }
 .icon-btn:hover{
@@ -709,8 +871,12 @@ button{font-family:'DM Sans',sans-serif}
   font-family:'DM Sans',sans-serif;
 }
 /* Profile group in topbar: avatar + name/role + dropdown chevron, as one
-   clickable unit (the whole row navigates to /profile, not just the
-   avatar circle). */
+   clickable unit that toggles the dropdown menu below (Personal Info /
+   Account Settings / Logout) — previously navigated straight to
+   /profile on click; now opens a menu instead, matching the
+   Profile/Change Password/Logout pattern already familiar from other
+   systems' topbars. */
+.topbar-profile-wrap{position:relative}
 .topbar-profile{
   display:flex;align-items:center;gap:9px;cursor:pointer;
   padding:4px 10px 4px 4px;border-radius:24px;flex-shrink:0;
@@ -721,12 +887,72 @@ button{font-family:'DM Sans',sans-serif}
 .topbar-profile-info{display:flex;flex-direction:column;line-height:1.3;min-width:0}
 .topbar-profile-name{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
 .topbar-profile-role{font-size:11px;color:var(--text-3);white-space:nowrap}
+.topbar-profile-chevron{color:var(--text-3);transition:transform .14s ease;flex-shrink:0}
+.topbar-profile-chevron.open{transform:rotate(180deg)}
+/* Dropdown panel — same visual language as .modal (surface/border/
+   shadow/radius) so it reads as belonging to the same app, just anchored
+   under the trigger instead of centered as an overlay.
+   display:none by default. The .open class (set by the click handler in
+   Topbar.jsx) is the primary way this shows/hides — :hover is ADDITIVE
+   on top of that, scoped below to @media(hover:hover) so it only
+   applies on devices with a real mouse. Touch devices simulate a
+   "stuck" :hover state after a tap that doesn't clear until tapping
+   elsewhere, which — without this scoping — meant a second tap could
+   correctly flip profileMenuOpen back to false (closing the .open
+   class) while the menu stayed visually open anyway, since the phantom
+   :hover was still separately satisfying the display:block rule. This
+   is exactly the mobile bug being fixed here. */
+.topbar-profile-menu{
+  display:none;
+  position:absolute;top:calc(100% + 8px);right:0;z-index:300;
+  width:220px;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;
+  animation:dropdownFadeIn .12s ease;
+}
+.topbar-profile-wrap.open .topbar-profile-menu{
+  display:block;
+}
+@media(hover:hover) and (pointer:fine){
+  .topbar-profile-wrap:hover .topbar-profile-chevron{transform:rotate(180deg)}
+  .topbar-profile-wrap:hover .topbar-profile-menu{display:block}
+}
+.topbar-profile-menu-header{
+  padding:12px 14px;border-bottom:1px solid var(--border);
+  display:flex;flex-direction:column;gap:2px;
+}
+.topbar-profile-menu-header strong{font-size:13px;color:var(--text)}
+.topbar-profile-menu-header span{font-size:11px;color:var(--text-3)}
+.topbar-profile-menu-item{
+  width:100%;display:flex;align-items:center;gap:10px;
+  padding:10px 14px;border:none;background:none;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--text-2);text-align:left;
+  transition:background .1s ease,color .1s ease,transform .1s ease;
+}
+/* Same hover feel as the sidebar's own .nav-item:hover — a background
+   tint plus a small rightward slide, with a press-down scale on click —
+   so the dropdown reads as part of the same interactive language as
+   the rest of the app's navigation, not a differently-behaved menu. */
+.topbar-profile-menu-item:hover{background:var(--primary-light);color:var(--primary);transform:translateX(3px)}
+/* :active (fires reliably on tap, unlike :hover on touch devices — see
+   the wrapper-level hover-scoping fix above for the same underlying
+   reasoning) now gets the identical background/color treatment as
+   :hover, not just the transform — previously a mobile tap only showed
+   the slide+scale motion with no color change, since the highlight was
+   tied exclusively to :hover. */
+.topbar-profile-menu-item:active{background:var(--primary-light);color:var(--primary);transform:translateX(3px) scale(.97)}
+.topbar-profile-menu-item.danger{color:var(--danger)}
+.topbar-profile-menu-item.danger:hover{background:var(--danger-light);color:var(--danger)}
+.topbar-profile-menu-item.danger:active{background:var(--danger-light);color:var(--danger)}
+.topbar-profile-menu-divider{height:1px;background:var(--border);margin:4px 0}
 /* Mobile topbar is already tight (see .topbar-page-actions above) — name/
    role/chevron collapse away, leaving just the avatar, same space-saving
-   approach already used for the page-action buttons on this row. */
+   approach already used for the page-action buttons on this row. The
+   dropdown itself still opens fine on tap either way — only the
+   name/role text and chevron are hidden, not the trigger's functionality. */
 @media(max-width:768px){
   .topbar-profile{gap:0;padding:0}
-  .topbar-profile-info{display:none}
+  .topbar-profile-info,.topbar-profile-chevron{display:none}
+  .topbar-profile-menu{right:-8px}
 }
 /* Avatar button in topbar */
 .topbar-avatar{
@@ -739,6 +965,14 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ── CARDS ── */
 .card{background:rgba(250,248,245,.96);border:1px solid rgba(208,200,188,.8);border-radius:var(--radius-lg);box-shadow:0 2px 12px rgba(0,0,0,.07),0 8px 24px rgba(0,0,0,.05)}
+/* Scoped override, not a change to .card itself — the Items panel's
+   background sat at .96 opacity, showing a solid near-white/near-black
+   fill instead of letting the app's fixed bulsu.png backdrop
+   (.app-container::before) show through at all. Lowering opacity here
+   specifically lets that image show through this panel — .card's
+   default stays fully opaque for every other panel in the app. */
+.inv-items-card{background:rgba(250,248,245,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+[data-theme="dark"] .inv-items-card{background:rgba(22,18,13,.55)}
 .card-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
 .card-header h3{font-size:14px;font-weight:700;color:#1A1310;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-header .btn{flex-shrink:0}
@@ -767,7 +1001,17 @@ button{font-family:'DM Sans',sans-serif}
 
 /* ========== TABLE: Data display styles ========== */
 /* Table wrapper for horizontal scroll on small screens */
-.table-wrap{overflow-x:auto}
+.table-wrap{overflow-x:auto;touch-action:pan-x pan-y;border-radius:0 0 var(--radius-lg) var(--radius-lg)}
+/* Opt-out for the forced min-width further below (see @media(max-
+   width:768px) rules) — added to a <table> only while its page's View
+   More/Less toggle is collapsed (2 columns: identifying column +
+   Actions), so it can size to its actual content and fit any screen
+   without needing to scroll at all. Removed the moment View More is
+   clicked, so the existing min-width protection (and the swipe/scroll
+   it requires) still applies to the expanded, many-column view.
+   !important since it needs to beat both of those rules, which are
+   each already more specific than a single class alone. */
+table.compact-table{min-width:0!important;width:auto!important}
 /* Standard table with collapsed borders */
 table{width:100%;border-collapse:collapse}
 /* Table headers: uppercase, muted color, background highlight */
@@ -811,7 +1055,7 @@ tbody td > .btn {
 /* Status dot before badge text */
 .badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
 /* Badge color variants */
-.badge-blue{background:var(--primary-light);color:var(--primary)}
+.badge-blue{background:#DBEAFE;color:#1D4ED8}
 .badge-green{background:var(--success-light);color:var(--success)}
 .badge-orange{background:var(--warning-light);color:var(--warning)}
 .badge-red{background:var(--danger-light);color:var(--danger)}
@@ -832,7 +1076,7 @@ tbody td > .btn {
   font-size:13px;
   font-weight:600;
   letter-spacing:0.01em;
-  transition:background .18s ease, transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, opacity .15s ease;
+  transition:background .14s ease, transform .1s cubic-bezier(.34,1.56,.64,1), box-shadow .14s ease, opacity .12s ease;
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -849,6 +1093,18 @@ tbody td > .btn {
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none !important;}
 /* Small button variant */
 .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px;gap:5px}
+/* Extra-small variant — for dense action columns (Patients, Batches,
+   Suppliers, User Accounts) now that those tables show only their
+   identifying column + Actions by default. */
+.btn-xs{padding:4px 8px;font-size:11px;border-radius:6px;gap:4px}
+/* View More/View Less toggle (Patients, Batches, Suppliers, User
+   Accounts) — same reasoning as .btn-xs above. Its own rule since the
+   button already carries .btn-sm in its className; this needs to win
+   over that rather than being combined via a second class. */
+.inv-view-more-btn{padding:4px 8px;font-size:11px;gap:4px}
+/* Text label restored — icon-only (chevron alone) wasn't recognizable
+   enough. Unlike the row-action buttons, this one has room for its
+   text inline rather than needing the icon-plus-stacked-label pattern. */
 /* Large button variant */
 .btn-lg{padding:12px 22px;font-size:14px;border-radius:12px;gap:7px}
 /* Full-width button */
@@ -991,7 +1247,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .form-input,.form-select,.form-textarea{
   padding:9px 11px;border:1px solid #B8B0A6;border-radius:7px;
   font-family:'DM Sans',sans-serif;font-size:13px;color:#1A1310;
-  background:rgba(250,248,245,.97);transition:border-color .2s;width:100%;
+  background:rgba(250,248,245,.97);transition:border-color .15s;width:100%;
 }
 /* Focus state with primary color border and subtle background */
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(30,123,94,.1)}
@@ -1030,6 +1286,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E") no-repeat 9px center;
 }
 .search-input:focus{outline:none;border-color:var(--primary);background-color:rgba(250,248,245,.97);color:#1A1310}
+@media(max-width:640px){
+  .search-input-wrap{width:100%}
+  .search-input{width:100%!important}
+  .card-header{flex-wrap:wrap}
+}
 /* Password field wrapper for show/hide toggle */
 .pw-wrapper{position:relative}
 .pw-wrapper .form-input{padding-right:40px}
@@ -1053,7 +1314,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:var(--surface2);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   color:var(--text-2);font-size:18px;line-height:1;
-  transition:background .15s ease, color .15s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+  transition:background .12s ease, color .12s ease, transform .1s cubic-bezier(.34,1.56,.64,1);
 }
 .modal-close:hover{background:var(--danger-light);color:var(--danger);transform:scale(1.08);}
 .modal-close:active{transform:scale(.93);}
@@ -1065,6 +1326,64 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
    stands on its own like any other .btn in this app, so the row is just
    a wrapped flex group with breathing room between buttons. */
 .tab-row{display:flex;gap:8px;width:fit-content;margin-left:auto;margin-right:auto;flex-wrap:wrap}
+/* Status filter — chip row (.status-filter-tabs-wrap) on desktop/
+   tablet, single-line dropdown (.status-filter-select-wrap) on phone
+   widths where several chips wrap to two rows. Used by both My
+   Requests (patient) and Document Requests (staff/admin) — both
+   elements always render, this just toggles which is visible. */
+.status-filter-select-wrap{display:none}
+@media(max-width:640px){
+  .status-filter-tabs-wrap{display:none}
+  .status-filter-select-wrap{display:block;width:100%}
+  .case-list-filters{width:100%;margin-left:0!important}
+  .case-list-filters>div{flex:1 1 100%}
+  .case-list-filters input,.case-list-filters select{width:100%!important}
+}
+
+.status-filter-dropdown{position:relative;width:100%}
+.status-filter-trigger{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;padding:10px 14px;border-radius:var(--radius);
+  border:1.5px solid var(--border-strong);background:var(--surface);
+  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:var(--text);
+  cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease;
+}
+.status-filter-trigger:hover{border-color:var(--primary)}
+.status-filter-trigger.open{border-color:var(--primary);box-shadow:0 0 0 3px rgba(30,123,94,.1)}
+.status-filter-chevron{flex-shrink:0;color:var(--text-3);transition:transform .18s ease}
+.status-filter-trigger.open .status-filter-chevron{transform:rotate(180deg)}
+
+.status-filter-menu{
+  z-index:9500;
+  background:var(--surface);border:1.5px solid var(--primary);
+  border-radius:var(--radius);box-shadow:var(--shadow-lg);
+  overflow:hidden;animation:dropdownFadeIn .15s ease;
+}
+/* Portaled into document.body (see StatusFilterDropdown.jsx) rather than
+   positioned in place — .main-area (every page's ancestor) combines
+   overflow:hidden with its own position:relative + z-index, sealing off
+   a stacking context that traps any in-place descendant no matter how
+   high its own z-index is set. position:fixed here + top/left/width
+   supplied inline from the trigger's real getBoundingClientRect()
+   escapes that entirely. */
+.status-filter-menu-portal{
+  position:fixed;
+}
+.status-filter-menu.closing{animation:dropdownFadeOut .12s ease forwards}
+.status-filter-option{
+  padding:11px 14px;font-size:13.5px;font-weight:500;color:var(--text-2);
+  cursor:pointer;border-bottom:1px solid var(--border);
+  transition:background .15s ease,color .15s ease,padding-left .15s ease;
+}
+.status-filter-option:last-child{border-bottom:none}
+.status-filter-option:hover{background:var(--primary-light);color:var(--primary);padding-left:19px}
+.status-filter-option.selected{background:var(--primary);color:#fff;font-weight:700}
+.status-filter-option.selected:hover{background:var(--primary-dark);color:#fff}
+
+@keyframes dropdownFadeOut{
+  from{opacity:1;transform:translateY(0)}
+  to{opacity:0;transform:translateY(-4px)}
+}
 /* Individual tab button — modeled directly on .btn-outline (border,
    shadow, hover lift, press-down scale) rather than the app's own
    lighter "tab" treatment, so an unselected tab reads unambiguously as
@@ -1077,7 +1396,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   font-size:12px;font-weight:600;color:var(--text-2);
   cursor:pointer;
   box-shadow:0 1px 3px rgba(0,0,0,.06);
-  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+  transition:background .12s ease, color .12s ease, border-color .12s ease, box-shadow .12s ease, transform .1s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;
 }
 .tab-btn:hover:not(.active){
@@ -1087,6 +1406,10 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   transform:translateY(-1px);
 }
 .tab-btn:active:not(.active){transform:scale(.96);}
+@media(max-width:640px){
+  .inv-subnav-tabs{display:grid;grid-template-columns:repeat(2,1fr);width:100%;gap:8px}
+  .inv-subnav-tabs .tab-btn{justify-content:center;width:100%}
+}
 /* Active tab — solid brand green with white text, matching how
    "selected"/"primary" already reads everywhere else in this app
    (buttons, .nav-item.active's indicator). The previous light-green-
@@ -1113,6 +1436,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   gap:5px;
   align-items:stretch;
   min-width:110px;
+  margin-left:auto;
 }
 /* All sub-groups stretch full width */
 .inv-action-primary,
@@ -1131,8 +1455,8 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   width:100%;
   justify-content:center;
   text-align:center;
-  font-size:12px;
-  padding:5px 10px;
+  font-size:11px;
+  padding:4px 8px;
 }
 /* Full-width action button for single actions */
 .inv-action-wide{
@@ -1150,11 +1474,200 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .inv-action-group-icons{
   display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;
   align-items:center;justify-content:flex-start;
+  /* When this is a CSS Grid item (.inv-item-list-card-main's last
+     column), grid items default to min-width:auto — their content's
+     own intrinsic minimum width — which let this overflow its assigned
+     track instead of actually shrinking into it and wrapping via the
+     flex-wrap above. Same root cause as .inv-item-list-card-info's
+     min-width:0 fix, just the other end of the same row. */
+  min-width:0;
 }
+/* List/Grid view toggle — a compact segmented pair, matching the size
+   of the surrounding .btn-sm controls in the same header row. */
+.inv-view-toggle{
+  display:flex;border:1.5px solid var(--border-strong);border-radius:8px;
+  overflow:hidden;height:30px;flex-shrink:0;
+}
+.inv-view-toggle-btn{
+  width:32px;height:100%;min-width:0;min-height:0;border:none;background:var(--surface);
+  color:var(--text-3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .1s ease,color .1s ease;
+}
+.inv-view-toggle-btn:first-child{border-right:1px solid var(--border-strong)}
+.inv-view-toggle-btn:hover:not(.active){background:var(--primary-light);color:var(--primary)}
+.inv-view-toggle-btn.active{background:var(--primary);color:#fff}
+/* Grid view — responsive card layout. auto-fill + minmax means the
+   column count adjusts itself to whatever width is available (matching
+   the "adjust design depending on screen" work done elsewhere in this
+   file) rather than a fixed column count that would cramp on mobile or
+   leave excess empty space on wide monitors. */
+.inv-item-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:14px;margin-bottom:4px;
+}
+.inv-item-card{
+  background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.4);border-radius:12px;
+  padding:14px;display:flex;flex-direction:column;
+  transition:box-shadow .12s ease,transform .12s ease;
+  overflow:hidden;
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  box-shadow:0 4px 18px rgba(0,0,0,.06);
+}
+[data-theme="dark"] .inv-item-card{
+  background:rgba(30,30,30,.5);border-color:rgba(255,255,255,.1);
+}
+.inv-item-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.14);transform:translateY(-2px)}
+/* Photo sits above the card content, edge-to-edge — negative margins
+   pull it out of the card's own padding on all three top sides so it
+   reads as a proper header image rather than an inset thumbnail. */
+.inv-item-card-photo{
+  width:calc(100% + 28px);height:120px;object-fit:cover;
+  margin:-14px -14px 10px;display:block;
+}
+.inv-item-card-photo-placeholder{
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface2);color:var(--text-3);
+}
+.inv-item-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.inv-item-card-name{font-weight:700;font-size:14px;color:var(--text);line-height:1.3;margin-bottom:4px}
+.inv-item-card-meta{display:flex;flex-wrap:wrap;gap:8px;font-size:10px;color:var(--text-3);margin-bottom:10px}
+.inv-item-card-stock{display:flex;align-items:baseline;gap:5px;margin-top:6px}
+/* List view's small equivalent — sized to match .inv-item-list-card-photo
+   exactly, so cards with and without a photo still align identically
+   instead of the name shifting left when there's no image. */
+.inv-item-row-photo-placeholder{
+  border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface2);color:var(--text-3);
+}
+/* List view redesign — each item is its own self-contained card
+   (border, radius, shadow, margin-bottom for spacing) instead of a
+   table row sharing borders with its neighbors. Layout stays the
+   horizontal, information-dense arrangement list view is meant to have
+   (unlike grid view's vertical, photo-on-top card) — photo, name/meta,
+   stock, level, expiry, status, and actions all in one row, just now
+   inside a card boundary instead of table cells. flex-wrap lets it
+   reflow gracefully on narrow screens instead of needing a totally
+   separate mobile layout. */
+.inv-item-list-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  margin-bottom:12px;padding:18px 20px;
+  transition:box-shadow .12s ease,transform .12s ease,border-color .12s ease;
+}
+.inv-item-list-card:last-child{margin-bottom:0}
+.inv-item-list-card:hover{box-shadow:0 3px 14px rgba(0,0,0,.09);transform:translateY(-1px);border-color:var(--border-strong)}
+/* Card content grid — no longer needs to match a separate header row
+   (removed; each field now labels itself instead, see
+   .inv-item-list-card-label below), so this is purely about keeping
+   icon/value pairs tidy within a single card's own row. Column order:
+   photo | info | category | stock | unit | level | expiry | supplier |
+   status | actions (fewer columns without .has-more). */
+.inv-item-list-card-main{
+  display:grid;align-items:center;gap:20px;
+  grid-template-columns:56px 1fr 70px 100px auto;
+}
+.inv-item-list-card-main.has-more{
+  grid-template-columns:56px 1fr 90px 70px 60px 84px 120px 100px 100px auto;
+  /* This grid's fixed-width columns total ~860px before the flexible
+     ones get anything — fine on a genuinely wide desktop window, but
+     with View More now defaulting to open there (see viewport.js),
+     any narrower-than-that viewport (a resized window, a tablet, a
+     smaller laptop) needs somewhere for the overflow to go rather than
+     visually crushing every column at once. Scrolling this one row
+     horizontally is simpler and more robust than chasing every
+     intermediate breakpoint between mobile and a wide desktop. */
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+}
+.inv-item-list-card-stock{text-align:center}
+/* Grid items default to min-width:auto (their content's own intrinsic
+   width), which is what let a squeezed 1fr track force this column's
+   text to break character-by-character rather than at normal word
+   boundaries — min-width:0 lets it actually shrink and wrap sanely. */
+.inv-item-list-card-info{min-width:0;overflow-wrap:break-word}
+.inv-item-list-card-photo{width:56px;height:56px;border-radius:10px;object-fit:cover}
+/* Small uppercase label above each field's value — since the shared
+   header row is gone, every card needs to be self-describing on its
+   own; this is what actually says "this is Stock" / "this is Status"
+   etc. now, rather than relying on a column position matching a label
+   somewhere else on screen. */
+.inv-item-list-card-label{
+  font-size:9px;font-weight:700;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;
+}
+/* Supplier chip — small dark pill with a dot, matching how Status/
+   Category already read as pills rather than plain text, so Supplier
+   doesn't look like the odd one out among the other column values. */
+.supplier-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:20px;
+  background:var(--surface2);color:var(--text-2);font-size:12px;font-weight:600;
+}
+.supplier-chip-dot{width:6px;height:6px;border-radius:50%;background:var(--text-3);flex-shrink:0}
+/* Footer note under the item list — a quick reminder of what's actually
+   being shown (grouped by category, non-expired/usable only) now that
+   there's no table caption or column-header tooltip to convey it. */
+.inv-list-footer-note{
+  display:flex;align-items:center;gap:8px;
+  margin-top:14px;padding:12px 16px;border-radius:8px;
+  background:var(--primary-light);color:var(--primary);
+  font-size:12.5px;
+}
+@media(max-width:640px){
+  .inv-item-list-card{padding:12px 14px}
+  /* Grid gives way to a wrapping flexbox on mobile — the fixed-width
+     columns (stock/status/actions) plus a flexible name column never
+     had enough room to share a single row on a real phone width, no
+     matter how tightly they were sized; this instead lets each group
+     claim a full line of its own with real breathing room. */
+  .inv-item-list-card-main,.inv-item-list-card-main.has-more{
+    display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;overflow-x:visible;
+  }
+  .inv-item-list-card-photo{width:30px;height:30px;border-radius:6px;flex-shrink:0}
+  /* Photo + name share the first line — grows to fill whatever's left
+     next to the photo, wrapping its own text normally within that. */
+  .inv-item-list-card-info{flex:1 1 140px;min-width:0;overflow-wrap:break-word}
+  /* Stock + Status: exactly 50% each guarantees they pair up on their
+     own dedicated second line (50+50=100%, leaving no room for
+     anything else to squeeze in beside them) rather than trying to
+     share a line with the name above. */
+  .inv-item-list-card-stock,.inv-item-list-card-status{
+    flex:1 1 50%;text-align:left;
+  }
+  /* Actions: flex-basis:100% guarantees its own third line, since line
+     two is already exactly full from Stock+Status above. Its own
+     flex-wrap (from .inv-action-group-icons) still handles wrapping
+     the buttons themselves into rows of 2. */
+  .inv-action-group-icons{flex-basis:100%;justify-content:flex-start;margin-top:2px}
+  .inv-item-list-card-level,.inv-item-list-card-expiry,
+  .inv-item-list-card-category,.inv-item-list-card-unit,.inv-item-list-card-supplier{
+    display:none;
+  }
+}
+@media(max-width:768px){
+  .inv-item-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+  .inv-items-action-row{flex-basis:100%;margin-left:0!important;justify-content:flex-end;margin-top:6px}
+  .inv-item-card{padding:11px}
+  .inv-item-card-photo{width:calc(100% + 22px);height:90px;margin:-11px -11px 8px}
+}
+/* Photo upload control shared by AddItemModal/EditItemModal
+   (ItemPhotoUpload.jsx) — a square preview thumbnail (click to upload)
+   next to the action buttons, matching the general shape of
+   ProfilePage's own avatar-upload control. */
+.item-photo-upload{display:flex;gap:12px;align-items:flex-start}
+.item-photo-preview{
+  width:64px;height:64px;border-radius:10px;flex-shrink:0;cursor:pointer;
+  background:var(--surface2);border:1.5px dashed var(--border-strong);
+  display:flex;align-items:center;justify-content:center;color:var(--text-3);
+  overflow:hidden;transition:border-color .1s ease,color .1s ease;
+}
+.item-photo-preview:hover{border-color:var(--primary);color:var(--primary)}
+.item-photo-preview img{width:100%;height:100%;object-fit:cover}
 .inv-action-group-icons .inv-action-btn{
-  width:32px;height:32px;padding:0;flex-shrink:0;
-  display:inline-flex;align-items:center;justify-content:center;
+  width:52px;min-height:44px;padding:4px 2px;flex-shrink:0;
+  display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  white-space:nowrap;
 }
+.inv-action-group-icons .inv-action-btn span{font-size:9px;font-weight:700;letter-spacing:.02em;line-height:1}
 /* Edit button styling — neutral gray variant */
 .inv-action-edit{
   background:var(--surface2);
@@ -1180,11 +1693,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
 /* ========== TOGGLE SWITCHES: Binary on/off control ========== */
 /* Toggle switch container (pill-shaped) */
-.toggle{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.toggle{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;cursor:pointer;transition:background .15s;flex-shrink:0}
 /* Active toggle state with success color */
 .toggle.on{background:var(--success)}
 /* Toggle switch indicator circle */
-.toggle::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:white;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:white;top:3px;left:3px;transition:transform .15s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 /* Active toggle indicator position */
 .toggle.on::after{transform:translateX(16px)}
 
@@ -1207,7 +1720,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
 /* ========== NOTIFICATIONS: Notification list items ========== */
 /* Individual notification item in notification panel */
-.notif-item{padding:11px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:background .1s}
+.notif-item{padding:11px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:background .08s}
 .notif-item:hover{background:var(--surface2)}
 /* Unread notification highlighting */
 .notif-item.unread{background:#EAF5F0}
@@ -1219,7 +1732,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .notif-time{font-size:10px;color:var(--text-3);margin-top:2px}
 
 /* ── APPOINTMENTS ── */
-.appt-card{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;transition:background .1s}
+.appt-card{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;transition:background .08s}
 .appt-card:hover{background:var(--surface2)}
 .appt-time{text-align:center;width:46px;flex-shrink:0}
 .appt-time .t{font-size:13px;font-weight:700;color:var(--text)}
@@ -1230,7 +1743,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
 /* ========== CHATBOT: Chat message interface ========== */
 /* Chat messages container with flex column layout */
-.chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px}
+.chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px;touch-action:pan-y}
 /* Individual chat message (user or bot) */
 .msg{display:flex;gap:10px;max-width:78%}
 /* User message aligned to right */
@@ -1250,7 +1763,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .chat-send-btn:hover{background:var(--primary-dark)}
 
 /* ── CHAT HISTORY ITEMS (no individual delete) ── */
-.chat-session{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.chat-session{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .08s}
 .chat-session:hover{background:var(--surface2)}
 .chat-session.active{background:var(--primary-light);border-left:3px solid var(--primary)}
 
@@ -1273,7 +1786,14 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 /* Toast container at bottom-right of viewport */
 #toast-container{position:fixed;bottom:80px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:7px}
 /* Individual toast notification with auto-dismiss animation */
-.toast{color:white;padding:11px 14px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;min-width:260px;animation:slideUp .22s ease}
+.toast{color:white;padding:11px 14px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;min-width:260px;animation:slideUp .16s ease}
+@media(max-width:340px){
+  /* Genuinely narrow phones (older/smaller devices) — 260px min-width
+     plus the container's own left/right margins could otherwise leave
+     very little breathing room, or overflow entirely on the smallest
+     screens still in real-world use. */
+  .toast{min-width:0;width:100%}
+}
 .toast.success{background:var(--success)}
 .toast.warning{background:var(--warning)}
 .toast.error{background:var(--danger)}
@@ -1301,7 +1821,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   border:1px solid rgba(255,255,255,.22);
   -webkit-backdrop-filter:blur(40px);backdrop-filter:blur(40px);
   box-shadow:0 8px 24px rgba(0,0,0,.18);
-  transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, filter .25s ease;
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, filter .18s ease;
 }
 .profile-header:hover{
   transform:translateY(-3px);
@@ -1321,19 +1841,34 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   display:none;align-items:center;justify-content:center;font-size:18px;
 }
 .profile-avatar-lg:hover .avatar-upload-overlay{display:flex}
-/* Wraps .profile-avatar-lg so the remove-photo badge can sit on the
-   circle's outer edge — .profile-avatar-lg itself needs overflow:hidden
-   to clip the circular photo, which would also clip this badge if it
-   lived inside that same element instead of as its sibling here. */
+/* Wraps .profile-avatar-lg — no longer needs to host a hanging badge
+   (removal is now a menu item in AvatarMenu.jsx's dropdown instead of a
+   separate × button), kept for the flex-shrink:0 sizing behavior. */
 .profile-avatar-wrap{position:relative;flex-shrink:0}
-.avatar-remove-btn{
-  position:absolute;bottom:-2px;right:-2px;
-  width:22px;height:22px;border-radius:50%;
-  background:var(--danger,#DC2626);border:2px solid var(--surface,#fff);
-  color:#fff;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);
+
+/* AvatarMenu.jsx's trigger + portaled dropdown. Portaled to
+   document.body for the same reason .status-filter-menu is — .main-area
+   (every page's ancestor) traps any normally-positioned descendant
+   behind page content further down (here, the Personal Info card right
+   below) regardless of z-index. */
+.avatar-menu{
+  position:fixed;z-index:9500;min-width:170px;
+  background:var(--surface);border:1.5px solid var(--primary);
+  border-radius:var(--radius);box-shadow:var(--shadow-lg);
+  overflow:hidden;animation:dropdownFadeIn .15s ease;
+  display:flex;flex-direction:column;padding:6px;gap:2px;
 }
-.avatar-remove-btn:hover{background:#B91C1C}
+.avatar-menu.closing{animation:dropdownFadeOut .12s ease forwards}
+.avatar-menu-item{
+  display:flex;align-items:center;gap:9px;width:100%;
+  padding:9px 11px;border-radius:8px;border:none;background:transparent;
+  font-family:'DM Sans',sans-serif;font-size:13.5px;font-weight:500;
+  color:var(--text);cursor:pointer;text-align:left;
+  transition:background .15s ease,color .15s ease;
+}
+.avatar-menu-item:hover{background:var(--primary-light);color:var(--primary)}
+.avatar-menu-item-danger{color:var(--danger,#DC2626)}
+.avatar-menu-item-danger:hover{background:rgba(220,38,38,.1);color:var(--danger,#DC2626)}
 .profile-info h2{font-size:19px;font-weight:700;text-shadow:0 1px 8px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.4)}
 .profile-info p{font-size:13px;opacity:.95;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.35)}
 .profile-info .role-tag{display:inline-block;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-top:5px}
@@ -1359,7 +1894,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   font-family:'DM Sans',sans-serif;
   font-size:12px;font-weight:600;color:var(--text-2);
   box-shadow:0 1px 3px rgba(0,0,0,.06);
-  transition:background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+  transition:background .12s ease, color .12s ease, border-color .12s ease, box-shadow .12s ease, transform .1s cubic-bezier(.34,1.56,.64,1);
   white-space:nowrap;flex-shrink:0;
 }
 .profile-tab:hover:not(.active){
@@ -1374,7 +1909,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   box-shadow:0 2px 8px rgba(30,123,94,.35), 0 1px 2px rgba(30,123,94,.18);
 }
 .profile-tab-content{
-  display:none;opacity:0;transition:opacity .2s ease;
+  display:none;opacity:0;transition:opacity .15s ease;
 }
 .profile-tab-content.active{
   display:block;opacity:1;
@@ -1464,11 +1999,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
 /* Responsive help fab */
 @media (max-width:768px){
-  .help-fab{width:48px;height:48px;bottom:16px;right:16px}
+  .help-fab{width:48px;height:48px;bottom:calc(16px + 64px);right:16px}
 }
 
 @media (max-width:480px){
-  .help-fab{width:44px;height:44px;bottom:12px;right:12px;font-size:20px}
+  .help-fab{width:44px;height:44px;bottom:calc(12px + 64px);right:12px;font-size:20px}
 }
 
 /* ── HELP PANEL ── */
@@ -1477,7 +2012,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   width:340px;max-height:500px;overflow-y:auto;
   background:var(--surface);border:1px solid var(--border);
   border-radius:16px;box-shadow:var(--shadow-lg);
-  animation:slideUp .22s ease;
+  animation:slideUp .16s ease;
 }
 
 /* Responsive help panel */
@@ -1540,15 +2075,19 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 }
 #page-login::before{
   content:'';position:absolute;inset:0;
-  background:linear-gradient(135deg,rgba(210,195,178,.35) 0%,rgba(36,28,18,.35) 50%,rgba(12,8,4,.45) 100%);
-  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  background:linear-gradient(135deg,rgba(210,195,178,.15) 0%,rgba(36,28,18,.15) 50%,rgba(12,8,4,.22) 100%);
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
 }
 .login-card{
-  background:rgba(14,10,6,.72);border:1px solid rgba(255,245,230,.14);
-  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  background:linear-gradient(180deg,rgba(50,40,28,.38) 0%,rgba(14,10,6,.42) 60%);
+  border:1px solid rgba(255,245,230,.26);
+  -webkit-backdrop-filter:blur(36px) saturate(180%);backdrop-filter:blur(36px) saturate(180%);
   border-radius:20px;padding:44px 48px;
   width:440px;max-width:calc(100vw - 40px);position:relative;z-index:1;
-  box-shadow:0 24px 64px rgba(0,0,0,.55);
+  box-shadow:
+    0 24px 64px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 -1px 0 rgba(0,0,0,.35);
 }
 .login-logo{display:flex;align-items:center;gap:11px;margin-bottom:28px;justify-content:space-between}
 .login-logo-icon{width:52px;height:52px;border-radius:0;background:transparent;display:flex;align-items:center;justify-content:center}
@@ -1570,7 +2109,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
     inset 0 3px 5px rgba(255,255,255,.25),
     inset 0 -3px 6px rgba(0,0,0,.4);
   color:#fff;font-family:'DM Sans',sans-serif;
-  transition:transform .13s ease, box-shadow .13s ease;
+  transition:transform .1s ease, box-shadow .1s ease;
   animation:emg-sos-pulse 2s ease-in-out infinite;
   position:relative;
 }
@@ -1643,11 +2182,11 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
    file); in light mode body stays near-black, making the link
    effectively invisible against the dark card. Fixed color here instead
    of relying on inheritance, so it reads the same in both themes. */
-.login-forgot-link{color:#B4A89E!important;text-decoration:none;transition:color .2s}
+.login-forgot-link{color:#B4A89E!important;text-decoration:none;transition:color .15s}
 .login-forgot-link:hover{color:#EDE8E0!important}
 .login-field{margin-bottom:14px}
 .login-field label{display:block;font-size:11.5px;font-weight:500;color:#C8C0B8;margin-bottom:5px;letter-spacing:.05em;text-transform:uppercase}
-.login-input{width:100%;padding:11px 13px;border-radius:8px;background:rgba(255,245,230,.06);border:1px solid rgba(255,245,230,.1);color:#EDE8E0;font-family:'DM Sans',sans-serif;font-size:14px;transition:border-color .2s}
+.login-input{width:100%;padding:11px 13px;border-radius:8px;background:rgba(255,245,230,.1);border:1px solid rgba(255,245,230,.18);color:#EDE8E0;font-family:'DM Sans',sans-serif;font-size:14px;transition:border-color .15s}
 .login-input:focus{outline:none;border-color:var(--primary);background:rgba(30,123,94,.08)}
 .login-input::placeholder{color:#9E9490}
 .login-pw-wrap{position:relative}
@@ -1659,7 +2198,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .login-error{background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:9px 13px;color:#FCA5A5;font-size:12px;margin-bottom:14px;display:none}
 .login-error.show{display:block}
 .login-forgot{text-align:right;margin-top:-6px;margin-bottom:10px}
-.login-forgot a{font-size:12px;color:#B4A89E;cursor:pointer;text-decoration:none;transition:color .2s}
+.login-forgot a{font-size:12px;color:#B4A89E;cursor:pointer;text-decoration:none;transition:color .15s}
 .login-forgot a:hover{color:#D0C8C0}
 .login-hint{margin-top:18px;padding:12px;background:rgba(255,245,230,.04);border:1px solid rgba(255,245,230,.07);border-radius:10px}
 .login-hint p{font-size:10.5px;color:#A0988E;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
@@ -1794,7 +2333,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:rgba(0,0,0,.55);
   z-index:500; /* above main-area(2) and topbar(10), below sidebar(1000) */
   opacity:0;visibility:hidden;pointer-events:none;
-  transition:opacity .28s ease,visibility .28s ease;
+  transition:opacity .2s ease,visibility .2s ease;
 }
 .sidebar-overlay.active{opacity:1;visibility:visible;pointer-events:auto;}
 
@@ -1820,7 +2359,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
     width:85%;max-width:320px;
     background:var(--surface,#fff);padding:16px 16px 24px;
     box-shadow:-8px 0 28px rgba(0,0,0,.3);
-    transform:translateX(100%);transition:transform .28s ease;
+    transform:translateX(100%);transition:transform .2s ease;
     overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;
   }
   .chat-side-panels::-webkit-scrollbar{display:none}
@@ -1877,7 +2416,7 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   .profile-info-row-1{grid-template-columns:1fr!important}
   .profile-info-row-2{grid-template-columns:1fr!important}
   .emg-form-row{grid-template-columns:1fr}
-  .emg-type-row{flex-wrap:wrap}
+  .tab-row{margin-bottom:6px}
   .emg-type-card{min-width:calc(50% - 5px)}
   .sms-template-grid{grid-template-columns:1fr 1fr}
   .pickup-options{flex-direction:column}
@@ -1930,6 +2469,12 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   .tab-btn{min-height:36px}
   .form-input,.form-select,.form-textarea,.search-input{font-size:16px!important}
   .login-input,.reg-input,.emg-input{font-size:16px!important}
+  /* iOS Safari zooms the whole page in on focusing any input under
+     16px, and can fail to zoom back out afterward — these two were
+     missed by the anti-zoom overrides above. .chat-input-row input is
+     the chatbot message box; .patient-search-input backs every
+     SearchableSelect (patient/diagnosis/medicine search dropdowns). */
+  .chat-input-row input,.patient-search-input{font-size:16px!important}
   .login-pw-wrap .login-input,.pw-wrapper .form-input{padding-right:50px}
   .emg-topbar-btn span:not(:first-child){display:none}
   .topbar-right .emg-login-header-btn{width:38px;height:38px}
@@ -2086,8 +2631,8 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
     height: 100vh;
     z-index: 1000;
     transform: translateX(-100%);
-    transition: transform .32s cubic-bezier(.22,.68,0,1.2),
-                box-shadow .32s ease;
+    transition: transform .24s cubic-bezier(.22,.68,0,1.2),
+                box-shadow .24s ease;
     box-shadow: none;
     overflow-y: auto;
     overflow-x: hidden;
@@ -2114,13 +2659,32 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   .sidebar-close-btn { display: flex; }
 }
 
-/* Landscape: full sidebar visible; topbar burger still controls collapse */
+/* Landscape: sidebar sizing now fully owned by the min-width:769px
+   hover-rail rules above (collapsed rail by default, full width on
+   hover) — this block used to force the sidebar back to permanent full
+   width here ("topbar burger still controls collapse"), which was
+   fighting that system on every desktop monitor, since virtually all
+   of them report as landscape orientation regardless of actual screen
+   width. Removed now that the hamburger button (and the manual
+   toggle it controlled) doesn't exist anymore. */
 @media (orientation:landscape){
   .app-container{flex-direction:row}
-  .sidebar{position:static;transform:translateX(0)!important;width:var(--sidebar-w)!important;min-width:var(--sidebar-w)!important}
   /* Overlay hidden in landscape — pointer-events already none when opacity:0 */
   .main-area{flex:1;width:auto;overflow:hidden}
   .page-content{max-height:100vh;padding:10px;overflow-y:auto}
+  .hamburger-btn{display:flex!important}
+}
+
+/* Hamburger restored on mobile-width screens (matches MobileBottomNav's
+   own max-width:768px breakpoint exactly, regardless of orientation) —
+   this was previously removed entirely on the reasoning that the bottom
+   tab bar + profile dropdown already cover primary nav and Logout on
+   mobile, but it's back now per explicit request: it opens the sidebar
+   drawer, which is still a legitimate way to reach it on mobile even
+   with the bottom nav available. Desktop (≥769px) is untouched by this
+   rule — it still relies purely on the sidebar's hover-rail behavior,
+   no button there at all. */
+@media(max-width:768px){
   .hamburger-btn{display:flex!important}
 }
 
@@ -2484,7 +3048,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   background:rgba(14,10,6,.97);border:1.5px solid rgba(220,38,38,.4);
   border-radius:18px;padding:36px 40px;width:380px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(220,38,38,.25);
-  animation:emg-pop .2s ease;
+  animation:emg-pop .15s ease;
 }
 .emg-confirm-icon{font-size:44px;margin-bottom:12px;animation:pulse-emg 1.2s infinite}
 .emg-confirm-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:8px}
@@ -2502,7 +3066,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 .emg-form-box{
   background:rgba(15,23,42,.98);border:1.5px solid rgba(220,38,38,.35);
   border-radius:18px;padding:28px 32px;width:560px;max-width:100%;
-  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .2s ease;
+  box-shadow:0 24px 64px rgba(220,38,38,.2);animation:emg-pop .15s ease;
   max-height:90vh;overflow-y:auto;
 }
 .emg-form-header{
@@ -2526,7 +3090,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   width:100%;padding:10px 12px;border-radius:8px;
   background:var(--surface2);border:1px solid var(--border);
   color:var(--text);font-family:'DM Sans',sans-serif;font-size:13.5px;
-  transition:border-color .2s;box-sizing:border-box;
+  transition:border-color .15s;box-sizing:border-box;
 }
 .emg-input-locate{
   appearance:none;cursor:text;
@@ -2578,7 +3142,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   background:rgba(15,23,42,.97);border:1.5px solid rgba(22,163,74,.4);
   border-radius:18px;padding:36px 40px;width:400px;max-width:100%;
   text-align:center;box-shadow:0 20px 60px rgba(22,163,74,.2);
-  animation:emg-pop .25s ease;
+  animation:emg-pop .18s ease;
 }
 .emg-success-icon{font-size:48px;margin-bottom:12px}
 .emg-success-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:10px}
@@ -2622,7 +3186,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   position:fixed;inset:0;z-index:99999;
   display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,0);-webkit-backdrop-filter:blur(0px);backdrop-filter:blur(0px);
-  transition:background .3s ease,backdrop-filter .3s ease;
+  transition:background .22s ease,backdrop-filter .22s ease;
   padding:20px;pointer-events:none;
 }
 .emg-live-backdrop.emg-live-open{
@@ -2643,7 +3207,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   box-shadow:0 0 0 4px rgba(220,38,38,.15),0 32px 80px rgba(220,38,38,.35);
   overflow:hidden;
   transform:scale(.88) translateY(30px);opacity:0;
-  transition:transform .32s cubic-bezier(.34,1.56,.64,1),opacity .25s ease;
+  transition:transform .24s cubic-bezier(.34,1.56,.64,1),opacity .18s ease;
 }
 .emg-live-backdrop.emg-live-open .emg-live-modal{
   transform:scale(1) translateY(0);opacity:1;
@@ -2661,7 +3225,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   0%{background-position:0% 50%}
   100%{background-position:200% 50%}
 }
-.emg-live-siren-icon{font-size:18px;animation:pulse-emg .8s infinite}
+.emg-live-siren-icon{font-size:18px;animation:pulse-emg .55s infinite}
 .emg-live-siren-text{
   font-size:13px;font-weight:800;letter-spacing:.18em;
   color:#fff;text-shadow:0 0 12px rgba(255,100,100,.8);
@@ -2725,7 +3289,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .emg-live-btn{
   flex:1;min-width:120px;padding:11px 16px;border-radius:9px;border:none;
   cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
-  transition:all .18s ease;display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .14s ease;display:flex;align-items:center;justify-content:center;gap:6px;
 }
 .emg-live-btn-ack{
   background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;
@@ -2777,7 +3341,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   text-align:center;margin-top:14px;font-size:12.5px;color:#A0988E;
 }
 .login-register-link a{
-  color:#3DBF96;cursor:pointer;font-weight:600;text-decoration:none;transition:color .2s;
+  color:#3DBF96;cursor:pointer;font-weight:600;text-decoration:none;transition:color .15s;
 }
 .login-register-link a:hover{color:#6DE8C0}
 
@@ -2805,7 +3369,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-box{
   background:rgba(15,23,42,.98);border:1px solid rgba(255,255,255,.12);
   border-radius:20px;padding:32px 38px;width:560px;max-width:calc(100vw - 40px);
-  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .22s ease;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);animation:reg-pop .16s ease;
   position:relative;
 }
 
@@ -2838,7 +3402,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-step span{
   width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.15);
   background:rgba(255,255,255,.05);color:#A0988E;font-size:12px;font-weight:700;
-  display:flex;align-items:center;justify-content:center;transition:all .3s;
+  display:flex;align-items:center;justify-content:center;transition:all .22s;
 }
 .reg-step p{font-size:10px;color:#475569;font-weight:500;white-space:nowrap}
 .reg-step.active span{border-color:var(--primary);background:var(--primary);color:#fff}
@@ -2874,7 +3438,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   width:100%;padding:10px 13px;border-radius:8px;
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   color:#F1F5F9;font-family:'DM Sans',sans-serif;font-size:13.5px;
-  transition:border-color .2s;box-sizing:border-box;
+  transition:border-color .15s;box-sizing:border-box;
 }
 .reg-input:focus{outline:none;border-color:var(--primary);background:rgba(30,123,94,.08)}
 .reg-input::placeholder{color:#9E9490}
@@ -2890,7 +3454,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* Password strength */
 .reg-pw-strength-wrap{display:flex;align-items:center;gap:10px}
 .reg-pw-strength-bar{flex:1;height:5px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
-.reg-pw-bar-fill{height:100%;width:0;border-radius:4px;transition:width .3s,background .3s}
+.reg-pw-bar-fill{height:100%;width:0;border-radius:4px;transition:width .22s,background .22s}
 .reg-pw-label{font-size:11px;font-weight:600;min-width:44px;text-align:right}
 
 /* Alerts */
@@ -2906,7 +3470,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 
 /* Step content */
-.reg-step-content{animation:reg-fade .2s ease}
+.reg-step-content{animation:reg-fade .15s ease}
 
 /* Nav buttons */
 .reg-nav{
@@ -3044,18 +3608,18 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    "mouth moving" cue a real talking face gives, not just a static
    thinking indicator. */
 .bot-eye{transform-origin:45px 52px;animation:botBlink 4.6s ease-in-out infinite}
-.bot-eye-right{transform-origin:59.5px 52px;animation-delay:.12s}
+.bot-eye-right{transform-origin:59.5px 52px;animation-delay:.1s}
 @keyframes botBlink{
   0%,90%,100%{transform:scaleY(1)}
   94%{transform:scaleY(.15)}
 }
 .bot-mouth-talk{
   opacity:0;transform-origin:50px 66px;transform:scaleY(.3);
-  transition:opacity .15s ease;
+  transition:opacity .12s ease;
 }
-.bot-mouth-smile{transition:opacity .15s ease}
+.bot-mouth-smile{transition:opacity .12s ease}
 .bot-face-talking .bot-mouth-smile{opacity:0}
-.bot-face-talking .bot-mouth-talk{opacity:1;animation:botTalk .32s ease-in-out infinite}
+.bot-face-talking .bot-mouth-talk{opacity:1;animation:botTalk .24s ease-in-out infinite}
 @keyframes botTalk{
   0%,100%{transform:scaleY(.3)}
   50%{transform:scaleY(1)}
@@ -3102,11 +3666,11 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 
 /* ── CHAT MESSAGES ── */
-.chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth;touch-action:pan-y}
 
 /* ── MESSAGE BUBBLES (New Structure) ── */
-.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .25s ease}
-.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .25s ease}
+.msg-bot-wrap{display:flex;align-items:flex-start;gap:10px;animation:msg-in .18s ease}
+.msg-user-wrap{display:flex;align-items:flex-start;gap:10px;justify-content:flex-end;align-self:flex-end;animation:msg-in .18s ease}
 .msg-content-wrap{display:flex;flex-direction:column;max-width:80%}
 @keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -3125,8 +3689,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   box-shadow:var(--shadow);width:fit-content;
 }
 .typing-indicator span{width:7px;height:7px;border-radius:50%;background:var(--text-3);animation:typing 1.4s infinite}
-.typing-indicator span:nth-child(2){animation-delay:.2s}
-.typing-indicator span:nth-child(3){animation-delay:.4s}
+.typing-indicator span:nth-child(2){animation-delay:.15s}
+.typing-indicator span:nth-child(3){animation-delay:.3s}
 @keyframes typing{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-5px);opacity:1}}
 
 /* ── QUICK REPLIES ── */
@@ -3272,6 +3836,20 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   border-top:1px solid var(--border);
   border-bottom:1px solid var(--border);
 }
+/* Grid view's section/category headers are plain divs, not <tr>/<td> —
+   the rules above never applied to them since they specifically target
+   a td child that doesn't exist in that context. Same colors/weight/
+   spacing, just on the div itself instead of requiring a table cell. */
+.inv-category-row{
+  background:var(--surface2);
+  color:var(--text);
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
 .inv-category-row span{margin-right:10px}
 .inv-category-row small{
   color:var(--text-3);
@@ -3289,22 +3867,40 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    colored background alone reads clearly enough without needing colored
    text too, and keeps them legible against every category's tint. */
 .cat-row-medicine td{background:#C4B5FD}
-.cat-row-supply td{background:#A7F3D0}
+.cat-row-supply td{background:#FDE68A}
 .cat-row-equipment td{background:#93C5FD}
+/* Grid view equivalents — same reasoning as the generic
+   .inv-category-row/.inv-expiry-row div rules added earlier: these
+   category-specific color rules also only ever targeted a td child,
+   which the grid view's plain divs don't have, so Medicine/Supply/
+   Equipment section headers stayed a flat gray in grid view instead of
+   getting their purple/green/blue tint. */
+.cat-row-medicine{background:#C4B5FD}
+.cat-row-supply{background:#FDE68A}
+.cat-row-equipment{background:#93C5FD}
 /* Solid, category-matched text color instead of falling back to the
    generic body text color — matches each category's own badge text
    (.cat-medicine/.cat-supply/.cat-equipment) so "MEDICINE"/"SUPPLY"/
    "EQUIPMENT" reads as clearly, deliberately tied to that category's
    color, not just default dark text sitting on a colored background. */
 .cat-row-medicine td span{color:#5B21B6}
-.cat-row-supply td span{color:#065F46}
+.cat-row-supply td span{color:#92400E}
 .cat-row-equipment td span{color:#1D4ED8}
+.cat-row-medicine span{color:#5B21B6}
+.cat-row-supply span{color:#92400E}
+.cat-row-equipment span{color:#1D4ED8}
 [data-theme="dark"] .cat-row-medicine td{background:rgba(139,92,246,.16)}
-[data-theme="dark"] .cat-row-supply td{background:rgba(16,185,129,.14)}
+[data-theme="dark"] .cat-row-supply td{background:rgba(245,158,11,.16)}
 [data-theme="dark"] .cat-row-equipment td{background:rgba(59,130,246,.14)}
 [data-theme="dark"] .cat-row-medicine td span{color:#C4B5FD}
-[data-theme="dark"] .cat-row-supply td span{color:#6EE7B7}
+[data-theme="dark"] .cat-row-supply td span{color:#FCD34D}
 [data-theme="dark"] .cat-row-equipment td span{color:#93C5FD}
+[data-theme="dark"] .cat-row-medicine{background:rgba(139,92,246,.16)}
+[data-theme="dark"] .cat-row-supply{background:rgba(245,158,11,.16)}
+[data-theme="dark"] .cat-row-equipment{background:rgba(59,130,246,.14)}
+[data-theme="dark"] .cat-row-medicine span{color:#C4B5FD}
+[data-theme="dark"] .cat-row-supply span{color:#FCD34D}
+[data-theme="dark"] .cat-row-equipment span{color:#93C5FD}
 
 /* Individual item rows (Inventory -> Items) — more generous than the
    table's base 11px/14px td padding, so each item reads as a distinct,
@@ -3356,6 +3952,26 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   border-top-color:var(--purple);
 }
 .inv-expiry-row.maintenance small{color:var(--purple)}
+/* Grid view equivalent — same reasoning as .inv-category-row above:
+   these divs have no td child, so the rules above never reached them. */
+.inv-expiry-row{
+  background:var(--surface);
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+  border-top:2px solid var(--border-strong);
+  border-bottom:1px solid var(--border);
+}
+.inv-expiry-row.expired{
+  background:var(--danger-light);
+  color:var(--danger);
+  border-top-color:var(--danger);
+}
+.inv-expiry-row.maintenance{
+  background:rgba(124,58,237,.07);
+  color:var(--purple);
+  border-top-color:var(--purple);
+}
 
 /* ── TABS ── */
 .tab-alert{position:relative}
@@ -3368,7 +3984,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 /* ── CATEGORY BADGES ── */
 .cat-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .cat-medicine{background:#EDE9FE;color:#5B21B6}
-.cat-supply{background:#ECFDF5;color:#065F46}
+.cat-supply{background:#FEF3C7;color:#92400E}
 .cat-equipment{background:#EFF6FF;color:#1D4ED8}
 
 /* ── SCAN LAYOUT ── */
@@ -3451,7 +4067,7 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .scan-side-panel{height:100%}
 .scan-history-item{
   padding:10px 14px;border-bottom:1px solid var(--border);
-  transition:background .1s;
+  transition:background .08s;
 }
 .scan-history-item:hover{background:var(--surface2)}
 
@@ -3514,7 +4130,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .med-row{
   background:var(--surface2);border:1px solid var(--border);border-radius:8px;
   padding:10px 12px;margin-bottom:8px;
-  animation:med-row-in .2s ease;
+  animation:med-row-in .15s ease;
 }
 @keyframes med-row-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .med-row-grid{
@@ -3523,6 +4139,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   gap:8px;align-items:center;
 }
 @media(max-width:700px){.med-row-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.med-row-grid{grid-template-columns:1fr}}
 
 .medicine-search-wrap {
   position: relative;
@@ -3593,7 +4210,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .diag-breakdown-row:hover{background:var(--surface2);border-radius:6px;padding:8px 6px}
 .diag-breakdown-row:last-child{border-bottom:none}
 .diag-bar-wrap{height:5px;background:var(--border);border-radius:3px;margin-top:4px;overflow:hidden}
-.diag-bar-fill{height:100%;background:linear-gradient(90deg,var(--primary),#6A3FA0);border-radius:3px;transition:width .4s ease}
+.diag-bar-fill{height:100%;background:linear-gradient(90deg,var(--primary),#6A3FA0);border-radius:3px;transition:width .3s ease}
 
 /* ── ANALYTICS GRID ── */
 .analytics-grid{
@@ -3662,13 +4279,25 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 
 /* ── PARENT INFO BOX ── */
 .sms-parent-info-box{
-  padding:10px 14px;border-radius:8px;
+  padding:12px 16px;border-radius:10px;font-size:14px;line-height:1.5;
   background:var(--success-light);border:1px solid #86EFAC;
-  margin-bottom:12px;align-items:center;gap:10px;
+  margin-bottom:14px;align-items:center;gap:10px;
 }
+/* Green "success" styling only makes sense when there's actually a
+   valid number — switches to a warning tone when showing the invalid/
+   no-number state, which now also holds the manual phone input. */
+.sms-parent-info-box.needs-manual-phone{
+  background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.35);
+}
+.sms-manual-phone-field{margin-top:10px}
+.sms-manual-phone-field label{
+  display:block;font-size:13px;font-weight:700;color:var(--text-2);
+  letter-spacing:.02em;margin-bottom:6px;
+}
+.sms-manual-phone-field input{font-size:16px;min-height:46px;font-weight:600}
 
 /* ── PHONE STATUS ── */
-.phone-status{font-size:11px;font-weight:600;margin-top:4px;min-height:16px}
+.phone-status{font-size:13px;font-weight:600;margin-top:6px;min-height:16px;line-height:1.4}
 
 /* ── SITUATION TEMPLATE GRID ── */
 .sms-template-grid{
@@ -3692,19 +4321,19 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .sms-template-card.selected .tpl-label{color:var(--tpl-color,var(--primary))}
 
 /* ── PICKUP OPTIONS ── */
-.pickup-options{display:flex;gap:8px;flex-wrap:wrap}
+.pickup-options{display:flex;gap:10px;flex-wrap:wrap}
 .pickup-option{
-  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  display:flex;align-items:center;gap:12px;padding:14px 16px;
   border-radius:10px;cursor:pointer;border:2px solid var(--border);
-  background:var(--surface2);flex:1;min-width:150px;transition:var(--transition);
+  background:var(--surface2);flex:1;min-width:150px;min-height:48px;transition:var(--transition);
 }
 .pickup-option:hover{border-color:var(--primary);background:white}
 .pickup-option.selected{border-color:var(--primary);background:var(--primary-light);box-shadow:0 0 0 3px rgba(27,111,232,.12)}
 .pickup-radio{
-  width:16px;height:16px;border-radius:50%;border:2px solid var(--border);
+  width:22px;height:22px;border-radius:50%;border:2.5px solid var(--border);
   flex-shrink:0;transition:var(--transition);
 }
-.pickup-option.selected .pickup-radio{background:var(--primary);border-color:var(--primary)}
+.pickup-option.selected .pickup-radio{background:var(--primary);border-color:var(--primary);box-shadow:inset 0 0 0 4px var(--surface2)}
 
 /* ── SMS PICKUP CARD (Steps 3 & 4, now stacked under Live Preview in the
    narrow 320px column instead of the wide form card) ── */
@@ -3721,11 +4350,11 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   background:var(--surface2);flex-wrap:wrap;gap:10px;
 }
 .sms-send-btn{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:10px 22px;border-radius:10px;border:none;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  padding:16px 22px;border-radius:12px;border:none;cursor:pointer;
   background:linear-gradient(135deg,#DC2626,#B91C1C);
-  color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;
-  transition:var(--transition);
+  color:white;font-family:'DM Sans',sans-serif;font-size:17px;font-weight:700;
+  transition:var(--transition);min-height:56px;
   box-shadow:0 4px 14px rgba(220,38,38,.35);
 }
 .sms-send-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(220,38,38,.45)}
@@ -3756,6 +4385,223 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 /* ── SMS PREVIEW PANEL ── */
 .sms-preview-panel{position:sticky;top:20px}
 
+/* ═══════════════════════════════════════════════════════════
+   NOTIFY PARENT — CHATBOX REDESIGN
+   Sidebar (Select Student / Message Templates / Pickup
+   Instructions) + a conversational thread on the right, replacing
+   the previous stacked-form + live-preview-panel layout. The
+   classes above this point (.sms-composer-layout, .sms-form-card,
+   .sms-step-block, .sms-template-grid/-card, .sms-phone-mockup,
+   etc.) are no longer used by SMSComposerTab.jsx but are left as-is
+   rather than removed — nothing else in the app references them,
+   so they're harmless, and leaving unused CSS in place carries far
+   less risk than deleting rules on the chance something depends on
+   them elsewhere.
+   ═══════════════════════════════════════════════════════════ */
+.sms-chat-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;height:calc(100dvh - var(--topbar-h) - 48px)}
+@media(max-width:960px){.sms-chat-layout{grid-template-columns:1fr;height:auto}}
+
+/* ── Sidebar ── */
+.sms-chat-sidebar{
+  display:flex;flex-direction:column;gap:16px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px;height:fit-content;max-height:100%;overflow-y:auto;
+}
+@media(max-width:960px){.sms-chat-sidebar{height:auto;max-height:none}}
+.sms-sidebar-section{padding-bottom:16px;border-bottom:1px solid var(--border)}
+.sms-sidebar-section:last-of-type{border-bottom:none;padding-bottom:0}
+.sms-sidebar-section-title{
+  display:flex;align-items:center;gap:8px;
+  font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:10px;
+}
+/* Alert Management's title, made into a dropdown toggle — same
+   interaction pattern as Topbar.jsx's profile dropdown: a chevron that
+   rotates 180deg when open, click to toggle, list fades in with the
+   same dropdownFadeIn keyframe the profile menu already uses. */
+.emg-sidebar-dropdown-title{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;
+  background:none;border:none;padding:6px 0;cursor:pointer;font-family:'DM Sans',sans-serif;
+}
+.emg-sidebar-dropdown-chevron{color:var(--text-3);transition:transform .14s ease;flex-shrink:0;width:18px;height:18px}
+.emg-sidebar-dropdown-chevron.open{transform:rotate(180deg)}
+.emg-sidebar-nav{animation:dropdownFadeIn .12s ease}
+.emg-sidebar-dropdown-body{animation:dropdownFadeIn .12s ease}
+.sms-sidebar-step-num{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--primary),#6A3FA0);
+  color:white;font-size:13px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.sms-sidebar-clear-btn{width:100%;justify-content:center;min-height:46px;font-size:14px}
+.sms-chat-sidebar .pickup-options{flex-direction:column;gap:10px}
+.sms-chat-sidebar .pickup-option{min-width:0}
+.sms-chat-sidebar .patient-search-box{min-height:50px;padding:0 14px}
+.sms-chat-sidebar .patient-search-input{font-size:16px}
+
+/* Sidebar nav (Active Alerts / Alert Log / Notify Parent / SMS Log) —
+   replaces the page-level .tab-row this feature used to render above
+   its content; folded into the same sidebar as Select Student/Message
+   Templates/Pickup Instructions below it instead of a separate row.
+   Sized as real, comfortable tap targets (44px+) with clearly readable
+   text — this whole page is meant to be usable without any special
+   tech familiarity, so nothing here should require precise tapping or
+   squinting to read. */
+.emg-sidebar-nav{display:flex;flex-direction:column;gap:6px}
+.emg-sidebar-nav-item{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:10px;
+  cursor:pointer;border:1.5px solid transparent;background:transparent;
+  font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:var(--text-2);
+  transition:var(--transition);text-align:left;width:100%;min-height:48px;
+}
+.emg-sidebar-nav-item:hover{background:var(--surface2);color:var(--text)}
+.emg-sidebar-nav-item.active{
+  background:var(--primary);border-color:var(--primary);color:#fff;
+  box-shadow:0 2px 8px rgba(30,123,94,.25);
+}
+
+/* Message Templates — vertical list, replacing the icon grid used in
+   the previous layout, to fit a narrow sidebar column. */
+.sms-template-list{display:flex;flex-direction:column;gap:8px}
+.sms-template-list-item{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:10px;
+  cursor:pointer;border:2px solid var(--border);background:var(--surface2);
+  font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:var(--text-2);
+  transition:var(--transition);text-align:left;width:100%;min-height:48px;
+}
+.sms-template-list-item:hover{border-color:var(--tpl-color,var(--primary));color:var(--text)}
+.sms-template-list-item.selected{
+  border-color:var(--tpl-color,var(--primary));
+  background:color-mix(in srgb, var(--tpl-color,var(--primary)) 12%, transparent);
+  color:var(--tpl-color,var(--primary));
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--tpl-color,var(--primary)) 15%, transparent);
+}
+.sms-template-list-item .tpl-icon{font-size:20px;flex-shrink:0}
+
+/* ── Chat main panel ── */
+.sms-chat-main{display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;padding:0}
+@media(max-width:960px){.sms-chat-main{height:70vh}}
+
+/* ── Chat input row ── */
+.sms-chat-input-row{
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+  padding:16px;border-top:1px solid var(--border);background:var(--surface2);
+}
+.sms-chat-input{
+  flex:1;padding:14px 16px;border-radius:24px;border:2px solid var(--border-strong);
+  background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;
+  min-height:50px;
+}
+.sms-chat-input:focus{outline:none;border-color:var(--primary)}
+.sms-chat-input-send{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--border-strong);
+  background:var(--surface);color:var(--text-2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:var(--transition);
+}
+.sms-chat-input-send:hover{border-color:var(--primary);color:var(--primary)}
+.sms-chat-input-row .sms-send-btn{flex-shrink:0}
+.sms-chat-input-hint{
+  flex-shrink:0;padding:0 16px 12px;text-align:right;
+  font-size:10.5px;color:var(--text-3);background:var(--surface2);
+}
+
+/* ── Compose & Preview — now the whole of the chatbox (see
+   SMSComposerTab.jsx); the earlier chat-thread/header/Quick-Actions UI
+   and the collapsible toggle around this were removed per request. ── */
+.sms-inline-preview-body-full{flex:1;overflow-y:auto;min-height:0}
+.sms-preview-panel{border:none;border-radius:0}
+
+/* ── Compose & Preview (right panel, Notify Parent only) ── */
+.sms-preview-panel{
+  display:flex;flex-direction:column;gap:0;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  height:100%;overflow:hidden;
+}
+@media(max-width:960px){.sms-preview-panel{height:auto}}
+.sms-preview-header{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;
+  padding:16px 18px;border-bottom:1px solid var(--border);
+  font-size:16px;font-weight:700;color:var(--text);
+}
+.sms-preview-live-badge{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:600;color:var(--text-3);
+}
+.sms-preview-live-dot{width:7px;height:7px;border-radius:50%;background:var(--success);flex-shrink:0}
+.sms-preview-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:20px}
+.sms-preview-section-title{
+  display:flex;align-items:center;gap:9px;
+  font-size:13px;font-weight:700;color:var(--text-2);
+  letter-spacing:.02em;margin-bottom:10px;
+}
+.sms-preview-step-badge{
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  width:22px;height:22px;border-radius:50%;
+  font-size:12px;font-weight:700;
+  background:var(--surface2);color:var(--text-3);border:1.5px solid var(--border);
+}
+.sms-preview-step-badge.done{
+  background:var(--success);color:#fff;border-color:var(--success);
+}
+.sms-preview-empty{font-size:14px;color:var(--text-3);line-height:1.5}
+.sms-preview-empty strong{color:var(--text-2)}
+.sms-preview-step-hint{font-size:12.5px;color:var(--text-3);margin-top:8px;line-height:1.5}
+.sms-preview-step-hint strong{color:var(--text-2)}
+.sms-preview-student{display:flex;align-items:center;gap:12px}
+.sms-preview-student-name{font-size:16px;font-weight:700;color:var(--text)}
+.sms-preview-student-sub{font-size:13px;color:var(--text-3);margin-top:2px}
+.sms-preview-chip-row{display:flex;align-items:flex-start;gap:12px}
+.sms-preview-chip-icon{
+  width:32px;height:32px;border-radius:9px;flex-shrink:0;
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:17px;color:var(--text-2);
+}
+.sms-preview-chip-label{font-size:15px;font-weight:700;color:var(--text)}
+.sms-preview-chip-sub{font-size:13px;color:var(--text-3);margin-top:3px;line-height:1.5}
+/* Tagalog translation — italicized wherever bilingual text appears
+   (the situation chip summary, and the full message preview box) so
+   it's visually distinct from the English original at a glance. */
+.sms-preview-tagalog{font-style:italic;color:var(--text-2)}
+.sms-preview-message-box{
+  padding:16px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);
+  font-size:15px;line-height:1.75;color:var(--text-2);white-space:pre-wrap;word-break:break-word;
+  min-height:320px;max-height:480px;overflow-y:auto;
+}
+/* Header/footer are always identical, confirmed against a real received
+   SMS — shown visibly muted and smaller so it's obvious at a glance
+   they're fixed, not something being typed. The middle is the one part
+   that's ever actually different message to message, so it gets full
+   size/contrast to stand out as what's really being composed. */
+.sms-preview-message-fixed{
+  font-size:12.5px;color:var(--text-3);font-style:italic;
+  padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--border);
+}
+.sms-preview-message-fixed:last-child{
+  border-bottom:none;border-top:1px dashed var(--border);
+  padding-top:10px;margin-top:10px;padding-bottom:0;margin-bottom:0;
+}
+.sms-preview-message-middle{font-size:16px;font-weight:600;color:var(--text)}
+.sms-preview-fixed-note{font-size:12px;color:var(--text-3);margin-top:8px;font-style:italic}
+/* First section in the panel now (see EmergencyPreviewPanel.jsx) — the
+   message itself is the most important thing to see clearly, so it
+   gets noticeably more room than the compact chip-style sections below
+   it (Student/Situation/Pickup/Send To). */
+.sms-preview-section-message{flex-shrink:0}
+
+/* ── SMS Log detail modal (SmsLogTab.jsx's "View" action) ── */
+.sms-detail-row{display:flex;align-items:baseline;gap:14px}
+.sms-detail-label{
+  flex-shrink:0;width:110px;font-size:12px;font-weight:700;color:var(--text-3);
+}
+.sms-detail-value{font-size:13.5px;color:var(--text);line-height:1.5}
+.sms-preview-char-count{font-size:12px;color:var(--text-3);margin-top:8px;text-align:right}
+.sms-preview-actions{
+  flex-shrink:0;display:flex;flex-direction:column;gap:10px;
+  padding:16px;border-top:1px solid var(--border);background:var(--surface2);
+}
+.sms-preview-actions .btn{width:100%;justify-content:center;min-height:52px;font-size:15px}
+
+
 /* ── SMS SENT SUCCESS ── */
 .sms-success-animation{display:flex;justify-content:center;margin-bottom:4px}
 .sms-success-circle{
@@ -3763,7 +4609,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   background:linear-gradient(135deg,#16A34A,#15803D);
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 0 0 12px rgba(22,163,74,.15);
-  animation:sms-pop .4s cubic-bezier(.34,1.56,.64,1);
+  animation:sms-pop .3s cubic-bezier(.34,1.56,.64,1);
 }
 @keyframes sms-pop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
 .sms-sent-preview{
@@ -3970,15 +4816,15 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   animation: navSlideIn 0.3s ease both;
 }
 .sidebar-nav .nav-item:nth-child(1)  { animation-delay: 0.05s; }
-.sidebar-nav .nav-item:nth-child(2)  { animation-delay: 0.10s; }
+.sidebar-nav .nav-item:nth-child(2)  { animation-delay: 0.1s; }
 .sidebar-nav .nav-item:nth-child(3)  { animation-delay: 0.15s; }
-.sidebar-nav .nav-item:nth-child(4)  { animation-delay: 0.20s; }
-.sidebar-nav .nav-item:nth-child(5)  { animation-delay: 0.25s; }
-.sidebar-nav .nav-item:nth-child(6)  { animation-delay: 0.30s; }
+.sidebar-nav .nav-item:nth-child(4)  { animation-delay: 0.2s; }
+.sidebar-nav .nav-item:nth-child(5)  { animation-delay: 0.24s; }
+.sidebar-nav .nav-item:nth-child(6)  { animation-delay: 0.3s; }
 .sidebar-nav .nav-item:nth-child(7)  { animation-delay: 0.35s; }
-.sidebar-nav .nav-item:nth-child(8)  { animation-delay: 0.40s; }
+.sidebar-nav .nav-item:nth-child(8)  { animation-delay: 0.4s; }
 .sidebar-nav .nav-item:nth-child(9)  { animation-delay: 0.45s; }
-.sidebar-nav .nav-item:nth-child(10) { animation-delay: 0.50s; }
+.sidebar-nav .nav-item:nth-child(10) { animation-delay: 0.5s; }
 
 .topbar {
   animation: fadeInDown 0.35s cubic-bezier(0.22,1,0.36,1) both;
@@ -3989,11 +4835,11 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 .page-content > * {
   animation: fadeInUp 0.36s cubic-bezier(0.22,1,0.36,1) both;
 }
-.page-content > *:nth-child(1) { animation-delay: 0.04s; }
-.page-content > *:nth-child(2) { animation-delay: 0.10s; }
-.page-content > *:nth-child(3) { animation-delay: 0.16s; }
+.page-content > *:nth-child(1) { animation-delay: 0.05s; }
+.page-content > *:nth-child(2) { animation-delay: 0.1s; }
+.page-content > *:nth-child(3) { animation-delay: 0.15s; }
 .page-content > *:nth-child(4) { animation-delay: 0.22s; }
-.page-content > *:nth-child(5) { animation-delay: 0.28s; }
+.page-content > *:nth-child(5) { animation-delay: 0.27s; }
 
 /* ── STAT CARDS — staggered bounce-reveal ── */
 .stat-card {
@@ -4003,8 +4849,8 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
   will-change: transform;
 }
 .stats-row .stat-card:nth-child(1) { animation-delay: 0.06s; }
-.stats-row .stat-card:nth-child(2) { animation-delay: 0.13s; }
-.stats-row .stat-card:nth-child(3) { animation-delay: 0.20s; }
+.stats-row .stat-card:nth-child(2) { animation-delay: 0.12s; }
+.stats-row .stat-card:nth-child(3) { animation-delay: 0.2s; }
 .stats-row .stat-card:nth-child(4) { animation-delay: 0.27s; }
 
 .stat-card:hover {
@@ -4025,7 +4871,7 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 /* ── CARDS — entrance and hover ── */
 .card {
   animation: fadeInUp 0.38s cubic-bezier(0.22,1,0.36,1) both;
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  transition: box-shadow 0.24s ease, transform 0.24s ease;
 }
 .card:hover {
   box-shadow: 0 10px 40px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.06);
@@ -4033,18 +4879,18 @@ code{font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px
 
 /* ── TABLE ROWS — staggered fade ── */
 tbody tr {
-  animation: rowFadeIn 0.28s ease both;
+  animation: rowFadeIn 0.27s ease both;
 }
-tbody tr:nth-child(1)  { animation-delay: 0.04s; }
+tbody tr:nth-child(1)  { animation-delay: 0.05s; }
 tbody tr:nth-child(2)  { animation-delay: 0.08s; }
 tbody tr:nth-child(3)  { animation-delay: 0.12s; }
-tbody tr:nth-child(4)  { animation-delay: 0.16s; }
-tbody tr:nth-child(5)  { animation-delay: 0.20s; }
+tbody tr:nth-child(4)  { animation-delay: 0.15s; }
+tbody tr:nth-child(5)  { animation-delay: 0.2s; }
 tbody tr:nth-child(6)  { animation-delay: 0.24s; }
-tbody tr:nth-child(7)  { animation-delay: 0.28s; }
+tbody tr:nth-child(7)  { animation-delay: 0.27s; }
 tbody tr:nth-child(8)  { animation-delay: 0.32s; }
 tbody tr:nth-child(9)  { animation-delay: 0.36s; }
-tbody tr:nth-child(10) { animation-delay: 0.40s; }
+tbody tr:nth-child(10) { animation-delay: 0.4s; }
 
 tbody tr {
   transition: background 0.18s ease, transform 0.18s ease;
@@ -4090,7 +4936,7 @@ tbody tr:hover {
 
 /* Hamburger button spin on click */
 .hamburger-btn {
-  transition: transform 0.25s ease, background 0.2s ease;
+  transition: transform 0.24s ease, background 0.2s ease;
 }
 .hamburger-btn:hover { transform: translateY(-1px); }
 
@@ -4103,7 +4949,7 @@ tbody tr:hover {
   padding-left: 16px;
 }
 .nav-item.active {
-  transition: background 0.25s ease, color 0.25s ease;
+  transition: background 0.24s ease, color 0.24s ease;
 }
 
 /* ── BADGES — hover wiggle ── */
@@ -4168,7 +5014,7 @@ tbody tr:hover {
   animation: fadeIn 0.22s ease both;
 }
 .modal-overlay.open .modal {
-  animation: scaleIn 0.28s cubic-bezier(0.34,1.4,0.64,1) both;
+  animation: scaleIn 0.27s cubic-bezier(0.34,1.4,0.64,1) both;
 }
 .modal-close {
   transition: background 0.18s ease, transform 0.18s ease, color 0.18s ease;
@@ -4185,15 +5031,15 @@ tbody tr:hover {
               box-shadow 0.2s ease, transform 0.2s ease;
   position: relative;
 }
-.tab-btn.active { animation: scaleIn 0.25s ease both; }
+.tab-btn.active { animation: scaleIn 0.24s ease both; }
 .tab-btn:hover:not(.active) { transform: scale(1.04); }
 
 /* ── TOGGLE SWITCH — smooth ── */
 .toggle {
-  transition: background 0.28s cubic-bezier(0.4,0,0.2,1);
+  transition: background 0.27s cubic-bezier(0.4,0,0.2,1);
 }
 .toggle::after {
-  transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1),
+  transition: transform 0.27s cubic-bezier(0.34,1.56,0.64,1),
               box-shadow 0.2s ease;
 }
 .toggle.on::after {
@@ -4202,7 +5048,7 @@ tbody tr:hover {
 
 /* ── TOAST — slide from right ── */
 .toast {
-  animation: toastSlide 0.28s cubic-bezier(0.22,1,0.36,1) both;
+  animation: toastSlide 0.27s cubic-bezier(0.22,1,0.36,1) both;
 }
 
 /* ── CHAT MESSAGES ── */
@@ -4245,7 +5091,7 @@ tbody tr:hover {
   animation: gradientShift 6s ease infinite, fadeInUp 0.4s cubic-bezier(0.22,1,0.36,1) both;
 }
 .profile-avatar-lg {
-  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease;
+  transition: transform 0.24s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.24s ease;
 }
 .profile-avatar-lg:hover {
   transform: scale(1.08);
@@ -4269,7 +5115,7 @@ tbody tr:hover {
 
 /* ── NOTIFICATION ITEMS ── */
 .notif-item {
-  animation: fadeInLeft 0.28s ease both;
+  animation: fadeInLeft 0.27s ease both;
   transition: background 0.18s ease, transform 0.18s ease, padding-left 0.2s ease;
 }
 .notif-item:hover { padding-left: 22px; }
@@ -4299,7 +5145,7 @@ tbody tr:hover {
   animation: bounceIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 .tpl-icon {
-  transition: transform 0.25s ease;
+  transition: transform 0.24s ease;
   display: inline-block;
 }
 .sms-template-card:hover .tpl-icon { transform: scale(1.3) rotate(-8deg); }
@@ -4342,7 +5188,7 @@ tbody tr:hover {
 }
 .chat-session:hover { padding-left: 18px; }
 .chat-session.active {
-  animation: fadeInLeft 0.25s ease both;
+  animation: fadeInLeft 0.24s ease both;
   padding-left: 17px;
 }
 
@@ -4443,8 +5289,8 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* Smooth width animation */
   .sidebar {
-    transition: width .3s cubic-bezier(.4,0,.2,1),
-                min-width .3s cubic-bezier(.4,0,.2,1) !important;
+    transition: width .22s cubic-bezier(.4,0,.2,1),
+                min-width .22s cubic-bezier(.4,0,.2,1) !important;
     overflow: visible !important;
   }
 
@@ -4461,7 +5307,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* ── LOGO AREA: show only the logo image when collapsed ── */
   .sidebar-logo {
-    transition: padding .3s ease, justify-content .3s ease;
+    transition: padding .22s ease, justify-content .22s ease;
   }
   .sidebar.collapsed .sidebar-logo {
     justify-content: center;
@@ -4469,7 +5315,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   }
   /* Hide the text block next to logo */
   .sidebar-logo-text {
-    transition: opacity .2s ease, max-width .3s ease;
+    transition: opacity .15s ease, max-width .22s ease;
     overflow: hidden;
     max-width: 200px;
     white-space: nowrap;
@@ -4482,7 +5328,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* ── NAV SECTION LABELS: hide when collapsed ── */
   .nav-section-label {
-    transition: opacity .2s ease, max-height .3s ease;
+    transition: opacity .15s ease, max-height .22s ease;
     overflow: hidden;
   }
   .sidebar.collapsed .nav-section-label {
@@ -4494,9 +5340,9 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* ── NAV ITEMS: center icon, hide label text ── */
   .nav-item {
-    transition: background .2s ease, color .2s ease,
-                padding .3s cubic-bezier(.4,0,.2,1),
-                justify-content .3s ease;
+    transition: background .15s ease, color .15s ease,
+                padding .22s cubic-bezier(.4,0,.2,1),
+                justify-content .22s ease;
   }
   .sidebar.collapsed .nav-item {
     justify-content: center;
@@ -4510,7 +5356,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: margin .3s ease;
+    transition: margin .22s ease;
   }
   .sidebar.collapsed .nav-icon {
     margin: 0;
@@ -4518,7 +5364,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* NAV LABEL text: fade + collapse width */
   .nav-label {
-    transition: opacity .2s ease, max-width .3s cubic-bezier(.4,0,.2,1);
+    transition: opacity .15s ease, max-width .22s cubic-bezier(.4,0,.2,1);
     overflow: hidden;
     white-space: nowrap;
     max-width: 160px;
@@ -4531,7 +5377,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* NAV BADGE: smooth transition */
   .nav-badge {
-    transition: opacity .2s ease;
+    transition: opacity .15s ease;
   }
 
   /* NAV BADGE: show as overlay dot on icon when collapsed */
@@ -4572,7 +5418,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity .15s ease;
+    transition: opacity .12s ease;
     z-index: 300;
     box-shadow: 0 4px 14px rgba(0,0,0,.35);
     border: 1px solid rgba(255,255,255,.07);
@@ -4583,7 +5429,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
   /* ── FOOTER USER CHIP: center avatar, hide text ── */
   .user-chip {
-    transition: padding .3s ease;
+    transition: padding .22s ease;
   }
   .sidebar.collapsed .user-chip {
     justify-content: center;
@@ -4591,7 +5437,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     gap: 0;
   }
   .user-chip-info {
-    transition: opacity .2s ease, max-width .3s ease;
+    transition: opacity .15s ease, max-width .22s ease;
     overflow: hidden;
     max-width: 160px;
     white-space: nowrap;
@@ -4607,7 +5453,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 /* ── HELP PANEL: Responsive positioning ── */
 .help-panel {
-  transition: opacity .22s ease, transform .22s ease;
+  transition: opacity .16s ease, transform .16s ease;
 }
 .help-panel.hidden {
   display: none !important;
@@ -4759,7 +5605,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background .2s ease, width .2s ease;
+  transition: background .15s ease, width .15s ease;
   box-shadow: 3px 0 10px rgba(0,0,0,.25);
 }
 .sidebar-toggle-tab:hover {
@@ -4768,7 +5614,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 /* Chevron arrow inside the tab */
 .sidebar-toggle-tab svg {
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  transition: transform .2s cubic-bezier(.4,0,.2,1);
   flex-shrink: 0;
   color: #C0B8B0;
 }
@@ -4857,7 +5703,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   cursor: pointer;
   padding: 0 2px;
   border-radius: 50%;
-  transition: color .15s;
+  transition: color .12s;
   flex-shrink: 0;
 }
 .patient-search-clear:hover { color: var(--danger); }
@@ -4874,11 +5720,30 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   box-shadow: var(--shadow-lg);
   max-height: 220px;
   overflow-y: auto;
-  animation: dropdownFadeIn .15s ease;
+  animation: dropdownFadeIn .12s ease;
+}
+/* Drop-up variant — used only by LocationPicker.jsx (Emergency Alert
+   form), not the shared .patient-dropdown base above (that one's also
+   used by SearchableSelect.jsx elsewhere in the app, so it can't be
+   changed globally). Opens above the input instead of below — useful
+   here specifically since this field tends to sit lower in its form,
+   where a downward dropdown risks getting clipped by the modal's own
+   bottom edge. */
+.location-dropdown-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+  animation: dropdownFadeInUp .12s ease;
 }
 
 @keyframes dropdownFadeIn {
   from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Mirror of dropdownFadeIn above — slides up from below instead of down
+   from above, matching .location-dropdown-up's opposite entry direction. */
+@keyframes dropdownFadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -4888,7 +5753,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   gap: 10px;
   padding: 9px 13px;
   cursor: pointer;
-  transition: background .12s;
+  transition: background .1s;
   border-bottom: 1px solid var(--border);
 }
 .patient-dropdown-item:last-child { border-bottom: none; }
@@ -4976,7 +5841,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .student-list-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 13px; cursor: pointer;
-  border-bottom: 1px solid var(--border); transition: background .12s;
+  border-bottom: 1px solid var(--border); transition: background .1s;
 }
 .student-list-item:last-child { border-bottom: none; }
 .student-list-item:hover { background: var(--primary-light); }
@@ -5038,8 +5903,8 @@ button,
 .btn {
   border: 1px solid transparent;
   box-shadow: 0 2px 7px rgba(15,23,42,.10);
-  transition: background .16s ease, border-color .16s ease, color .16s ease,
-              box-shadow .16s ease, transform .12s ease, opacity .16s ease;
+  transition: background .12s ease, border-color .12s ease, color .12s ease,
+              box-shadow .12s ease, transform .1s ease, opacity .12s ease;
 }
 
 .btn-sm {
@@ -5292,7 +6157,7 @@ td {
     height: var(--app-height, 100dvh);
     z-index: 1000;
     transform: translateX(-105%) !important;
-    transition: transform .24s ease, box-shadow .24s ease !important;
+    transition: transform .18s ease, box-shadow .18s ease !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
   }
@@ -5313,7 +6178,14 @@ td {
   .page-content {
     width: 100%;
     max-height: calc(100dvh - var(--topbar-h));
-    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    /* This rule runs after the earlier, narrower `.page-content{padding-
+       bottom:76px}` fix and has equal specificity, so it was silently
+       overwriting it down to ~16px on every phone — nowhere near enough
+       to clear the ~72px fixed .mobile-bottom-nav bar sitting on top of
+       it. Same 72px figure used for scroll-to-top/help-fab/toasts
+       elsewhere in this file, added on top of the safe-area inset
+       instead of replaced by it. */
+    padding-bottom: calc(72px + max(16px, env(safe-area-inset-bottom, 0px)));
   }
 
   .stats-row,
@@ -5429,7 +6301,13 @@ td {
   }
 
   .chatbot-layout {
-    height: calc(100dvh - var(--topbar-h) - 28px) !important;
+    /* Same ~72px the "floating buttons vs mobile bottom nav" override
+       further down this file uses to clear the scroll-to-top/help-fab/
+       toasts above the fixed bottom nav bar — the chat panel needs the
+       same allowance, or its input row (flex-shrink:0, pinned to the
+       bottom of this panel) renders underneath the nav bar instead of
+       above it. */
+    height: calc(100dvh - var(--topbar-h) - 28px - 72px) !important;
   }
 
   .chat-main-panel {
@@ -5515,6 +6393,11 @@ td {
 
   .page-content {
     padding: 10px;
+    /* Same reasoning as the max-width:768px .page-content fix above —
+       this query can also match a phone in landscape and runs later in
+       the cascade, so it needs its own bottom-nav clearance rather than
+       relying on the earlier rule. */
+    padding-bottom: 62px;
   }
 
   .modal {
@@ -5522,7 +6405,11 @@ td {
   }
 
   .chatbot-layout {
-    height: calc(100dvh - var(--topbar-h) - 20px) !important;
+    /* Same reasoning as the max-width:768px block above — this query can
+       overlap with it on a phone in landscape (e.g. ~375px tall), so it
+       needs the same 72px bottom-nav allowance or landscape mode would
+       silently reintroduce the same input-row-hidden-behind-nav bug. */
+    height: calc(100dvh - var(--topbar-h) - 20px - 72px) !important;
   }
 }
 
@@ -5558,18 +6445,23 @@ td {
    See components/ui/ScrollToTopButton.jsx for the show/hide logic. */
 .scroll-to-top-btn{
   position:fixed;right:24px;bottom:24px;z-index:400;
-  width:44px;height:44px;border-radius:50%;
+  width:36px;height:36px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
-  background:var(--primary);color:#fff;border:none;cursor:pointer;
-  box-shadow:0 4px 14px rgba(0,0,0,.22);
-  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
-  animation:scroll-top-in .2s ease;
+  background:linear-gradient(180deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,.55) 60%);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);
+  color:#000;border:1px solid rgba(255,255,255,.6);cursor:pointer;
+  box-shadow:
+    0 4px 14px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.8),
+    inset 0 -1px 0 rgba(0,0,0,.06);
+  transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
+  animation:scroll-top-in .15s ease;
 }
-.scroll-to-top-btn:hover{background:var(--primary-dark);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.scroll-to-top-btn:hover{background:linear-gradient(180deg,rgba(255,255,255,.85) 0%,rgba(255,255,255,.65) 60%);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.8),inset 0 -1px 0 rgba(0,0,0,.06)}
 .scroll-to-top-btn:active{transform:translateY(0)}
 @keyframes scroll-top-in{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:768px){
-  .scroll-to-top-btn{right:16px;bottom:16px;width:40px;height:40px}
+  .scroll-to-top-btn{right:16px;bottom:16px;width:32px;height:32px}
 }
 
 /* ── USER MANUAL MODAL ── */
@@ -5585,7 +6477,7 @@ td {
   width:820px;max-width:100%;height:82vh;max-height:640px;
   display:flex;flex-direction:column;overflow:hidden;
   box-shadow:0 24px 60px rgba(0,0,0,.35);
-  animation:manual-pop .18s ease;
+  animation:manual-pop .14s ease;
 }
 @keyframes manual-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
 .manual-header{
@@ -5741,6 +6633,20 @@ td {
   .patients-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .patients-table thead th{position:static}
 }
+.patient-row{cursor:pointer}
+.patient-row-chevron{display:none}
+@media(max-width:768px){
+  /* Row itself is the tap target here (see onClick on <tr> in
+     PatientsPage.jsx) — the explicit icon+label button, built for a
+     standalone click target, reads as oversized next to it and leaves
+     a large empty gap between the name and the button. A plain chevron
+     is the native-mobile-list "tap to view" affordance instead. The
+     button stays in the DOM (just hidden) rather than being removed —
+     keyboard/screen-reader users still get a real, focusable, labeled
+     control instead of only an aria-hidden decorative chevron. */
+  .patient-row-action{display:none}
+  .patient-row-chevron{display:block;color:var(--text-3);flex-shrink:0;transform:rotate(-90deg)}
+}
 .patients-sticky-header{
   position:sticky;top:0;z-index:5;
   background:rgba(250,248,245,.98);
@@ -5775,7 +6681,7 @@ td {
   position:absolute;width:34px;height:34px;border-radius:50%;
   background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);
   color:#fff;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);transition:background .15s;
+  cursor:pointer;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);transition:background .12s;
   z-index:3;
 }
 .scan-overlay-btn:hover{background:rgba(0,0,0,.65)}
@@ -5816,7 +6722,7 @@ td {
   border-radius:10px;border:1.5px solid var(--border-strong);
   background:var(--surface);color:var(--text-2);font-size:13px;font-weight:600;
   cursor:pointer;text-align:left;
-  transition:border-color .16s ease,box-shadow .16s ease,transform .12s ease,color .16s ease;
+  transition:border-color .12s ease,box-shadow .12s ease,transform .1s ease,color .12s ease;
   box-shadow:0 1px 3px rgba(0,0,0,.06);
 }
 .cdp-trigger:hover{border-color:var(--primary);color:var(--primary);box-shadow:0 2px 8px rgba(30,123,94,.12);transform:translateY(-1px)}
@@ -5829,7 +6735,7 @@ td {
   border:1px solid rgba(255,255,255,.35);
   -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
   box-shadow:0 16px 40px rgba(0,0,0,.22);
-  animation:cdpPop .16s cubic-bezier(.34,1.56,.64,1) both;
+  animation:cdpPop .12s cubic-bezier(.34,1.56,.64,1) both;
 }
 [data-theme="dark"] .cdp-panel{background:rgba(24,19,15,.65);border-color:rgba(255,255,255,.1)}
 @keyframes cdpPop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -5839,7 +6745,7 @@ td {
 .cdp-nav{
   width:28px;height:28px;border-radius:8px;border:none;background:transparent;
   color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer;
-  transition:background .14s ease,color .14s ease,transform .12s ease;
+  transition:background .1s ease,color .1s ease,transform .1s ease;
 }
 .cdp-nav:hover{background:var(--primary-light);color:var(--primary);transform:scale(1.08)}
 .cdp-nav:active{transform:scale(.9)}
@@ -5852,7 +6758,7 @@ td {
   aspect-ratio:1;border:none;background:transparent;border-radius:8px;
   font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  transition:background .14s ease,color .14s ease,transform .12s cubic-bezier(.34,1.56,.64,1),box-shadow .14s ease;
+  transition:background .1s ease,color .1s ease,transform .1s cubic-bezier(.34,1.56,.64,1),box-shadow .1s ease;
 }
 .cdp-cell.cdp-empty{cursor:default;pointer-events:none}
 .cdp-cell:hover:not(.cdp-empty):not(:disabled){background:var(--primary-light);color:var(--primary);transform:scale(1.1)}
@@ -5861,3 +6767,64 @@ td {
 .cdp-cell.selected{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(30,123,94,.4)}
 .cdp-cell.selected:hover{transform:scale(1.06)}
 .cdp-cell:disabled{opacity:.3;cursor:not-allowed}
+/* ══ Topbar mobile logo vs hamburger — final, definitive override ═══
+   Placed at the very end of this file deliberately, not alongside the
+   other .hamburger-btn rules scattered earlier — this app already hit
+   a real bug once where @media(orientation:landscape) with no width
+   constraint matched every desktop monitor (not just mobile landscape)
+   and silently won a cascade fight against a narrower, more-intended
+   rule. Rather than risk missing another such loophole among the
+   several existing portrait/landscape hamburger-show rules, these two
+   blocks are the last word: mobile shows the static Bulsu Infirmary
+   brand header (replacing both the hamburger AND the page title/
+   breadcrumb, matching Sidebar.jsx's own .sidebar-logo styling) —
+   desktop shows neither the hamburger nor this header, relying purely
+   on the sidebar's own hover-rail behavior with its own always-visible
+   equivalent branding. */
+.topbar-mobile-logo{display:none}
+@media(max-width:768px){
+  .hamburger-btn{display:none!important}
+  .topbar-page-title-wrap{display:none!important}
+  .topbar-mobile-logo{
+    display:flex!important;align-items:center;gap:10px;flex:1;min-width:0;
+  }
+  .topbar-mobile-logo-mark{width:34px;height:34px;flex-shrink:0}
+  .topbar-mobile-logo-mark img{width:120%;height:120%;object-fit:contain}
+  .topbar-mobile-logo-text{min-width:0;overflow:hidden}
+  .topbar-mobile-logo-text h2{
+    font-size:14px;font-weight:800;color:var(--text);margin:0;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .topbar-mobile-logo-text p{
+    font-size:10.5px;color:var(--text-3);margin:0;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+}
+@media(min-width:769px){
+  .hamburger-btn{display:none!important}
+  .topbar-mobile-logo{display:none!important}
+}
+
+/* ══ Floating buttons vs mobile bottom nav — final override ═══════
+   Same reasoning as the hamburger/logo override above: rather than
+   individually edit the many scattered mobile-width rules already
+   spread across this file for .help-fab/.help-panel/.scroll-to-top-btn
+   (several different breakpoints, each with their own bottom value),
+   this is the definitive last word. All three previously sat at
+   bottom:12-24px on mobile — the same corner the new fixed bottom nav
+   bar now occupies, so they were rendering on top of / colliding with
+   it instead of floating clear above it. ~72px clears the bottom nav's
+   own height (padding + icon + label + safe-area allowance) with a
+   little room to spare. */
+@media(max-width:768px){
+  .help-fab{bottom:calc(72px + 12px)!important}
+  .help-panel{bottom:calc(72px + 74px)!important}
+  .scroll-to-top-btn{bottom:calc(72px + 12px)!important}
+  /* Toasts had the same risk — their existing mobile bottom values
+     (60-70px, set elsewhere in this file) sat close to but not reliably
+     above the ~72px bottom nav bar's actual height, meaning a toast
+     could render partially behind/overlapping it depending on exact
+     device/safe-area sizing. */
+  #toast-container{bottom:calc(72px + 12px)!important}
+  .session-warning-banner{bottom:calc(72px + 12px)!important}
+}

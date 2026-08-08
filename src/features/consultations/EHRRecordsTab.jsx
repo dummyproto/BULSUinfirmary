@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
-import { FolderIcon, EyeIcon } from '@components/ui/icons'
+import { FolderIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { defaultShowMore } from '@lib/viewport'
 
 export default function EHRRecordsTab({ consultations, search, onSearchChange, onView, onPrint }) {
+  const [showMore, setShowMore] = useState(defaultShowMore)
   const q = search.toLowerCase()
   const filtered = search
     ? consultations.filter(
@@ -34,8 +36,18 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
     <div className="card" style={{ '--ehr-header-h': `${headerHeight}px` }}>
       <div ref={headerRef} className="card-header inv-ehr-sticky-header" style={{ flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><FolderIcon width={15} height={15} /> Health Records</h3>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
           <SearchInput value={search} onChange={onSearchChange} placeholder="Search records…" width={200} />
+          <button
+            type="button"
+            className="btn btn-sm btn-outline inv-view-more-btn"
+            onClick={() => setShowMore((v) => !v)}
+            title="Show or hide User ID, Visit Type, Main Complaint, and Medications columns"
+            aria-label={showMore ? 'View Less — hide User ID, Visit Type, Main Complaint, and Medications columns' : 'View More — show User ID, Visit Type, Main Complaint, and Medications columns'}
+          >
+            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+            <span>{showMore ? 'View Less' : 'View More'}</span>
+          </button>
         </div>
       </div>
       <div className="table-wrap inv-ehr-scroll">
@@ -43,19 +55,23 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
           <thead>
             <tr>
               <th>Patient</th>
-              <th>User ID</th>
+              {showMore && <th>User ID</th>}
               <th>Date</th>
-              <th>Visit Type</th>
+              {showMore && <th>Visit Type</th>}
               <th>Diagnosis</th>
-              <th>Main Complaint</th>
-              <th>Medications</th>
+              {showMore && (
+                <>
+                  <th>Main Complaint</th>
+                  <th>Medications</th>
+                </>
+              )}
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                <td colSpan={showMore ? 8 : 4} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                   No records found
                 </td>
               </tr>
@@ -65,26 +81,34 @@ export default function EHRRecordsTab({ consultations, search, onSearchChange, o
                 <td>
                   <strong>{c.patient_name}</strong>
                 </td>
-                <td>
-                  <code style={{ fontSize: 11 }}>{c.student_number}</code>
-                </td>
+                {showMore && (
+                  <td>
+                    <code style={{ fontSize: 11 }}>{c.student_number}</code>
+                  </td>
+                )}
                 <td style={{ whiteSpace: 'nowrap' }}>{formatDate(c.visit_date)}</td>
-                <td>
-                  <StatusBadge status={c.visit_type} />
-                </td>
+                {showMore && (
+                  <td>
+                    <StatusBadge status={c.visit_type} />
+                  </td>
+                )}
                 <td style={{ maxWidth: 160 }}>
                   <span className="diag-pill">{c.diagnosis || (c.assessment || '').substring(0, 40) || '—'}</span>
                 </td>
-                <td
-                  style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}
-                >
-                  {c.chief_complaint}
-                </td>
-                <td
-                  style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}
-                >
-                  {c.medications || 'None'}
-                </td>
+                {showMore && (
+                  <>
+                    <td
+                      style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}
+                    >
+                      {c.chief_complaint}
+                    </td>
+                    <td
+                      style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}
+                    >
+                      {c.medications || 'None'}
+                    </td>
+                  </>
+                )}
                 <td>
                   <button type="button" className="btn btn-sm btn-outline" onClick={() => onView(c.consultation_id)}>
                     <EyeIcon width={13} height={13} /> View

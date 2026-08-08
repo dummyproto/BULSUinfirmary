@@ -1,18 +1,21 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
-import { TOPBAR_GRADIENT } from '@routes/navItems'
-import { MenuIcon, BellIcon, HelpCircleIcon } from '@components/ui/icons'
+import { useConfirm } from '@context/ConfirmContext'
+import { TOPBAR_GRADIENT, ROLE_LABELS as PORTAL_LABELS } from '@routes/navItems'
+import { MenuIcon, BellIcon, HelpCircleIcon, ChevronDownIcon, SettingsIcon, LogoutIcon } from '@components/ui/icons'
 import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
 import UserManualModal from '@components/ui/UserManualModal'
 import NotificationsModal from '@features/notifications/NotificationsModal'
-import { countUnread, listForUser, markRead, markAllRead } from '@services/notificationsService'
+import logo from '@/assets/logo.png'
+import { countUnread, listForUser, markRead, markAllRead, deleteNotification } from '@services/notificationsService'
 import {
   listInventoryNotifications,
   countUnreadInventoryNotifications,
   markInventoryNotificationRead,
   markAllInventoryNotificationsRead,
+  deleteInventoryNotification,
 } from '@services/inventoryNotificationsService'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
@@ -57,8 +60,9 @@ function mergeNotifications(general, inventory) {
 }
 
 export default function Topbar({ title, subtitle, onToggleSidebar }) {
-  const { profile, role } = useAuth()
+  const { profile, role, signOut } = useAuth()
   const { show } = useToast()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -69,6 +73,8 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
   const [manualOpen, setManualOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef(null)
 
   const userId = profile?.user_id ?? null
   const includesInventory = role === 'staff' || role === 'admin'
@@ -163,12 +169,44 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
     }
   }
 
+  async function handleDelete(id) {
+    if (typeof id === 'string' && id.startsWith(INV_ID_PREFIX)) {
+      await deleteInventoryNotification(Number(id.slice(INV_ID_PREFIX.length)))
+    } else {
+      await deleteNotification(id)
+    }
+  }
+
   async function handleMarkAllRead() {
     if (includesInventory) {
       await Promise.all([markAllRead(userId, role), markAllInventoryNotificationsRead()])
     } else {
       await markAllRead(userId, role)
     }
+  }
+
+  // Click-outside detection, same pattern as LocationPicker.jsx — closes
+  // the dropdown when clicking anywhere else, without the flicker a
+  // naive onBlur+setTimeout approach can cause.
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined
+    function handleDocClick(e) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) setProfileMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleDocClick)
+    return () => document.removeEventListener('mousedown', handleDocClick)
+  }, [profileMenuOpen])
+
+  function goToProfileTab(tabName) {
+    setProfileMenuOpen(false)
+    navigate(`/profile?tab=${tabName}`)
+  }
+
+  async function handleLogout() {
+    setProfileMenuOpen(false)
+    if (!(await confirm('Log out of your account?', { confirmLabel: 'Log Out' }))) return
+    await signOut()
+    navigate('/login', { replace: true })
   }
 
   const avatarContent = profile?.profile_img_url ? (
@@ -189,7 +227,25 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
         <MenuIcon strokeWidth={2.5} />
       </button>
 
-      <div>
+      {/* Mobile-only brand header, replacing both the hamburger AND the
+          page title specifically on mobile (see legacy.css's final
+          override block) — matches Sidebar.jsx's own .sidebar-logo
+          structure exactly (icon + name + role subtitle), just reused
+          here since the sidebar itself collapses to icon-only on mobile
+          and isn't visible by default there. Static, not a toggle —
+          the bottom nav + profile dropdown already cover navigation and
+          Logout on mobile without needing a drawer trigger here. */}
+      <div className="topbar-mobile-logo">
+        <div className="topbar-mobile-logo-mark">
+          <img src={logo} alt="Bulsu Infirmary" />
+        </div>
+        <div className="topbar-mobile-logo-text">
+          <h2>Bulsu Infirmary</h2>
+          <p>{PORTAL_LABELS[role] || role}</p>
+        </div>
+      </div>
+
+      <div className="topbar-page-title-wrap">
         <div className="topbar-title">{title}</div>
         {subtitle && <div className="topbar-breadcrumb">{subtitle}</div>}
       </div>
@@ -240,21 +296,49 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
           {unread > 0 && <span className="notif-dot">{unread > 9 ? '9+' : unread}</span>}
         </div>
 
-        <div
-          className="topbar-profile"
-          role="button"
-          tabIndex={0}
-          aria-label="My Profile"
-          title="My Profile"
-          onClick={() => navigate('/profile')}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate('/profile'))}
-        >
-          <div className="topbar-avatar" style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}>
-            {avatarContent}
+        <div className={`topbar-profile-wrap${profileMenuOpen ? ' open' : ''}`} ref={profileMenuRef}>
+          <div
+            className="topbar-profile"
+            role="button"
+            tabIndex={0}
+            aria-label="My Profile"
+            aria-haspopup="true"
+            aria-expanded={profileMenuOpen}
+            title="My Profile"
+            onClick={() => setProfileMenuOpen((v) => !v)}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setProfileMenuOpen((v) => !v))}
+          >
+            <div className="topbar-avatar" style={{ background: TOPBAR_GRADIENT[role] || TOPBAR_GRADIENT.patient }}>
+              {avatarContent}
+            </div>
+            <div className="topbar-profile-info">
+              <span className="topbar-profile-name">{profile?.name || 'My Profile'}</span>
+              <span className="topbar-profile-role">{ROLE_LABELS[role] || role}</span>
+            </div>
+            <ChevronDownIcon width={15} height={15} className={`topbar-profile-chevron${profileMenuOpen ? ' open' : ''}`} />
           </div>
-          <div className="topbar-profile-info">
-            <span className="topbar-profile-name">{profile?.name || 'My Profile'}</span>
-            <span className="topbar-profile-role">{ROLE_LABELS[role] || role}</span>
+
+          {/* Always rendered now (no more {profileMenuOpen && ...}) — same
+              approach the sidebar itself uses: the element stays in the
+              DOM permanently, and CSS :hover alone controls whether it's
+              actually visible (see .topbar-profile-menu in legacy.css).
+              The .open class above still exists too, purely for click/
+              keyboard support (touch devices and keyboard nav don't get
+              a real :hover state) — hovering and clicking both work,
+              same dual-path pattern the sidebar's own hover-expand needs
+              a click for on touch-only devices without true hover. */}
+          <div className="topbar-profile-menu" role="menu">
+            <div className="topbar-profile-menu-header">
+              <strong>{profile?.name || 'My Profile'}</strong>
+              <span>{ROLE_LABELS[role] || role}</span>
+            </div>
+            <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => goToProfileTab('personal')}>
+              <SettingsIcon width={15} height={15} /> Account Settings
+            </button>
+            <div className="topbar-profile-menu-divider" />
+            <button type="button" className="topbar-profile-menu-item danger" role="menuitem" onClick={handleLogout}>
+              <LogoutIcon width={15} height={15} /> Logout
+            </button>
           </div>
         </div>
       </div>
@@ -265,6 +349,7 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
         notifications={notifications}
         onMarkRead={handleMarkRead}
         onMarkAllRead={handleMarkAllRead}
+        onDelete={handleDelete}
         onRefresh={silentRefresh}
         onError={(msg) => show(msg, 'error')}
       />

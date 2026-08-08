@@ -50,14 +50,20 @@ export function ConfirmProvider({ children }) {
       {children}
       <Modal isOpen={!!state} onClose={() => settle(false)} title={state?.title || 'Please Confirm'} icon={<AlertTriangleIcon width={16} height={16} />}
         actions={
-          <>
-            <button type="button" className="btn btn-outline" onClick={() => settle(false)}>
-              Cancel
-            </button>
+          // .modal-actions (Modal.jsx's actions wrapper) is shared by
+          // every modal in the app — Add Item, Edit User, all of them —
+          // so its own flex-row layout is left alone. This inner div is
+          // the single child .modal-actions actually lays out, and
+          // controls its own stacking: primary action on top, Cancel
+          // below, scoped to just this confirm dialog.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
             <button type="button" className={`btn ${state?.danger ? 'btn-red' : 'btn-blue'}`} onClick={() => settle(true)}>
               {state?.confirmLabel}
             </button>
-          </>
+            <button type="button" className="btn btn-outline" onClick={() => settle(false)}>
+              Cancel
+            </button>
+          </div>
         }
       >
         <p style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-line', margin: 0 }}>{state?.message}</p>
