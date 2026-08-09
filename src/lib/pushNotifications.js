@@ -17,16 +17,30 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 /**
- * Whether this browser/device can even support push at all. False on
- * iOS Safari unless the site has been added to the home screen (no
- * Service Worker/Push API access from a regular tab there — an Apple
- * platform restriction, not something any code here can work around),
- * and false on very old browsers generally. Check this before showing
- * any "enable notifications" UI, so the option doesn't appear somewhere
- * it can't actually work.
+ * Distinguishes the three genuinely different reasons push might not
+ * work here, since they need completely different messages:
+ *   'ok'          — supported, nothing blocking it
+ *   'unconfigured' — the browser itself supports push fine, but
+ *                    VITE_VAPID_PUBLIC_KEY isn't set (a deployment step
+ *                    wasn't finished, not a real platform limitation —
+ *                    see the setup checklist, Part 5)
+ *   'unsupported' — the browser genuinely lacks the APIs needed. On
+ *                    iOS Safari this specifically means "not installed
+ *                    to the home screen yet" (an Apple platform
+ *                    restriction, not something fixable in code); on
+ *                    very old/uncommon browsers it just means no
+ *                    support exists at all.
  */
+export function getPushSupportStatus() {
+  const hasApis = 'serviceWorker' in navigator && 'PushManager' in window
+  if (!hasApis) return 'unsupported'
+  if (!VAPID_PUBLIC_KEY) return 'unconfigured'
+  return 'ok'
+}
+
+/** Whether this browser/device can even support push at all — see getPushSupportStatus() for *why* when this is false. */
 export function isPushSupported() {
-  return 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID_PUBLIC_KEY
+  return getPushSupportStatus() === 'ok'
 }
 
 /** Current permission state — 'granted' | 'denied' | 'default' (not yet asked). */

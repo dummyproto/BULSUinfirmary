@@ -6,7 +6,7 @@ import { useTheme } from '@context/ThemeContext'
 import Spinner from '@components/ui/Spinner'
 import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
 import { compressImageFile } from '@lib/imageCompression'
-import { isPushSupported, isPushEnabledOnThisDevice, enablePushNotifications, disablePushNotifications } from '@lib/pushNotifications'
+import { getPushSupportStatus, isPushEnabledOnThisDevice, enablePushNotifications, disablePushNotifications } from '@lib/pushNotifications'
 import EditProfileModal from './EditProfileModal'
 import EditFamilyModal from './EditFamilyModal'
 import ChangePasswordModal from './ChangePasswordModal'
@@ -104,7 +104,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
 
-  const [pushSupported] = useState(isPushSupported())
+  const [pushStatus] = useState(getPushSupportStatus())
+  const pushSupported = pushStatus === 'ok'
   const [pushOn, setPushOn] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
 
@@ -655,14 +656,16 @@ export default function ProfilePage() {
                   <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>
-                        {!pushSupported ? 'Not available on this device' : pushOn ? 'On for this device' : 'Off for this device'}
+                        {pushStatus === 'unconfigured' ? 'Not set up yet' : !pushSupported ? 'Not available on this device' : pushOn ? 'On for this device' : 'Off for this device'}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                        {!pushSupported
-                          ? 'iPhone/iPad: add this site to your Home Screen first (Share button → Add to Home Screen), then this option will work.'
-                          : pushOn
-                            ? 'You\u2019ll get a notification on this device even when the app isn\u2019t open.'
-                            : 'Turn on to get notifications on this device even when the app isn\u2019t open.'}
+                        {pushStatus === 'unconfigured'
+                          ? 'This isn\u2019t configured on the server yet \u2014 push notifications need to be set up by whoever manages this system before this option will work.'
+                          : pushStatus === 'unsupported'
+                            ? 'iPhone/iPad: add this site to your Home Screen first (Share button \u2192 Add to Home Screen), then this option will work. On other devices, this browser may be too old to support notifications.'
+                            : pushOn
+                              ? 'You\u2019ll get a notification on this device even when the app isn\u2019t open.'
+                              : 'Turn on to get notifications on this device even when the app isn\u2019t open.'}
                       </div>
                     </div>
                     <button

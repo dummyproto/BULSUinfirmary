@@ -96,7 +96,7 @@ export default function ChatbotPage() {
   // visible as a static side column regardless of this state — see
   // chat-panel-toggle-btn's CSS, which is only shown on mobile in the
   // first place.
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(true)
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [emgOpen, setEmgOpen] = useState(false)
 
   // See MobileBottomNav.jsx's handleItemClick — tapping "Chat-Bot" there
