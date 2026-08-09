@@ -182,9 +182,13 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
             {submitting ? 'Verifying…' : 'Verify & Set New Password'}
           </button>
           <div style={{ textAlign: 'center', marginTop: 10 }}>
-            <a onClick={handleSendCode} style={{ fontSize: 12, cursor: 'pointer' }}>
+            <button
+              type="button"
+              onClick={handleSendCode}
+              style={{ fontSize: 12, cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', textDecoration: 'none', padding: 0, font: 'inherit' }}
+            >
               Didn't get a code? Resend
-            </a>
+            </button>
           </div>
         </form>
       )}

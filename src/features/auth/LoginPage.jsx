@@ -384,9 +384,9 @@ export default function LoginPage() {
                 />
                 Remember me
               </label>
-              <a className="login-forgot-link" onClick={() => setForgotOpen(true)} style={{ fontSize: 12.5, cursor: 'pointer' }}>
+              <button type="button" className="login-forgot-link" onClick={() => setForgotOpen(true)} style={{ fontSize: 12.5, cursor: 'pointer' }}>
                 Forgot password?
-              </a>
+              </button>
             </div>
           </div>
           <button type="submit" className="login-btn" disabled={submitting || isLocked}>
@@ -401,7 +401,7 @@ export default function LoginPage() {
 
       {mode === 'password' && (
         <div className="login-register-link">
-          Don&apos;t have an account? <a onClick={() => setRegisterOpen(true)}>Register here</a>
+          Don&apos;t have an account? <button type="button" onClick={() => setRegisterOpen(true)}>Register here</button>
         </div>
       )}
 

@@ -416,9 +416,13 @@ export default function RegisterModal({ isOpen, onClose }) {
 
             {step === 1 && duplicateBlocked && (
               <div className="reg-step-content" style={{ textAlign: 'center', padding: '10px 0' }}>
-                <a onClick={handleClose} style={{ fontSize: 13, cursor: 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  style={{ fontSize: 13, cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', textDecoration: 'none', padding: 0, font: 'inherit' }}
+                >
                   Close and sign in instead
-                </a>
+                </button>
               </div>
             )}
 
@@ -537,10 +541,10 @@ export default function RegisterModal({ isOpen, onClose }) {
 
         <div className="reg-login-link">
           {success ? (
-            <a onClick={handleClose}>Back to sign in</a>
+            <button type="button" onClick={handleClose}>Back to sign in</button>
           ) : (
             <>
-              Already have an account? <a onClick={handleClose}>Sign in here</a>
+              Already have an account? <button type="button" onClick={handleClose}>Sign in here</button>
             </>
           )}
         </div>
