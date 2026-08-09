@@ -64,10 +64,7 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
   // themselves from EmergencyPatientPicker) — covers reopening the modal
   // shortly after a previous submission, not just mid-session countdown.
   useEffect(() => {
-    if (!isOpen || !reporterUser) {
-      setCooldownLeft(0)
-      return undefined
-    }
+    if (!isOpen || !reporterUser) return undefined
     const tick = () => {
       const remaining = Math.max(0, EMERGENCY_COOLDOWN_MS - (Date.now() - lastSubmitAt(reporterUser.user_id)))
       setCooldownLeft(Math.ceil(remaining / 1000))
@@ -75,7 +72,10 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, reporterUser?.user_id])
+
+  const effectiveCooldown = isOpen && reporterUser ? cooldownLeft : 0
 
   function reset() {
     setReporter(null)
@@ -153,8 +153,8 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
           <button type="button" className="btn btn-outline" onClick={handleClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting || cooldownLeft > 0}>
-            {submitting ? 'Sending…' : cooldownLeft > 0 ? `Wait ${cooldownLeft}s…` : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
+          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting || effectiveCooldown > 0}>
+            {submitting ? 'Sending…' : effectiveCooldown > 0 ? `Wait ${effectiveCooldown}s…` : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
           </button>
         </>
       }

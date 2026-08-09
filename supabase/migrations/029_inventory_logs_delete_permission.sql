@@ -6,6 +6,10 @@
 -- now Inventory Transaction Log alike.
 
 DROP POLICY IF EXISTS inventory_logs_all ON inventory_logs;
+DROP POLICY IF EXISTS inventory_logs_select ON inventory_logs;
+DROP POLICY IF EXISTS inventory_logs_insert ON inventory_logs;
+DROP POLICY IF EXISTS inventory_logs_update ON inventory_logs;
+DROP POLICY IF EXISTS inventory_logs_delete ON inventory_logs;
 
 CREATE POLICY inventory_logs_select ON inventory_logs FOR SELECT TO authenticated
   USING (current_app_role() IN ('admin', 'staff'));

@@ -10,7 +10,7 @@
 -- the button, with nothing for the database to enforce.
 
 ALTER TABLE staff_permissions
-  ADD COLUMN reset_reports BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS reset_reports BOOLEAN NOT NULL DEFAULT FALSE;
 
 COMMENT ON COLUMN staff_permissions.reset_reports IS
   'Lets a staff account use the Reset button on the Reports page (clears the currently generated report and filter fields — no database write involved, since reports are computed live rather than stored). Admins can always use it regardless of this flag.';

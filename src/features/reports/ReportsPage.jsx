@@ -138,9 +138,12 @@ export default function ReportsPage() {
     return () => ro.disconnect()
   }, [report])
 
-  const clinicTypes = getClinicReportTypes(role, profile?.permissions)
+ const clinicTypes = getClinicReportTypes(role, profile?.permissions)
   const inventoryTypes = getInventoryReportTypes(role, profile?.permissions)
   const hasAnyReportAccess = clinicTypes.length > 0 || inventoryTypes.length > 0
+
+  const allReportValues = [...clinicTypes, ...inventoryTypes].map((t) => t.value)
+  const validReportType = allReportValues.includes(reportType) ? reportType : (allReportValues[0] ?? reportType)
 
   // Inventory-only cache — populated lazily the first time it's actually
   // needed, reused across report generations within the same visit so
@@ -166,17 +169,7 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Keeps the selected report type valid if it's no longer in the allowed
-  // list (e.g. an admin revokes a permission while this page happens to be
-  // open, or the page loads with a type this account was never allowed to
-  // have selected in the first place).
-  useEffect(() => {
-    const allValues = [...clinicTypes, ...inventoryTypes].map((t) => t.value)
-    if (allValues.length > 0 && !allValues.includes(reportType)) {
-      setReportType(allValues[0])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicTypes, inventoryTypes])
+ 
 
   async function getSnapshot() {
     if (!invCache.current.snapshot) invCache.current.snapshot = await loadInventorySnapshot()
@@ -335,7 +328,7 @@ export default function ReportsPage() {
     if (dateFrom > dateTo) return show('Date From must be before or equal to Date To', 'error')
     setGenerating(true)
     try {
-      const result = INVENTORY_TYPE_VALUES.has(reportType) ? await buildInventoryReport(reportType, dateFrom, dateTo) : buildClinicReport(reportType, dateFrom, dateTo, source)
+      const result = INVENTORY_TYPE_VALUES.has(validReportType) ? await buildInventoryReport(validReportType, dateFrom, dateTo) : buildClinicReport(validReportType, dateFrom, dateTo, source)
       setReport({ ...result, from: dateFrom, to: dateTo })
     } catch (err) {
       show(`Failed to generate report: ${err.message}`, 'error')
@@ -402,7 +395,7 @@ export default function ReportsPage() {
         <div style={{ padding: 18, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ minWidth: 200 }}>
             <label>REPORT TYPE</label>
-            <select className="form-select" value={reportType} onChange={(e) => setReportType(e.target.value)}>
+            <select className="form-select" value={validReportType} onChange={(e) => setReportType(e.target.value)}>
               {clinicTypes.length > 0 && (
                 <optgroup label="Clinic">
                   {clinicTypes.map((t) => (

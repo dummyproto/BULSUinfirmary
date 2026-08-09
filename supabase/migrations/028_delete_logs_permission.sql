@@ -13,7 +13,7 @@
 --     the same admin-or-permitted-staff check as emergency_alerts.
 
 ALTER TABLE staff_permissions
-  ADD COLUMN delete_logs BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS delete_logs BOOLEAN NOT NULL DEFAULT FALSE;
 
 COMMENT ON COLUMN staff_permissions.delete_logs IS
   'Lets a staff account delete rows from emergency_alerts (Alert Log) and sms_log (SMS Log) in the UI. Admins can always delete regardless of this flag — see the emergency_alerts_delete / sms_log_delete policies below.';
@@ -34,8 +34,16 @@ CREATE POLICY emergency_alerts_delete ON emergency_alerts FOR DELETE TO authenti
 
 -- sms_log: split the old FOR ALL policy into SELECT/INSERT/UPDATE
 -- (unchanged — still open to any staff, same as before) and a
--- separate, gated DELETE policy.
+-- separate, gated DELETE policy. Every one of the four new policies
+-- gets its own DROP guard, not just the old sms_log_all being
+-- replaced — defensive against this migration having been applied
+-- once already outside the CLI's own tracking (the same gap that
+-- caused 024's "already exists" error).
 DROP POLICY IF EXISTS sms_log_all ON sms_log;
+DROP POLICY IF EXISTS sms_log_select ON sms_log;
+DROP POLICY IF EXISTS sms_log_insert ON sms_log;
+DROP POLICY IF EXISTS sms_log_update ON sms_log;
+DROP POLICY IF EXISTS sms_log_delete ON sms_log;
 
 CREATE POLICY sms_log_select ON sms_log FOR SELECT TO authenticated
   USING (current_app_role() IN ('admin', 'staff'));

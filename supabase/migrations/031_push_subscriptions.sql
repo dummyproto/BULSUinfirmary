@@ -8,7 +8,7 @@
 -- browser generates these when subscribing; nothing here is chosen by
 -- the app itself.
 
-CREATE TABLE push_subscriptions (
+CREATE TABLE IF NOT EXISTS push_subscriptions (
   push_subscription_id BIGSERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
   endpoint TEXT NOT NULL UNIQUE,
@@ -18,7 +18,7 @@ CREATE TABLE push_subscriptions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_push_subscriptions_user_id ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);
 
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 
@@ -27,6 +27,10 @@ ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 -- Function bypasses this entirely via its service-role key — it needs
 -- to read subscriptions belonging to whoever a notification targets,
 -- not just the caller's own.
+DROP POLICY IF EXISTS push_subscriptions_select ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_insert ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_delete ON push_subscriptions;
+
 CREATE POLICY push_subscriptions_select ON push_subscriptions FOR SELECT TO authenticated
   USING (user_id = current_app_user_id());
 

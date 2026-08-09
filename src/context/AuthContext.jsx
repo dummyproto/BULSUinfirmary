@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
 
-    let active = true
+    let active
     try {
       active = await checkAccountActive(email)
     } catch {

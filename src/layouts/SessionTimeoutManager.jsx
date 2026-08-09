@@ -32,7 +32,7 @@ export default function SessionTimeoutManager() {
   const navigate = useNavigate()
   const [secondsLeft, setSecondsLeft] = useState(null) // null = warning not showing
 
-  const lastActivityRef = useRef(Date.now())
+  const lastActivityRef = useRef(null)
   const loggedOutRef = useRef(false)
 
   const handleSignOut = useCallback(async () => {
@@ -57,7 +57,6 @@ export default function SessionTimeoutManager() {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setSecondsLeft(null)
       loggedOutRef.current = false
       return undefined
     }

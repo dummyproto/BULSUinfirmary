@@ -478,32 +478,6 @@
 [data-theme="dark"] .theme-toggle-btn .icon-sun { opacity: 1; transform: rotate(0deg) scale(1); }
 [data-theme="dark"] .theme-toggle-btn .icon-moon { opacity: 0; transform: rotate(-90deg) scale(.6); }
 
-/* Push notification toggle — same structure as .theme-toggle-btn
-   above, but state comes from a local .on class (this device's actual
-   subscription state) rather than the global data-theme attribute,
-   since push is per-device/per-user, not an app-wide setting. No
-   BellOffIcon exists in this icon library, so — unlike the sun/moon
-   crossfade above — this communicates state through background/color
-   alone (filled when on, outline when off) with a single static icon. */
-.push-toggle-btn {
-  width: 36px; height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-2);
-  transition: var(--transition);
-  flex-shrink: 0;
-}
-.push-toggle-btn:hover:not(:disabled) {
-  background: var(--primary-light);
-  color: var(--primary);
-  border-color: var(--primary);
-  transform: scale(1.05);
-}
-.push-toggle-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
-
 /* Global smooth theme transition */
 *, *::before, *::after {
   transition-property: background-color, border-color, color, box-shadow;

@@ -6,13 +6,15 @@ import { themedOptions, lineAreaDataset, CHART_GRID_X, CHART_GRID_Y } from '@lib
 
 const PALETTE = ['#1E7B5E', '#6A3FA0', '#2E7D52', '#B8660A', '#C0392B', '#1A7A8A', '#DB2777', '#65A30D', '#EA580C', '#6366F1']
 
-function useChart(canvasRef, config) {
+function useChart(canvasRef, buildConfig) {
   useEffect(() => {
-    if (!canvasRef.current || !config) return undefined
+    if (!canvasRef.current) return undefined
+    const config = buildConfig()
+    if (!config) return undefined
     const chart = new Chart(canvasRef.current, config)
     return () => chart.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config])
+  }, [buildConfig])
 }
 
 export default function AnalyticsTab({ consultations, categories }) {
@@ -71,7 +73,7 @@ export default function AnalyticsTab({ consultations, categories }) {
     return Object.entries(m).sort((a, b) => b[1] - a[1])
   }, [categories, diagCount])
 
-  useChart(monthlyRef, {
+  useChart(monthlyRef, () => ({
     type: 'line',
     data: {
       labels: months.map((m) => {
@@ -97,10 +99,9 @@ export default function AnalyticsTab({ consultations, categories }) {
         x: { ...CHART_GRID_X },
       },
     }),
-  })
+  }))
 
-  useChart(
-    diagRef,
+  useChart(diagRef, () =>
     topDiags.length
       ? {
           type: 'bar',
@@ -121,8 +122,7 @@ export default function AnalyticsTab({ consultations, categories }) {
       : null
   )
 
-  useChart(
-    medsRef,
+  useChart(medsRef, () =>
     topMeds.length
       ? {
           type: 'bar',
@@ -150,14 +150,14 @@ export default function AnalyticsTab({ consultations, categories }) {
   // colors if Emergency happened to be encountered before Walk-in.
   const VISIT_TYPE_COLORS = { 'Walk-in': '#1E7B5E', Emergency: '#C0392B' }
 
-  useChart(visitsRef, {
+  useChart(visitsRef, () => ({
     type: 'doughnut',
     data: {
       labels: Object.keys(visitTypes),
       datasets: [{ data: Object.values(visitTypes), backgroundColor: Object.keys(visitTypes).map((t) => VISIT_TYPE_COLORS[t] || '#94A3B8'), borderWidth: 2 }],
     },
     options: themedOptions({ responsive: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }),
-  })
+  }))
 
   return (
     <div className="analytics-grid">

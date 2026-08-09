@@ -218,7 +218,7 @@ export default function LoginPage() {
         // email, network hiccup), treat it as non-admin and proceed with
         // the normal escalation — failing open here would mean anyone
         // could dodge the lockout just by causing the lookup to error.
-        let isAdmin = false
+        let isAdmin
         try {
           isAdmin = (await getRoleByEmail(email)) === 'admin'
         } catch {

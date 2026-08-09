@@ -14,5 +14,13 @@
 -- deleted once, by whoever clicks its ×, not broadcast-removed for the
 -- whole role).
 
+-- DROP + CREATE (not just CREATE) so this migration is safe to re-run —
+-- this exact policy was originally applied by pasting it into the SQL
+-- editor directly (see the original comment above: "Must be applied
+-- via supabase db push or SQL editor"), so the live database already
+-- has it even though the CLI's own migration history never recorded
+-- that. Without this guard, running `supabase db push` for the first
+-- time on this project fails here with "policy already exists."
+DROP POLICY IF EXISTS notifications_delete ON notifications;
 CREATE POLICY notifications_delete ON notifications FOR DELETE TO authenticated
   USING (user_id = current_app_user_id() OR target_role = current_app_role());
