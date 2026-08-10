@@ -169,12 +169,15 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
     }
   }
 
-  async function handleDelete(id) {
-    if (typeof id === 'string' && id.startsWith(INV_ID_PREFIX)) {
-      await deleteInventoryNotification(Number(id.slice(INV_ID_PREFIX.length)))
-    } else {
-      await deleteNotification(id)
-    }
+  async function handleDelete(ids) {
+    const idList = Array.isArray(ids) ? ids : [ids]
+    await Promise.all(
+      idList.map((id) =>
+        typeof id === 'string' && id.startsWith(INV_ID_PREFIX)
+          ? deleteInventoryNotification(Number(id.slice(INV_ID_PREFIX.length)))
+          : deleteNotification(id)
+      )
+    )
   }
 
   async function handleMarkAllRead() {
