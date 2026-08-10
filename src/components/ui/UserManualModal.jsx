@@ -50,8 +50,9 @@ const SECTIONS = [
         </p>
         <h4>Notifications &amp; dark mode</h4>
         <p>
-          The bell icon in the top bar shows your notifications. Dark/light mode is no longer in the top bar — switch it from{' '}
-          <strong>Profile → Account Settings → Appearance</strong>.
+          The bell icon in the top bar shows your notifications. To delete one or several, tap <strong>Delete</strong> next to
+          Mark All Read — this reveals checkboxes so you can select exactly which ones to remove. Dark/light mode is no longer
+          in the top bar — switch it from <strong>Profile → Account Settings → Appearance</strong>.
         </p>
         <h4>Mobile view</h4>
         <p>
@@ -195,7 +196,8 @@ const SECTIONS = [
           </li>
           <li>
             <strong>Log</strong> — a full audit trail of every stock movement (additions, releases, adjustments) with who did
-            it and when.
+            it and when. Admins (or staff with the delete permission from Maintenance → Staff Permissions) can remove entries
+            individually or in bulk with the Delete button.
           </li>
           <li>
             <strong>Alerts</strong> — low stock, near-expiry, and expired items surface here automatically so nothing gets
@@ -216,6 +218,10 @@ const SECTIONS = [
         <ul>
           <li>Choose a report type and date range, then generate a preview before exporting.</li>
           <li>Exported reports are formatted for printing/sharing (e.g. for monthly clinic summaries).</li>
+          <li>
+            The <strong>Reset</strong> button clears the current report and filters — admins always have it; staff need it
+            granted in Maintenance → Staff Permissions.
+          </li>
         </ul>
       </>
     ),
@@ -242,6 +248,31 @@ const SECTIONS = [
             sender's name and location, and can respond directly.
           </li>
         </ul>
+        <h4>Notify Parent/Guardian (Staff and Admin)</h4>
+        <p>
+          Sends a real SMS text message straight to a patient's parent/guardian — this is an actual message delivery, not just
+          an in-app notice.
+        </p>
+        <ul>
+          <li>
+            The Compose &amp; Preview panel walks you through it step by step: choose the patient, choose what happened, then
+            confirm pickup instructions (already set to a sensible default). The message preview builds itself automatically as
+            you go.
+          </li>
+          <li>
+            Every message is sent in <strong>both English and Tagalog</strong>, so it's understandable to parents who may not
+            read English — the Tagalog translation appears in italics in the preview.
+          </li>
+          <li>
+            If a patient has no valid guardian number on file, you can enter one manually right there before sending.
+          </li>
+          <li>
+            <strong>SMS Log</strong> and <strong>Alert Log</strong> keep a full history of everything sent — tap{' '}
+            <strong>View</strong> on any entry to see the complete message. Admins (or staff specifically granted the
+            permission in Maintenance → Staff Permissions) can delete entries individually or select several at once with the{' '}
+            <strong>Delete</strong> button.
+          </li>
+        </ul>
       </>
     ),
   },
@@ -259,10 +290,10 @@ const SECTIONS = [
             to re-enable an account that got disabled from repeated failed logins.
           </li>
           <li>
-            <strong>Permissions</strong> — control what staff accounts are allowed to do.
-          </li>
-          <li>
-            <strong>Email Configuration</strong> — manage the outgoing email settings used for notifications.
+            <strong>Staff Permissions</strong> — grant individual staff accounts specific abilities beyond their default role:
+            printing inventory reports, document requests, or health records; deleting entries from the Alert Log, SMS Log, or
+            Inventory Transaction Log; and resetting the Reports page. Admins always have every ability regardless of these
+            toggles — this only controls what staff accounts can do.
           </li>
         </ul>
       </>

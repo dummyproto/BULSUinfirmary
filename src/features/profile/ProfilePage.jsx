@@ -126,7 +126,9 @@ export default function ProfilePage() {
     let cancelled = false
     getUserByEmail(authProfile.email)
       .then((row) => {
-        if (!cancelled) setUser(toFormShape(row))
+        if (cancelled) return
+        if (!row) throw new Error('Your account profile could not be found — it may have been removed.')
+        setUser(toFormShape(row))
       })
       .catch((err) => show(`Failed to load profile: ${err.message}`, 'error'))
       .finally(() => {

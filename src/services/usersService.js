@@ -227,7 +227,13 @@ export async function registerPatient({ email, password, name, surname, givenNam
  */
 export async function finalizeSelfRegistration(authUser) {
   const m = authUser.user_metadata || {}
-  const username = (authUser.email || '').split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase()
+  // Capped to match users.username's VARCHAR(50) column exactly — an
+  // email with a long local part (before the @) could otherwise
+  // produce a username the database rejects outright with "value too
+  // long for type character varying(50)", breaking registration for
+  // that person entirely rather than just trimming their auto-derived
+  // username to fit.
+  const username = (authUser.email || '').split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 50)
 
   const { data: user, error } = await supabase
     .from('users')
@@ -236,11 +242,16 @@ export async function finalizeSelfRegistration(authUser) {
       email: authUser.email,
       role: 'patient',
       name: m.name,
-      phone: m.phone || null,
+      phone: m.phone ? String(m.phone).slice(0, 20) : null,
       password_hash: 'MANAGED_BY_SUPABASE_AUTH',
       is_active: true,
       auth_user_id: authUser.id,
-      school_id_barcode: m.qr_code || null,
+      // Capped to match users.school_id_barcode's VARCHAR(50) column —
+      // already capped at the source in extractSchoolIdCode(), but
+      // capped again here too so this specific column can never fail
+      // this way regardless of which upstream path a future change
+      // might route through this field.
+      school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : null,
     })
     .select()
     .single()
@@ -333,13 +344,13 @@ export async function listUsers() {
 }
 
 export async function getUserByEmail(email) {
-  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('email', email).single()
+  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('email', email).maybeSingle()
   if (error) throw error
   return flattenUser(data)
 }
 
 export async function getUserByAuthId(authUserId) {
-  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('auth_user_id', authUserId).single()
+  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('auth_user_id', authUserId).maybeSingle()
   if (error) throw error
   return flattenUser(data)
 }

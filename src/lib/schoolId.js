@@ -27,7 +27,13 @@ export function extractSchoolIdCode(raw) {
   if (paramMatch) return decodeURIComponent(paramMatch[1])
 
   const labelMatch = text.match(/(?:SCHOOL[-_\s]*ID|STUDENT[-_\s]*(?:NO|NUMBER|ID)|BARCODE)\s*[:=]\s*([A-Za-z0-9\-_.]+)/i)
-  return labelMatch ? labelMatch[1] : text
+  // Capped at 50 to match users.school_id_barcode's VARCHAR(50) column —
+  // without this, a QR code that doesn't match any of the patterns
+  // above falls through to returning the ENTIRE raw scanned text
+  // uncapped, which the database then rejects outright rather than
+  // just truncating it, breaking registration/login for that person
+  // entirely.
+  return (labelMatch ? labelMatch[1] : text).slice(0, 50)
 }
 
 /**
