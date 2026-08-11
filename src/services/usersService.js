@@ -314,6 +314,7 @@ function flattenUser(row) {
     // from, so fixing it here fixes every "?" avatar across the app.
     avatar_initials: row.avatar_initials || initialsFor(row.name || '?'),    department: staff_profiles?.department ?? null,
     position: staff_profiles?.position ?? null,
+    staff_id_number: staff_profiles?.staff_id_number ?? null,
     permissions: staff_permissions
 ? { print_inventory: staff_permissions.print_inventory, print_documents: staff_permissions.print_documents, print_health: staff_permissions.print_health, delete_logs: staff_permissions.delete_logs, reset_reports: staff_permissions.reset_reports }      : null,
     student_number: patient_profiles?.student_number ?? null,
@@ -375,10 +376,10 @@ export async function linkAuthUserIfNeeded(row, authUserId) {
  * `auth.users` row (see the architecture note at the top of this file).
  * The new person can't sign in until that separate server-side step runs.
  */
-export async function createUserProfile({ username, email, role, name, phone, department, position, studentNumber, course, yearLevel, authUserId }) {
+export async function createUserProfile({ username, email, role, name, phone, department, position, studentNumber, course, yearLevel, authUserId, schoolIdBarcode, staffIdNumber }) {
   const { data: user, error } = await supabase
     .from('users')
-    .insert({ username, email, role, name, phone: phone || null, password_hash: 'MANAGED_BY_SUPABASE_AUTH', is_active: true, auth_user_id: authUserId ?? null })
+    .insert({ username, email, role, name, phone: phone || null, password_hash: 'MANAGED_BY_SUPABASE_AUTH', is_active: true, auth_user_id: authUserId ?? null, school_id_barcode: schoolIdBarcode ?? null })
     .select()
     .single()
   if (error) throw error
@@ -394,7 +395,7 @@ export async function createUserProfile({ username, email, role, name, phone, de
     })
     if (ppError) throw ppError
   } else {
-    const { error: spError } = await supabase.from('staff_profiles').insert({ user_id: user.user_id, department: department || null, position: position || null })
+    const { error: spError } = await supabase.from('staff_profiles').insert({ user_id: user.user_id, department: department || null, position: position || null, staff_id_number: staffIdNumber ?? null })
     if (spError) throw spError
     const { error: permError } = await supabase
       .from('staff_permissions')

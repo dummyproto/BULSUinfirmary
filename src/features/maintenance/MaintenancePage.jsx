@@ -12,6 +12,7 @@ import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffPro
 import { addAuditLog } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
+import { generateSchoolIdCode, generateStaffId } from '@lib/schoolId'
 import { PeopleIcon, ShieldIcon } from '@components/ui/icons'
 
 const TABS = [
@@ -93,6 +94,8 @@ export default function MaintenancePage() {
         course: record.course,
         yearLevel: record.year_level,
         authUserId,
+        schoolIdBarcode: generateSchoolIdCode(),
+        staffIdNumber: record.role !== 'patient' ? generateStaffId() : null,
       })
       await addAuditLog({ userId: currentUserId, action: 'ADD_USER', details: `Added user: ${record.name} (${record.role})` })
       await refreshUsers()
@@ -111,7 +114,10 @@ export default function MaintenancePage() {
   async function handleEditSave(updates) {
     const user = editingUser
     try {
-      await updateUser(user.user_id, { name: updates.name, email: updates.email, phone: updates.phone })
+      // Regenerated on every save, not just when requested — the QR
+      // code is meant to change whenever an admin edits this user,
+      // invalidating any previously printed/shared code for them.
+      await updateUser(user.user_id, { name: updates.name, email: updates.email, phone: updates.phone, school_id_barcode: generateSchoolIdCode() })
       if (user.role === 'patient') {
         await updatePatientProfile(user.user_id, { student_number: updates.student_number, course: updates.course, year_level: updates.year_level })
       } else {
