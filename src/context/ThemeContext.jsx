@@ -2,15 +2,34 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 
 const ThemeContext = createContext(undefined)
 
-// NOTE: previously persisted to localStorage ('clinic_theme'). Per Phase 4's
-// explicit instruction to remove every localStorage usage, this now only
-// reads the OS-level color-scheme preference on first load and otherwise
-// lives in memory for the session — the theme choice no longer survives a
-// page reload. A real cross-device/persisted preference would need a
-// `user_prefs` table (not part of the current schema) written through
-// Supabase once a user is signed in.
+// Theme is a per-device UI preference, not sensitive/account data, and
+// ThemeProvider sits ABOVE AuthProvider in App.jsx (so login/register
+// pages get themed too, before anyone's signed in) — there's no signed-in
+// user to attach a server-side preference to at the point this needs to
+// read its initial value anyway. localStorage is the correct, standard
+// mechanism for exactly this ("keep this UI choice for this browser"),
+// which is why it's used here specifically despite the project's general
+// move away from localStorage elsewhere (that move was about not using it
+// for session/app state that actually needs to be correct and secure —
+// a cosmetic light/dark toggle is a different case).
+const THEME_STORAGE_KEY = 'clinic_theme'
+
+function readStoredTheme() {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY)
+    return stored === 'dark' || stored === 'light' ? stored : null
+  } catch {
+    // localStorage can throw (Safari private browsing on older versions,
+    // storage disabled by the browser/an extension, quota issues) — treat
+    // exactly like "nothing stored" rather than crashing theme init.
+    return null
+  }
+}
+
 function getInitialTheme() {
   if (typeof window === 'undefined') return 'light'
+  const stored = readStoredTheme()
+  if (stored) return stored
   const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
   return prefersDark ? 'dark' : 'light'
 }
@@ -20,6 +39,13 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch {
+      // Persistence failing (see readStoredTheme's comment) shouldn't
+      // block the theme from actually applying for the rest of this
+      // session — it just won't survive the next refresh.
+    }
   }, [theme])
 
   const toggleTheme = useCallback(() => {

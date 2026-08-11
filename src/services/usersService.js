@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient'
 import { initialsFor } from '@features/maintenance/lib/userHelpers'
+import { generateSchoolIdCode } from '@lib/schoolId'
+import { invokeEdgeFunction } from './edgeFunctions'
 
 // ── ARCHITECTURE NOTE (updated post-Phase-D) ──
 // `users.auth_user_id` bridges public.users <-> auth.users (migration 001).
@@ -27,11 +29,13 @@ import { initialsFor } from '@features/maintenance/lib/userHelpers'
  * sending configured — pass `temporaryPassword` in that case.
  */
 export async function provisionUser({ email, name, role, mode = 'invite', temporaryPassword }) {
-  const { data, error } = await supabase.functions.invoke('create-user', {
-    body: { email, name, role, mode, temporaryPassword },
-  })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  // invokeEdgeFunction() (see edgeFunctions.js) reads the function's own
+  // { error } response body and, separately, tells a network-level failure
+  // apart from a real server rejection — a raw supabase.functions.invoke()
+  // call collapses both into the same generic "Edge Function returned a
+  // non-2xx status code", which is what was showing up as an unexplained
+  // 400 in the console with no usable reason surfaced to the admin.
+  const data = await invokeEdgeFunction('create-user', { email, name, role, mode, temporaryPassword })
   return data.authUserId
 }
 
@@ -169,12 +173,13 @@ export async function checkStudentNumberRegistered(studentNumber) {
  * - `profileIncomplete`: set when the person used Step 2's "Skip for now"
  *   path. Written to `patient_profiles.profile_incomplete`.
  */
-export async function registerPatient({ email, password, name, surname, givenName, phone, studentNumber, course, yearLevel, qrCode, profileIncomplete }) {
+export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, qrCode, profileIncomplete }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
+        username,
         name,
         role: 'patient',
         surname,
@@ -227,13 +232,18 @@ export async function registerPatient({ email, password, name, surname, givenNam
  */
 export async function finalizeSelfRegistration(authUser) {
   const m = authUser.user_metadata || {}
-  // Capped to match users.username's VARCHAR(50) column exactly — an
-  // email with a long local part (before the @) could otherwise
-  // produce a username the database rejects outright with "value too
-  // long for type character varying(50)", breaking registration for
-  // that person entirely rather than just trimming their auto-derived
-  // username to fit.
-  const username = (authUser.email || '').split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 50)
+  // Prefer the username chosen at registration (RegisterModal Step 3,
+  // stashed in user_metadata the same way name/surname/etc. already are)
+  // over auto-deriving one from the email's local part — the derived
+  // version is still the fallback for any path that doesn't collect one
+  // (e.g. a metadata-less edge case), not removed outright. Same
+  // VARCHAR(50)-safe sanitization applied either way, and same
+  // capped-to-50 reasoning as before: a long chosen username shouldn't
+  // outright break registration with a column-length DB error.
+  const username = (m.username || (authUser.email || '').split('@')[0])
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase()
+    .slice(0, 50)
 
   const { data: user, error } = await supabase
     .from('users')
@@ -251,7 +261,16 @@ export async function finalizeSelfRegistration(authUser) {
       // capped again here too so this specific column can never fail
       // this way regardless of which upstream path a future change
       // might route through this field.
-      school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : null,
+      //
+      // Falls back to a freshly generated code when registration
+      // happened without scanning one — previously this was left as
+      // NULL for anyone who just filled the form normally instead of
+      // scanning a registration QR, meaning most patients never ended
+      // up with a working QR-login code at all. Every patient now gets
+      // one either way: a real scanned code if they used one, a
+      // generated one (same generator used for admin/staff accounts)
+      // if they didn't.
+      school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : generateSchoolIdCode(),
     })
     .select()
     .single()
@@ -320,6 +339,15 @@ function flattenUser(row) {
     student_number: patient_profiles?.student_number ?? null,
     course: patient_profiles?.course ?? null,
     year_level: patient_profiles?.year_level ?? null,
+    // Registration (registerPatient) already saves these to
+    // patient_profiles.surname/given_name, and EditProfileModal +
+    // ProfilePage's handleSaveProfile already read/write them under
+    // these exact keys — flattenUser was just never actually mapping
+    // them onto the returned object, so both the read-only Personal Info
+    // view and the Edit modal's pre-filled fields always showed blank
+    // ("—") regardless of what was actually saved at registration.
+    surname: patient_profiles?.surname ?? null,
+    givenName: patient_profiles?.given_name ?? null,
     // Phase Q: surfaced so ProfilePage can show the "finish your profile"
     // banner. `?? false` (not `?? null`) — the column is NOT NULL with a
     // default, so `false` is the only meaningful "no row / not set" value.
@@ -376,7 +404,7 @@ export async function linkAuthUserIfNeeded(row, authUserId) {
  * `auth.users` row (see the architecture note at the top of this file).
  * The new person can't sign in until that separate server-side step runs.
  */
-export async function createUserProfile({ username, email, role, name, phone, department, position, studentNumber, course, yearLevel, authUserId, schoolIdBarcode, staffIdNumber }) {
+export async function createUserProfile({ username, email, role, name, surname, givenName, phone, department, position, studentNumber, course, yearLevel, authUserId, schoolIdBarcode, staffIdNumber }) {
   const { data: user, error } = await supabase
     .from('users')
     .insert({ username, email, role, name, phone: phone || null, password_hash: 'MANAGED_BY_SUPABASE_AUTH', is_active: true, auth_user_id: authUserId ?? null, school_id_barcode: schoolIdBarcode ?? null })
@@ -388,8 +416,14 @@ export async function createUserProfile({ username, email, role, name, phone, de
     const { error: ppError } = await supabase.from('patient_profiles').insert({
       user_id: user.user_id,
       student_number: studentNumber,
-      surname: name.split(' ').slice(-1)[0],
-      given_name: name.split(' ').slice(0, -1).join(' ') || name,
+      // AddUserModal now collects these directly (Surname/First Name
+      // fields, not one freeform "Full Name" input) — prefer them when
+      // given. The name.split(' ') guess is kept only as a fallback for
+      // any other caller that still passes just `name`, so it degrades
+      // gracefully rather than breaking, but is no longer how this gets
+      // populated from the actual Add User form.
+      surname: surname || name.split(' ').slice(-1)[0],
+      given_name: givenName || name.split(' ').slice(0, -1).join(' ') || name,
       course: course || null,
       year_level: yearLevel || null,
     })
@@ -454,11 +488,14 @@ export async function deleteUser(userId) {
   // here leaves both intact rather than deleting the profile while
   // leaving a live, now-orphaned login behind.
   if (user?.auth_user_id) {
-    const { data, error: fnError } = await supabase.functions.invoke('delete-user', {
-      body: { authUserId: user.auth_user_id },
-    })
-    if (fnError) throw fnError
-    if (data?.error) throw new Error(data.error)
+    // See provisionUser() above for why this goes through
+    // invokeEdgeFunction() rather than calling supabase.functions.invoke()
+    // directly — this specific call is the one that was showing up in the
+    // console as "POST .../delete-user 400 (Bad Request)" with no further
+    // explanation; this surfaces the function's actual reason (e.g. an
+    // expired session after a connectivity drop, or "Forbidden") in the
+    // toast instead.
+    await invokeEdgeFunction('delete-user', { authUserId: user.auth_user_id })
   }
 
   const { error } = await supabase.from('users').delete().eq('user_id', userId)
@@ -487,9 +524,5 @@ export async function resetUserPassword(userId, newPassword) {
   if (lookupError) throw lookupError
   if (!user?.auth_user_id) throw new Error('This user has no linked login account.')
 
-  const { data, error: fnError } = await supabase.functions.invoke('reset-user-password', {
-    body: { authUserId: user.auth_user_id, newPassword },
-  })
-  if (fnError) throw fnError
-  if (data?.error) throw new Error(data.error)
+  const data = await invokeEdgeFunction('reset-user-password', { authUserId: user.auth_user_id, newPassword })
 }

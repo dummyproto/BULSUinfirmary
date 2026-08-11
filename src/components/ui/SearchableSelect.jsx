@@ -40,6 +40,8 @@ export default function SearchableSelect({
   placeholder,
   iconLabel, // e.g. 'DX' / 'RX' badge shown per row instead of an avatar
   iconClassName = 'diagnosis-item-icon',
+  getIconStyle, // optional (opt) => style object, to color the badge per-row (e.g. by diagnosis category) instead of every row sharing one fixed color
+  getIconClassName, // optional (opt) => extra class name, same purpose as getIconStyle but via a CSS class — prefer this over getIconStyle when the color needs to respect [data-theme="dark"], since an inline style always overrides a class regardless of theme
   emptyLabel = 'No results found',
 }) {
   const [open, setOpen] = useState(false)
@@ -118,7 +120,7 @@ export default function SearchableSelect({
                 onClick={() => handleSelect(opt)}
               >
                 {iconLabel ? (
-                  <div className={iconClassName}>{iconLabel}</div>
+                  <div className={`${iconClassName}${getIconClassName ? ` ${getIconClassName(opt)}` : ''}`} style={getIconStyle?.(opt)}>{iconLabel}</div>
                 ) : (
                   <div className="patient-item-avatar">{opt.icon || opt.label.slice(0, 2).toUpperCase()}</div>
                 )}

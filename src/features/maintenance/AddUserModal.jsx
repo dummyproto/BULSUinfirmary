@@ -3,9 +3,20 @@ import Modal from '@components/ui/Modal'
 import PasswordInput from '@components/ui/PasswordInput'
 import { COURSES, YEAR_LEVELS } from './data/formOptions'
 import { validatePassword, initialsFor } from './lib/userHelpers'
+import { buildFullName } from '@features/profile/lib/profileHelpers'
 import { PlusIcon } from '@components/ui/icons'
 
-const EMPTY = { name: '', email: '', password: '', role: 'patient', phone: '', studentNumber: '', course: '', yearLevel: '', department: '', position: '' }
+// Same format as registration (RegisterModal.jsx) and EditUserModal.jsx
+// — 4-3-3 digit groups, e.g. "2023-000-000". The underlying form state
+// stays plain digits only; this is purely a display-time formatter, so
+// a patient's User ID looks identical no matter which of these three
+// screens it's being entered/viewed on.
+function formatUserNumber(digits) {
+  const parts = [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 10)].filter(Boolean)
+  return parts.join('-')
+}
+
+const EMPTY = { name: '', surname: '', givenName: '', email: '', password: '', role: 'patient', phone: '', studentNumber: '', course: '', yearLevel: '', department: '', position: '' }
 
 // Clinic Staff's Department is always "Clinic" and Position is picked
 // from this fixed list — Administrator's Department/Position are each a
@@ -39,9 +50,23 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
   }
 
   function handleSave() {
-    const name = form.name.trim()
+    // Patients: name is derived from Surname + First Name, same as
+    // EditUserModal.jsx and EditProfileModal.jsx already do — never
+    // typed as one freeform "Full Name" field for this role, so all
+    // three name-editing surfaces in the app stay consistent instead of
+    // three different ways to end up with a name that doesn't match a
+    // patient's own Surname/First Name fields.
+    const isPatient = form.role === 'patient'
+    const surname = form.surname.trim()
+    const givenName = form.givenName.trim()
+    const name = isPatient ? buildFullName({ surname, givenName }, '') : form.name.trim()
     const email = form.email.trim().toLowerCase()
-    if (!name || !email || !form.password) return onError('Name, email, and password are required')
+    if (isPatient) {
+      if (!surname || !givenName) return onError('Surname and First Name are required')
+    } else if (!name) {
+      return onError('Full Name is required')
+    }
+    if (!email || !form.password) return onError('Email and password are required')
     if (form.role === 'staff' && !form.position) return onError('Position is required for Clinic Staff')
 
     const pwCheck = validatePassword(form.password)
@@ -65,6 +90,8 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
       profile_img_url: null,
     }
     if (form.role === 'patient') {
+      record.surname = surname
+      record.givenName = givenName
       record.student_number = form.studentNumber.trim() || null
       record.course = form.course || null
       record.year_level = form.yearLevel || null
@@ -95,10 +122,23 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
       }
     >
       <div className="form-grid">
-        <div className="form-group full">
-          <label>FULL NAME *</label>
-          <input className="form-input" placeholder="e.g., Juan dela Cruz" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
-        </div>
+        {form.role === 'patient' ? (
+          <>
+            <div className="form-group">
+              <label>SURNAME *</label>
+              <input className="form-input" placeholder="e.g., Dela Cruz" value={form.surname} onChange={(e) => setField('surname')(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>FIRST NAME *</label>
+              <input className="form-input" placeholder="e.g., Juan" value={form.givenName} onChange={(e) => setField('givenName')(e.target.value)} />
+            </div>
+          </>
+        ) : (
+          <div className="form-group full">
+            <label>FULL NAME *</label>
+            <input className="form-input" placeholder="e.g., Juan dela Cruz" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
+          </div>
+        )}
         <div className="form-group">
           <label>EMAIL *</label>
           <input className="form-input" type="email" placeholder="user@school.edu" value={form.email} onChange={(e) => setField('email')(e.target.value)} />
@@ -136,7 +176,14 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
           <>
             <div className="form-group">
               <label>USER ID</label>
-              <input className="form-input" placeholder="2024-00001" value={form.studentNumber} onChange={(e) => setField('studentNumber')(e.target.value)} />
+              <input
+                className="form-input"
+                value={formatUserNumber(form.studentNumber)}
+                inputMode="numeric"
+                placeholder="2023-000-000"
+                onChange={(e) => setField('studentNumber')(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              />
+              <span style={{ fontSize: 11, color: form.studentNumber.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.studentNumber.length}/10</span>
             </div>
             <div className="form-group">
               <label>COURSE</label>

@@ -14,6 +14,7 @@ import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
 import { generateSchoolIdCode, generateStaffId } from '@lib/schoolId'
 import { PeopleIcon, ShieldIcon } from '@components/ui/icons'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = [
   { key: 'users', label: 'User Management', Icon: PeopleIcon },
@@ -56,6 +57,15 @@ export default function MaintenancePage() {
     setUsers(await listUsers())
   }
 
+  // listUsers() joins users + staff_profiles + staff_permissions +
+  // patient_profiles (see SELECT_WITH_PROFILES in usersService.js) —
+  // a change to ANY of those four tables, by ANY admin, on ANY device,
+  // should be reflected here without needing a manual reload. Toggling
+  // a permission switch in the Staff Permissions tab, for instance, used
+  // to only update the admin who clicked it; a second admin already on
+  // this page wouldn't see it until they refreshed.
+  useRealtimeRefresh(['users', 'staff_profiles', 'staff_permissions', 'patient_profiles'], refreshUsers)
+
   const editingUser = users.find((u) => u.user_id === editId) || null
   const pwUser = users.find((u) => u.user_id === pwUserId) || null
   const tabItems = TABS.map((t) => (t.key === 'users' ? { ...t, label: `${t.label} (${users.length})` } : t))
@@ -87,6 +97,8 @@ export default function MaintenancePage() {
         email: record.email,
         role: record.role,
         name: record.name,
+        surname: record.surname,
+        givenName: record.givenName,
         phone: record.phone,
         department: record.department,
         position: record.position,
@@ -119,7 +131,7 @@ export default function MaintenancePage() {
       // invalidating any previously printed/shared code for them.
       await updateUser(user.user_id, { name: updates.name, email: updates.email, phone: updates.phone, school_id_barcode: generateSchoolIdCode() })
       if (user.role === 'patient') {
-        await updatePatientProfile(user.user_id, { student_number: updates.student_number, course: updates.course, year_level: updates.year_level })
+        await updatePatientProfile(user.user_id, { surname: updates.surname, given_name: updates.givenName, student_number: updates.student_number, course: updates.course, year_level: updates.year_level })
       } else {
         await updateStaffProfile(user.user_id, { department: updates.department, position: updates.position })
       }

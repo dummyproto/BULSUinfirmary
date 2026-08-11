@@ -22,7 +22,18 @@ export function AuthProvider({ children }) {
       let row = await getUserByAuthId(authUser.id)
       if (!row && authUser.email) {
         row = await getUserByEmail(authUser.email)
-        if (row) await linkAuthUserIfNeeded(row.user_id, authUser.id)
+        // linkAuthUserIfNeeded(row, authUserId) — its FIRST parameter is
+        // the whole row object (it reads row.auth_user_id and
+        // row.user_id internally), not the bare user_id. Passing
+        // row.user_id here (just the integer) meant the function's own
+        // `row.user_id` access was reading .user_id off a number, i.e.
+        // undefined — which the update's .eq('user_id', undefined) then
+        // sent to Postgres as the literal string "undefined" against an
+        // integer column, exactly the "invalid input syntax for type
+        // integer" 400 in the console. Hit on the "found by email, not
+        // yet linked by auth_user_id" bridge path — most commonly a
+        // patient's first sign-in right after self-registration.
+        if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
       }
       if (!row && authUser.user_metadata?.role === 'patient') {
         row = await finalizeSelfRegistration(authUser)
@@ -37,10 +48,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return
       setSession(data.session)
-      if (data.session?.user) loadProfile(data.session.user)
+      // Awaited, not fire-and-forget — same reasoning as signIn() below:
+      // setLoading(false) is what lets ProtectedRoute stop showing its
+      // spinner and render the actual page, so if it ran before the
+      // profile fetch finished, ProtectedRoute would let DashboardPage
+      // through with `role` still null (DashboardPage renders nothing
+      // for that case) — a blank flash on every page refresh/reopen
+      // while already signed in, not just on a fresh login.
+      if (data.session?.user) await loadProfile(data.session.user)
+      if (!mounted) return
       setLoading(false)
     })
 
@@ -99,8 +118,21 @@ export function AuthProvider({ children }) {
       throw new Error('ACCOUNT_DISABLED')
     }
 
+    // Load the profile here, before signIn() itself resolves, instead of
+    // only relying on the onAuthStateChange listener above to pick it up
+    // asynchronously. Without this, LoginPage's `await signIn(...)`
+    // could resolve — flipping isAuthenticated true and firing the
+    // redirect to /dashboard — before `profile`/`role` had actually
+    // finished loading, since that listener fires independently of this
+    // function's own promise. DashboardPage has no way to render the
+    // right per-role dashboard with `role` still null, so that gap
+    // showed up as a blank flash between "logged in" and "dashboard
+    // actually visible" instead of landing on it directly. Awaiting it
+    // here means role is already set by the time the caller proceeds.
+    await loadProfile(data.user)
+
     return data
-  }, [])
+  }, [loadProfile])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -151,6 +183,48 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
   }, [])
+
+  // Keeps `profile` live for whoever's actually signed in, not just the
+  // person making a change themselves. Without this, `profile` only
+  // ever updated after this person's OWN save (loadProfile/
+  // refreshProfile called explicitly) — an admin editing this patient's
+  // Surname/First Name in Maintenance, or the same person editing their
+  // own name from a second tab/device, would leave every OTHER place
+  // reading useAuth().profile (Topbar's name, ProfilePage's Personal
+  // Info, Sidebar, MobileBottomNav) silently stale until their next
+  // sign-in. One subscription here, in the single place `profile` state
+  // actually lives, automatically covers every consumer of it — no need
+  // to wire this into each component separately. Filtered to THIS
+  // user's own row only (not the whole users/patient_profiles/
+  // staff_profiles tables) — same scoping AccountStatusGuard already
+  // uses for the same reason: efficiency, and avoiding this tab
+  // refetching every time ANY unrelated user's data changes anywhere in
+  // the app.
+  useEffect(() => {
+    const userId = profile?.user_id
+    if (!userId) return undefined
+
+    let debounceTimer = null
+    function scheduleRefresh() {
+      clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        loadProfile(session?.user)
+      }, 400)
+    }
+
+    const channel = supabase
+      .channel(`profile-live-${userId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_profiles', filter: `user_id=eq.${userId}` }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_profiles', filter: `user_id=eq.${userId}` }, scheduleRefresh)
+      .subscribe()
+
+    return () => {
+      clearTimeout(debounceTimer)
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.user_id])
 
   const value = {
     session,

@@ -241,9 +241,9 @@ function buildMentalHealthResourcesResponse() {
   </div><br>
   <strong>📍 On-Campus Support:</strong>
   <div class="chat-info-box">
-    <div class="info-row"><span>🏥 Clinic Counselor</span><span>Visit Room 101 or call <strong>Ext. 1234</strong></span></div>
-    <div class="info-row"><span>🕐 Hours</span><span>Mon–Fri, 7:30 AM–5:30 PM</span></div>
-    <div class="info-row"><span>🚨 After Hours</span><span>Security: <strong>Ext. 0000</strong></span></div>
+    <div class="info-row"><span>🏥 Clinic / Guidance Office</span><span>Visit the clinic or call <strong>0907-684-2769</strong></span></div>
+    <div class="info-row"><span>🕐 Hours</span><span>Mon–Fri, 8:00 AM–5:00 PM</span></div>
+    <div class="info-row"><span>🚨 After Hours</span><span>Go to the nearest hospital, or call a national hotline below</span></div>
   </div>
   <strong>📞 National Hotlines (Philippines):</strong>
   <div class="chat-info-box">
@@ -335,7 +335,7 @@ function buildBotResponse(intent, msg, ctx) {
     }
 
     case 'farewell':
-      return `👋 Take care and stay healthy! Remember, the clinic is always here for you during operating hours.<br><br>🕐 Mon–Fri: <strong>7:30 AM – 5:30 PM</strong><br>📞 Emergency: <strong>Ext. 0000</strong>`
+      return `👋 Take care and stay healthy! Remember, the clinic is always here for you during operating hours.<br><br>🕐 Mon–Fri: <strong>8:00 AM – 5:00 PM</strong><br>📞 Clinic: <strong>0907-684-2769</strong>`
 
     case 'thanks':
       return `😊 You're welcome! Is there anything else I can help you with? Don't hesitate to ask about clinic services, health tips, or document requests.`
@@ -344,36 +344,35 @@ function buildBotResponse(intent, msg, ctx) {
       const now = new Date()
       const day = now.getDay()
       const hour = now.getHours() + now.getMinutes() / 60
-      const isOpen = day >= 1 && day <= 5 && hour >= 7.5 && hour < 17.5
+      const isOpen = day >= 1 && day <= 5 && hour >= 8 && hour < 17
       const status = isOpen
         ? '<span style="color:#16A34A;font-weight:600">🟢 Currently OPEN</span>'
         : '<span style="color:#DC2626;font-weight:600">🔴 Currently CLOSED</span>'
       return `🕐 <strong>Clinic Schedule</strong><br><br>
       <div class="chat-info-box">
-        <div class="info-row"><span>📅 Monday – Friday</span><span><strong>7:30 AM – 5:30 PM</strong></span></div>
+        <div class="info-row"><span>📅 Monday – Friday</span><span><strong>8:00 AM – 5:00 PM</strong></span></div>
         <div class="info-row"><span>📅 Saturday & Sunday</span><span><strong>Closed</strong></span></div>
-        <div class="info-row"><span>🚨 Emergency (After Hours)</span><span><strong>Ext. 0000</strong></span></div>
       </div>
       Status right now: ${status}<br><br>
-      Walk-ins are welcome during clinic hours. For appointments, call <strong>Ext. 1234</strong>.`
+      Walk-ins are welcome during clinic hours. For appointments or after-hours concerns, call <strong>0907-684-2769</strong>.`
     }
 
     case 'location':
       return `📍 <strong>Clinic Location</strong><br><br>
       <div class="chat-info-box">
+        <div class="info-row"><span>📍 Campus</span><span><strong>Bulsu Meneses Campus (Near Gate 1)</strong></span></div>
         <div class="info-row"><span>🏢 Building</span><span><strong>Main Building</strong></span></div>
         <div class="info-row"><span>🪜 Floor</span><span><strong>Ground Floor</strong></span></div>
-        <div class="info-row"><span>🚪 Room</span><span><strong>Room 101</strong></span></div>
-        <div class="info-row"><span>📞 Phone</span><span><strong>Ext. 1234</strong></span></div>
-        <div class="info-row"><span>📧 Email</span><span><strong>clinic@capstone.edu</strong></span></div>
+        <div class="info-row"><span>📞 Phone</span><span><strong>0907-684-2769</strong></span></div>
+        <div class="info-row"><span>📧 Email</span><span><strong>infirmary.meneses@bulsu.edu.ph</strong></span></div>
+        <div class="info-row"><span>📘 Facebook</span><span><strong>Bulsu Health Services Unit-Meneses Campus</strong></span></div>
       </div>
       💡 <em>Tip: Look for the green clinic cross sign at the main building entrance.</em>`
 
     case 'staff':
       return `👩‍⚕️ <strong>Clinic Staff</strong><br><br>
       ${KB.clinic.staff.map((s) => `<div class="chat-info-box" style="margin-bottom:8px">
-        <div class="info-row"><span>👤 Name</span><span><strong>${s.name}</strong></span></div>
-        <div class="info-row"><span>🏷️ Role</span><span>${s.role}</span></div>
+        <div class="info-row"><span>🏷️ Role</span><span><strong>${s.role}</strong></span></div>
         <div class="info-row"><span>🕐 Schedule</span><span>${s.available}</span></div>
       </div>`).join('')}
       <em>Staff schedules may change. Check the clinic bulletin board for updates.</em>`
@@ -523,7 +522,7 @@ function buildBotResponse(intent, msg, ctx) {
       <div class="chat-info-box">
         <div class="info-row"><span>📋 Schedule</span><span>Check clinic bulletin board for dates</span></div>
         <div class="info-row"><span>🪪 Requirement</span><span>Valid ID and vaccination record</span></div>
-        <div class="info-row"><span>📞 Inquire</span><span>Ext. 1234 for next vaccine schedule</span></div>
+        <div class="info-row"><span>📞 Inquire</span><span>Call <strong>0907-684-2769</strong> for next vaccine schedule</span></div>
       </div>
       💡 Bring your previous vaccination card to update your immunization records.`
 
@@ -558,7 +557,7 @@ function buildBotResponse(intent, msg, ctx) {
       • Weekend submissions are processed starting the next Monday<br>
       • You will be <strong>notified</strong> when your document is ready<br>
       • Check your <strong>My Requests</strong> tab or notifications for updates<br>
-      • Pickup is available at the clinic window during <strong>7:30 AM – 5:30 PM</strong> (Mon–Fri)<br><br>
+      • Pickup is available at the clinic window during <strong>8:00 AM – 5:00 PM</strong> (Mon–Fri)<br><br>
       🚀 <strong>Fast-track tip:</strong> Submit your request early in the week to get it ready faster!`
 
     default:
@@ -627,7 +626,7 @@ export function getBotReply(msg, ctx) {
     ${chip('🚨 Emergency', 'emergency')}
     ${chip('💙 Mental Health', 'mental health resources')}
   </div>
-  <br>Or you can visit the clinic at <strong>Main Bldg, GF, Room 101</strong> during office hours (Mon–Fri, 7:30 AM–5:30 PM).`
+  <br>Or you can visit the clinic at <strong>Bulsu Meneses Campus (Near Gate 1), Ground Floor, Main Building</strong> during office hours (Mon–Fri, 8:00 AM–5:00 PM).`
 }
 
 export function buildTopicChips(topics) {

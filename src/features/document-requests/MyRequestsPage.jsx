@@ -11,8 +11,8 @@ import { formatDate } from '@lib/format'
 import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
 import NewRequestModal from './NewRequestModal'
-import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
-import { defaultShowMore } from '@lib/viewport'
+import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon, PhoneIcon, MessageSquareIcon } from '@components/ui/icons'
+import { useDefaultShowMore } from '@hooks/useDefaultShowMore'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined']
 
@@ -20,6 +20,8 @@ const INFO_CARDS = [
   [ClockIcon, 'Processing Time', '2–3 working days for standard documents'],
   [CreditCardIcon, 'Requirements', 'Valid school ID and completed request form'],
   [MapPinIcon, 'Pickup', 'Clinic window — Mon to Fri, 8AM–5PM'],
+  [PhoneIcon, 'Contact', '0907-684-2769'],
+  [MessageSquareIcon, 'Facebook', 'Bulsu Health Services Unit-Meneses Campus'],
 ]
 
 // Ported 1:1 from renderMyRequests()'s inline notes-formatting logic: what
@@ -87,7 +89,7 @@ export default function MyRequestsPage() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('All')
-  const [showMore, setShowMore] = useState(defaultShowMore)
+  const [showMore, setShowMore] = useDefaultShowMore()
   const [newRequestOpen, setNewRequestOpen] = useState(false)
   const [detailId, setDetailId] = useState(null)
 
@@ -265,8 +267,8 @@ export default function MyRequestsPage() {
                   )}
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <button type="button" className="btn btn-sm btn-outline" title="View details" onClick={() => setDetailId(d.doc_request_id)}>
-                        <EyeIcon width={13} height={13} />
+                      <button type="button" className="btn btn-sm btn-outline" title="View details" onClick={() => setDetailId(d.doc_request_id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <EyeIcon width={13} height={13} /> View
                       </button>
                       {d.status === 'Approved' && (
                         <button
@@ -278,11 +280,6 @@ export default function MyRequestsPage() {
                         >
                           <ClipboardIcon width={13} height={13} /> Mark as Claimed
                         </button>
-                      )}
-                      {d.status === 'Claimed' && (
-                        <span style={{ color: 'var(--success)', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          <CheckCircleIcon width={13} height={13} /> Claimed
-                        </span>
                       )}
                     </div>
                   </td>
@@ -299,7 +296,7 @@ export default function MyRequestsPage() {
             <InfoIcon width={15} height={15} /> Processing Information
           </h3>
         </div>
-        <div className="processing-info-grid" style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+        <div className="processing-info-grid" style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
           {INFO_CARDS.map(([Icon, title, desc]) => (
             <div
               key={title}

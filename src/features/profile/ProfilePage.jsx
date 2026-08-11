@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
-import { useTheme } from '@context/ThemeContext'
 import Spinner from '@components/ui/Spinner'
 import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
 import { compressImageFile } from '@lib/imageCompression'
@@ -26,8 +25,6 @@ import {
   ShieldIcon,
   CheckCircleIcon,
   AlertTriangleIcon,
-  SunIcon,
-  MoonIcon,
 } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
@@ -53,7 +50,15 @@ function toFormShape(row) {
     avatarInitials: row.avatar_initials || (row.name || '?').slice(0, 2).toUpperCase(),
     profileImg: row.profile_img_url || null,
     surname: row.surname || '',
-    givenName: row.given_name || '',
+    // flattenUser (usersService.js) outputs this key as `givenName`
+    // (camelCase) — not `given_name` — since it maps patient_profiles'
+    // given_name column onto a camelCase field to match how the rest of
+    // this app's user objects are already shaped by that function. This
+    // was reading `row.given_name` (the raw DB column's own casing),
+    // which is never actually present on the object toFormShape
+    // receives, so it silently fell back to '' every time regardless of
+    // whether the database/registration were correct — which they were.
+    givenName: row.givenName || '',
     mi: row.middle_initial || '',
     ext: row.suffix || '',
     username: row.username || '',
@@ -95,7 +100,6 @@ function toFormShape(row) {
 
 export default function ProfilePage() {
   const { role, profile: authProfile, refreshProfile } = useAuth()
-  const { theme, toggleTheme } = useTheme()
   const { show } = useToast()
   const fileInputRef = useRef(null)
 
@@ -365,9 +369,8 @@ export default function ProfilePage() {
                         </button>
                       </div>
                       <div style={{ padding: '14px 18px' }}>
-                        <DetailRow label="Full Name" value={user.name} />
                         <DetailRow label="Surname" value={user.surname} />
-                        <DetailRow label="Given Name" value={user.givenName} />
+                        <DetailRow label="First Name" value={user.givenName} />
                         <DetailRow label="M.I." value={user.mi} />
                         <DetailRow label="Extension" value={user.ext} />
                         <DetailRow label="Username" value={user.username} />
@@ -587,25 +590,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="card">
-                  <div className="card-header">
-                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {theme === 'dark' ? <MoonIcon width={15} height={15} /> : <SunIcon width={15} height={15} />} Appearance
-                    </h3>
-                  </div>
-                  <div style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dark Mode</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                        {theme === 'dark' ? 'Currently on — switch back to light mode.' : 'Currently off — switch to dark mode.'}
-                      </div>
-                    </div>
-                    <button type="button" className="theme-toggle-btn" onClick={toggleTheme} title="Toggle dark/light mode" aria-label="Toggle theme">
-                      <SunIcon />
-                      <MoonIcon />
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           </div>

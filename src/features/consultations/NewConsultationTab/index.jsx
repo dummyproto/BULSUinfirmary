@@ -8,6 +8,36 @@ import { ConsultationIcon, PeopleIcon, BarChartIcon, TagIcon, PillIcon, Calendar
 
 const EMPTY_MED_ROW = () => ({ id: crypto.randomUUID(), name: '', dosage: '', frequency: '', qty: '' })
 
+// Diagnosis categories come from the diagnoses table (see
+// ConsultationPage's setDiagCategories), so the actual set of category
+// names isn't fixed/known ahead of time — a hardcoded name->color map
+// would silently leave any new category uncolored. Hashing the name into
+// one of the app's existing 7 badge colors instead means every category
+// always gets a color, and the SAME category always gets the SAME color
+// on every render/reload (a stable hash, not Math.random()), which is
+// what actually makes color useful for quick recognition here.
+const DIAG_CATEGORY_COLORS = ['blue', 'green', 'orange', 'purple', 'red', 'teal', 'gray']
+function diagCategoryColor(name) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
+  return DIAG_CATEGORY_COLORS[Math.abs(hash) % DIAG_CATEGORY_COLORS.length]
+}
+// Matches each badge-X class's own actual color (see .badge-blue etc. in
+// legacy.css) — several of them are plain hex, not same-named CSS
+// variables (e.g. badge-blue is #1D4ED8, there's no `--blue` variable),
+// so this maps to the real value directly rather than guessing a
+// var(--color) name that wouldn't resolve.
+const DIAG_CATEGORY_COLOR_VALUES = {
+  blue: '#1D4ED8',
+  green: 'var(--success)',
+  orange: 'var(--warning)',
+  purple: 'var(--purple)',
+  red: 'var(--danger)',
+  teal: 'var(--teal)',
+  gray: 'var(--text-2)',
+}
+
+
 function emptyForm() {
   return {
     patientId: '',
@@ -56,6 +86,20 @@ export default function NewConsultationTab({
     label: d,
     sub: getDiagnosisCategory(d, diagCategories),
   }))
+  // Colors the Primary Diagnosis dropdown's "DX" badge to match the same
+  // per-category color used for the divider/badge treatment in the
+  // Diagnosis Codes list — `opt.sub` is already the category name (see
+  // diagnosisOptions above), so this is just the same hash-based color
+  // lookup applied here too, not a second/different scheme. Returns a
+  // class name (diag-icon-<color>, defined in legacy.css) rather than an
+  // inline style — these badges needed to stay readable in dark mode too
+  // (see the [data-theme="dark"] .diag-icon-X rules), and an inline
+  // style always wins over a CSS class regardless of theme, which is
+  // exactly what made the badges unreadable when this used getIconStyle
+  // instead.
+  function getDiagnosisIconClassName(opt) {
+    return `diag-icon-${diagCategoryColor(opt.sub || '')}`
+  }
   const medicineInventory = inventory.filter((i) => i.category === 'Medicine')
 
   function updateMedRow(idx, next) {
@@ -243,6 +287,7 @@ export default function NewConsultationTab({
                 onSelect={handleSelectDiagnosis}
                 onClear={() => handleSelectDiagnosis('')}
                 iconLabel="DX"
+                getIconClassName={getDiagnosisIconClassName}
                 emptyLabel="No diagnosis found"
               />
             </div>
@@ -311,7 +356,7 @@ export default function NewConsultationTab({
 
           <div className="cons-submit-row" style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-blue btn-lg" onClick={handleSubmit}>
-              <SaveIcon width={13} height={13} /> Save to Health Records + Deduct Inventory
+              <SaveIcon width={13} height={13} /> Save to Health Records{medRows.some((r) => r.name.trim()) ? ' + Deduct Inventory' : ''}
             </button>
             <button type="button" className="btn btn-outline btn-lg" onClick={reset}>
               <RefreshCwIcon width={13} height={13} /> Clear Form
@@ -362,19 +407,24 @@ export default function NewConsultationTab({
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardIcon width={15} height={15} /> Diagnosis Codes</h3>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{diagnosisList.length} codes</span>
           </div>
-          <div style={{ padding: '10px 14px', maxHeight: 260, overflowY: 'auto' }}>
-            {Object.entries(diagCategories).map(([cat, diags]) => (
-              <div key={cat} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
-                  {cat}
-                </div>
-                {diags.map((d) => (
-                  <div key={d} className="diag-code-item" onClick={() => handleSelectDiagnosis(d)}>
-                    {d}
+          <div style={{ padding: '10px 14px', maxHeight: 520, overflowY: 'auto' }}>
+            {Object.entries(diagCategories).map(([cat, diags], catIdx) => {
+              const color = diagCategoryColor(cat)
+              return (
+                <div key={cat} style={catIdx > 0 ? { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' } : undefined}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span className={`badge badge-no-dot badge-${color}`} style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                      {cat}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ))}
+                  {diags.map((d) => (
+                    <div key={d} className="diag-code-item" style={{ borderLeft: `2px solid ${DIAG_CATEGORY_COLOR_VALUES[color]}` }} onClick={() => handleSelectDiagnosis(d)}>
+                      {d}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
           <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)' }}>
             <button type="button" className="btn btn-sm btn-outline" style={{ width: '100%' }} onClick={onOpenAddDiagnosis}>

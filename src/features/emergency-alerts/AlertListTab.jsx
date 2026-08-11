@@ -6,10 +6,11 @@ export default function AlertListTab({ alerts, onAck, onResolve, onGoToSMS }) {
   const active = alerts.filter((a) => a.status !== 'Resolved').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
   return (
-    <>
+    <div className="card sms-chat-main" style={{ padding: 18, overflowY: 'auto' }}>
       {active.some((a) => a.status === 'Active') && (
         <div className="emg-dash-banner" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <AlertOctagonIcon width={15} height={15} style={{ flexShrink: 0 }} /> {active.filter((a) => a.status === 'Active').length} unacknowledged emergency alert(s) require immediate attention.
+          <AlertOctagonIcon width={15} height={15} style={{ flexShrink: 0 }} />
+          <span>{active.filter((a) => a.status === 'Active').length} unacknowledged emergency alert(s) require immediate attention.</span>
         </div>
       )}
 
@@ -67,6 +68,6 @@ export default function AlertListTab({ alerts, onAck, onResolve, onGoToSMS }) {
           </div>
         ))}
       </div>
-    </>
+    </div>
   )
 }

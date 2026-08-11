@@ -89,10 +89,22 @@ Deno.serve(async (req) => {
     const { error } = await adminClient.auth.admin.updateUserById(authUserId, {
       password: newPassword,
     })
+    // Unlike delete-user/ (where "already gone" and "deleted" reach the
+    // same end state, so it's fine to swallow), a missing auth.users row
+    // here is a genuine dead end — there's no account left to set a
+    // password on. Left as a real failure, just with a message that
+    // points at the actual cause (an orphaned/never-linked auth_user_id)
+    // instead of a bare "User not found" that doesn't explain why a
+    // seemingly valid user profile can't have its password changed.
+    if (error && /user not found/i.test(error.message || '')) {
+      throw new Error('This account has no valid login (auth) record — it may be a demo/seed profile that was never linked to a real Supabase Auth account, or one that was already removed. Password cannot be reset.')
+    }
     if (error) throw error
 
     return jsonResponse({ reset: true })
   } catch (err) {
-    return jsonResponse({ error: err.message }, 400)
+    // Same reasoning as delete-user/index.ts's catch block.
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse({ error: message }, 400)
   }
 })

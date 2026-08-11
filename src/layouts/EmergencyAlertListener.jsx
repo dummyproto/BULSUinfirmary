@@ -39,26 +39,70 @@ export default function EmergencyAlertListener() {
 
   useEffect(() => {
     if (!isStaffOrAdmin) return undefined
-    const channel = supabase
-      .channel('emergency-alerts-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergency_alerts' }, async (payload) => {
-        playEmergencySiren()
-        try {
-          // The realtime payload only carries raw columns (reported_by as
-          // a bare integer) — fetch the same joined shape the rest of the
-          // UI already uses so the popup can show the reporter's name.
-          const fullAlert = await getAlertById(payload.new.emergency_alert_id)
-          setActiveAlert(fullAlert)
-        } catch {
-          // Joined fetch failed for some reason — still alert on the raw
-          // payload rather than showing nothing at all; the popup handles
-          // missing fields (reporter_name etc.) gracefully either way.
-          setActiveAlert(payload.new)
-        }
-      })
-      .subscribe()
+
+    // A dropped connection (mobile WiFi/cell handoff, brief DNS failure —
+    // exactly the "WebSocket ... net::ERR_NAME_NOT_RESOLVED" / "closed
+    // before the connection is established" pattern this is built to
+    // recover from) previously left this channel dead for the rest of the
+    // session: .subscribe() only ever ran once, on mount, so staff/admin
+    // stopped receiving live SOS alerts silently — no error shown, no
+    // retry, nothing — until they manually refreshed the page. This now
+    // rebuilds the subscription whenever the channel reports it dropped,
+    // and again when the browser tells us connectivity came back.
+    let channel = null
+    let retryTimer = null
+    let cancelled = false
+
+    function subscribe() {
+      if (cancelled) return
+      channel = supabase
+        .channel('emergency-alerts-live')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergency_alerts' }, async (payload) => {
+          playEmergencySiren()
+          try {
+            // The realtime payload only carries raw columns (reported_by as
+            // a bare integer) — fetch the same joined shape the rest of the
+            // UI already uses so the popup can show the reporter's name.
+            const fullAlert = await getAlertById(payload.new.emergency_alert_id)
+            setActiveAlert(fullAlert)
+          } catch {
+            // Joined fetch failed for some reason — still alert on the raw
+            // payload rather than showing nothing at all; the popup handles
+            // missing fields (reporter_name etc.) gracefully either way.
+            setActiveAlert(payload.new)
+          }
+        })
+        .subscribe((status) => {
+          if (cancelled) return
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            // Backs off 5s rather than hammering a connection that's still
+            // down — retrying immediately on a DNS-resolution failure just
+            // reproduces the same failure instantly, over and over.
+            clearTimeout(retryTimer)
+            retryTimer = setTimeout(() => {
+              if (channel) supabase.removeChannel(channel)
+              subscribe()
+            }, 5000)
+          }
+        })
+    }
+
+    function handleOnline() {
+      // Browser regained connectivity — don't wait for the 5s backoff
+      // above if it's already mid-countdown; reconnect right away.
+      clearTimeout(retryTimer)
+      if (channel) supabase.removeChannel(channel)
+      subscribe()
+    }
+
+    subscribe()
+    window.addEventListener('online', handleOnline)
+
     return () => {
-      supabase.removeChannel(channel)
+      cancelled = true
+      clearTimeout(retryTimer)
+      window.removeEventListener('online', handleOnline)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [isStaffOrAdmin])
 

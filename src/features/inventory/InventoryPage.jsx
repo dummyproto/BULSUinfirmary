@@ -70,6 +70,7 @@ import { listInventoryNotifications, countUnreadInventoryNotifications, markInve
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import { InventoryIcon, FolderIcon, CameraIcon, ClipboardIcon, BellIcon, AlertOctagonIcon, AlertTriangleIcon, TruckIcon, BarChartIcon, MailIcon } from '@components/ui/icons'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', Icon: BarChartIcon },
@@ -307,6 +308,22 @@ export default function InventoryPage() {
   async function refreshSuppliers() {
     setSuppliers(await listSuppliers())
   }
+  async function refreshScanHistory() {
+    setScanHistory(await listScanHistory())
+  }
+
+  // Every category (Medicine/Supply/Equipment) writes to its own
+  // normalized tables (see the big comment in the mount effect above),
+  // so each realtime subscription below lists every table that feeds its
+  // corresponding refresh* function — not just the "obvious" one — or a
+  // change made through a different category's path would silently not
+  // show up here for anyone else already on the page.
+  useRealtimeRefresh(['inventory', 'medicines', 'supplies', 'equipment'], refreshInventory)
+  useRealtimeRefresh(['inventory_batches', 'medicine_batches', 'supply_batches', 'equipment_batches'], refreshBatches)
+  useRealtimeRefresh('suppliers', refreshSuppliers)
+  useRealtimeRefresh('inventory_logs', refreshLogs)
+  useRealtimeRefresh('inventory_notifications', refreshInventoryNotifications)
+  useRealtimeRefresh('scan_history', refreshScanHistory)
 
   const low = inventory.filter((i) => getInventoryStatus(i) === 'Low Stock').length
   const expired = inventory.filter((i) => getInventoryStatus(i) === 'Expired').length

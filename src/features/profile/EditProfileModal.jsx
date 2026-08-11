@@ -56,7 +56,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
                 <input className="form-input" placeholder="Last name" value={form.surname || ''} onChange={(e) => setField('surname')(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>GIVEN NAME</label>
+                <label>FIRST NAME</label>
                 <input className="form-input" placeholder="First name" value={form.givenName || ''} onChange={(e) => setField('givenName')(e.target.value)} />
               </div>
               <div className="form-group">

@@ -59,6 +59,7 @@ const EMPTY = {
   course: '',
   year: '',
   email: '',
+  username: '',
   password: '',
   confirm: '',
   qrCode: '',
@@ -194,6 +195,9 @@ export default function RegisterModal({ isOpen, onClose }) {
     const email = form.email.trim().toLowerCase()
     if (!email) return setErr('Email address is required.')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setErr('Please enter a valid email address.')
+    const username = form.username.trim().toLowerCase()
+    if (!username) return setErr('Username is required.')
+    if (username.length < 3) return setErr('Username must be at least 3 characters.')
     if (!form.password) return setErr('Password is required.')
     const pwCheck = validatePassword(form.password)
     if (!pwCheck.ok) return setErr(pwCheck.msg)
@@ -205,6 +209,7 @@ export default function RegisterModal({ isOpen, onClose }) {
       const { needsEmailConfirmation } = await registerPatient({
         email,
         password: form.password,
+        username,
         name: fullName,
         surname: form.lastName.trim(),
         givenName: form.firstName.trim(),
@@ -237,7 +242,19 @@ export default function RegisterModal({ isOpen, onClose }) {
       // anonymous reads of `users`/`patient_profiles` by design, so this
       // is the earliest point a real duplicate can be detected.
       if (error.code === '23505' || /duplicate key/i.test(error.message)) {
-        setErr(/student_number/i.test(error.message) ? 'This student/user number is already registered.' : 'An account with this email already exists. Please sign in.')
+        if (/student_number/i.test(error.message)) {
+          setErr('This student/user number is already registered.')
+        } else if (/username/i.test(error.message)) {
+          // Genuinely possible now that username is chosen at Step 3
+          // rather than silently auto-derived from the (already
+          // uniqueness-checked) email — a collision here no longer
+          // implies an email collision too, so it needs its own message
+          // rather than falling through to "email already exists" and
+          // sending someone to sign in with an account that isn't theirs.
+          setErr('That username is already taken. Please choose another.')
+        } else {
+          setErr('An account with this email already exists. Please sign in.')
+        }
       } else {
         setErr(error.message)
       }
@@ -476,6 +493,20 @@ export default function RegisterModal({ isOpen, onClose }) {
                     onChange={(e) => setField('email')(e.target.value)}
                   />
                   <span className="reg-hint-text">We'll send your account confirmation and reset codes here.</span>
+                </div>
+                <div className="reg-field" style={{ marginBottom: 14 }}>
+                  <label>
+                    Username <span className="reg-req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="reg-input"
+                    placeholder="Choose a username"
+                    maxLength={50}
+                    value={form.username}
+                    onChange={(e) => setField('username')(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 50))}
+                  />
+                  <span className="reg-hint-text">Letters and numbers only. This is what you'll sign in with, along with your password.</span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { invokeEdgeFunction } from './edgeFunctions'
 
 // Persists MediBot conversations (chat_conversations + chat_messages,
 // migration 005). One conversation row per "chat session" between fresh
@@ -204,10 +205,10 @@ export async function deleteConversation(conversationId) {
  * never breaks the chat experience, just makes it less capable.
  */
 export async function getAiReply(conversationId, message) {
-  const { data, error } = await supabase.functions.invoke('chat-completion', {
-    body: { conversationId, message },
-  })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  // See edgeFunctions.js — same detailed-error extraction as the other
+  // Edge Function calls, so a real failure reason (missing GROQ_API_KEY,
+  // an expired session, a network drop) reaches the catch in
+  // ChatbotPage.jsx instead of a generic non-2xx message.
+  const data = await invokeEdgeFunction('chat-completion', { conversationId, message })
   return { reply: data.reply, emergency: !!data.emergency }
 }

@@ -5,7 +5,9 @@ import Topbar from './Topbar'
 import MobileBottomNav from './MobileBottomNav'
 import EmergencyAlertListener from './EmergencyAlertListener'
 import SessionTimeoutManager from './SessionTimeoutManager'
+import AccountStatusGuard from './AccountStatusGuard'
 import ToastViewport from '@components/ui/ToastViewport'
+import OfflineBanner from '@components/ui/OfflineBanner'
 import ScrollToTopButton from '@components/ui/ScrollToTopButton'
 import { useSidebar } from '@hooks/useSidebar'
 import { useAuth } from '@context/AuthContext'
@@ -51,8 +53,10 @@ export default function AppShell() {
         onClick={closeDrawer}
       />
       <ToastViewport />
+      <OfflineBanner />
       <EmergencyAlertListener />
       <SessionTimeoutManager />
+      <AccountStatusGuard />
       <MobileBottomNav />
       <ScrollToTopButton targetRef={pageContentRef} />
     </>

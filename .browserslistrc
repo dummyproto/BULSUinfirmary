@@ -1,0 +1,23 @@
+# Read by autoprefixer (postcss.config.js) to decide which vendor
+# prefixes/fallbacks a given CSS property actually needs. Brave uses the
+# same Chromium engine as Chrome, so it isn't listed separately here —
+# targeting "Chrome" already covers it exactly, since Brave doesn't fork
+# the rendering engine, only the browser chrome/features around it.
+#
+# Safari/iOS get an explicit version floor (>= 14, ~2020) rather than
+# "last N versions" — that keyword only enumerates recent point releases
+# (e.g. resolved to Safari 26.1-26.4 only, all from the same year, in
+# testing), which is correct for someone fully updated but silently drops
+# prefixes/fallbacks a real person on an older, no-longer-updatable
+# iPhone would still need — exactly the "any kind of browser" case this
+# is meant to cover. The other browsers auto-update aggressively enough
+# that "last 4 versions" already gives a realistic, current spread.
+last 4 Chrome versions
+last 4 ChromeAndroid versions
+last 4 Edge versions
+last 4 Firefox versions
+last 4 FirefoxAndroid versions
+last 4 Samsung versions
+Safari >= 14
+iOS >= 14
+not dead

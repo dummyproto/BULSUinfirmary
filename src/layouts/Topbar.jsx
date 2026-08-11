@@ -3,8 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
+import { useTheme } from '@context/ThemeContext'
 import { TOPBAR_GRADIENT, ROLE_LABELS as PORTAL_LABELS } from '@routes/navItems'
-import { MenuIcon, BellIcon, HelpCircleIcon, ChevronDownIcon, SettingsIcon, LogoutIcon } from '@components/ui/icons'
+import { MenuIcon, BellIcon, HelpCircleIcon, ChevronDownIcon, SettingsIcon, LogoutIcon, SunIcon, MoonIcon } from '@components/ui/icons'
 import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
 import UserManualModal from '@components/ui/UserManualModal'
 import NotificationsModal from '@features/notifications/NotificationsModal'
@@ -62,8 +63,24 @@ function mergeNotifications(general, inventory) {
 export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const { profile, role, signOut } = useAuth()
   const { show } = useToast()
+  const { theme, toggleTheme } = useTheme()
   const confirm = useConfirm()
   const navigate = useNavigate()
+  // Built directly from Surname + First Name (patient_profiles) rather
+  // than trusting profile.name (users.name) on its own — those two are
+  // supposed to stay in sync (EditProfileModal recomputes name via
+  // buildFullName on every patient save), but a since-fixed bug in
+  // toFormShape (ProfilePage.jsx) meant givenName always looked blank
+  // on the edit form, which made buildFullName silently fall back to
+  // the OLD name instead of the newly-saved one — so anyone who edited
+  // their name before that fix is stuck with a stale profile.name no
+  // matter what Personal Info now correctly shows. Deriving the topbar
+  // display straight from the same two fields Personal Info itself
+  // shows means it can never drift out of sync with that page again,
+  // regardless of whether name-sync elsewhere holds up perfectly.
+  const displayName = profile?.givenName && profile?.surname
+    ? `${profile.givenName} ${profile.surname}`.trim()
+    : profile?.name
   const location = useLocation()
 
   const [unread, setUnread] = useState(0)
@@ -269,6 +286,7 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
             title="Send Emergency Alert"
             type="button"
             onClick={() => setEmgConfirmOpen(true)}
+            style={{ marginLeft: 0 }}
           >
             <span className="sos-label">SOS</span>
           </button>
@@ -278,12 +296,12 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
           className="icon-btn"
           role="button"
           tabIndex={0}
-          aria-label="User Manual"
-          title="User Manual"
-          onClick={() => setManualOpen(true)}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setManualOpen(true))}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={toggleTheme}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleTheme())}
         >
-          <HelpCircleIcon />
+          {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
         </div>
 
         <div
@@ -315,7 +333,7 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
               {avatarContent}
             </div>
             <div className="topbar-profile-info">
-              <span className="topbar-profile-name">{profile?.name || 'My Profile'}</span>
+              <span className="topbar-profile-name">{displayName || 'My Profile'}</span>
               <span className="topbar-profile-role">{ROLE_LABELS[role] || role}</span>
             </div>
             <ChevronDownIcon width={15} height={15} className={`topbar-profile-chevron${profileMenuOpen ? ' open' : ''}`} />
@@ -332,11 +350,14 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
               a click for on touch-only devices without true hover. */}
           <div className="topbar-profile-menu" role="menu">
             <div className="topbar-profile-menu-header">
-              <strong>{profile?.name || 'My Profile'}</strong>
+              <strong>{displayName || 'My Profile'}</strong>
               <span>{ROLE_LABELS[role] || role}</span>
             </div>
             <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => goToProfileTab('personal')}>
               <SettingsIcon width={15} height={15} /> Account Settings
+            </button>
+            <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => { setProfileMenuOpen(false); setManualOpen(true) }}>
+              <HelpCircleIcon width={15} height={15} /> User Manual
             </button>
             <div className="topbar-profile-menu-divider" />
             <button type="button" className="topbar-profile-menu-item danger" role="menuitem" onClick={handleLogout}>

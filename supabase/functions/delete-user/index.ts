@@ -97,10 +97,29 @@ Deno.serve(async (req) => {
     })
 
     const { error } = await adminClient.auth.admin.deleteUser(authUserId)
-    if (error) throw error
+    // "User not found" here means auth.users already has no row for this
+    // ID — e.g. a demo/seed account created directly in public.users
+    // without ever going through Supabase Auth signup, or an auth
+    // account that was already removed some other way in the past. Either
+    // way, the actual GOAL of this step ("no live auth.users row for this
+    // ID") is already true, so treating it as a hard failure only ever
+    // blocked usersService.deleteUser() from ever reaching the
+    // public.users delete — the row became permanently undeletable
+    // through the app, even though there was nothing left to protect
+    // against orphaning. Any OTHER error (network, permissions, a real
+    // Auth service failure) still fails loudly as before.
+    const alreadyGone = error && /user not found/i.test(error.message || '')
+    if (error && !alreadyGone) throw error
 
     return jsonResponse({ deleted: true })
   } catch (err) {
-    return jsonResponse({ error: err.message }, 400)
+    // TypeScript types a catch binding as `unknown` by default (Deno's
+    // strict-by-default checker flags .message on it as an error) —
+    // errors thrown above are always real Error objects, but this
+    // narrows properly instead of assuming that, so a genuinely
+    // non-Error throw (rare, but possible from a dependency) still
+    // produces a readable string instead of crashing this handler itself.
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse({ error: message }, 400)
   }
 })

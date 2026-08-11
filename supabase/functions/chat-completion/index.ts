@@ -181,6 +181,24 @@ Deno.serve(async (req) => {
           .join('\n')
         memoryBlock += `\n\nThis user's recent clinic consultation records (for context only — a real diagnosis from clinic staff, not something to re-diagnose):\n${lines}`
       }
+
+      // Same RLS scoping as consultations above — document_requests_select
+      // (migration 001) only ever returns a patient's OWN requests unless
+      // the caller is staff/admin, so this needs no manual patient_id
+      // filter to stay correctly scoped per-caller.
+      const { data: docRequests } = await callerClient
+        .from('document_requests')
+        .select('document_type, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5)
+      if (docRequests && docRequests.length > 0) {
+        const lines = docRequests
+          .map((d) => `- ${d.document_type}: ${d.status} (requested ${new Date(d.created_at).toISOString().slice(0, 10)})`)
+          .join('\n')
+        memoryBlock += `\n\nThis user's recent document requests (use this to directly answer "what's the status of my document request" — don't say you can't check status, this IS the real current status):\n${lines}`
+      } else {
+        memoryBlock += `\n\nThis user has no document requests on file right now.`
+      }
     } catch (memoryErr) {
       console.error('[CHAT_COMPLETION_MEMORY_LOOKUP_FAILED]', memoryErr)
     }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import Modal from '@components/ui/Modal'
 import { COURSES, YEAR_LEVELS } from './data/formOptions'
+import { buildFullName } from '@features/profile/lib/profileHelpers'
 import { EditIcon, DownloadIcon } from '@components/ui/icons'
 
 // Same format as registration (RegisterModal.jsx) — 4-3-3 digit groups,
@@ -18,6 +19,17 @@ function formatUserNumber(digits) {
 function buildForm(user) {
   return {
     name: user.name,
+    // Editing a patient's name here used to write straight to
+    // users.name, completely bypassing patient_profiles.surname/
+    // given_name — the exact same "two sources of truth can drift
+    // apart" bug just found and fixed on the Personal Info side
+    // (EditProfileModal + toFormShape), just from the admin side this
+    // time: an admin correcting a patient's name here would update the
+    // topbar/name column but leave that patient's own Surname/First
+    // Name fields silently stale. Seeded here, used to recompute `name`
+    // via buildFullName on save, same pattern EditProfileModal uses.
+    surname: user.surname || '',
+    givenName: user.givenName || '',
     email: user.email || '',
     phone: user.phone || '',
     // Sanitized to plain digits even on load — existing data entered
@@ -63,12 +75,21 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }) {
   const showQr = !!user?.school_id_barcode && !!qrDataUrl
 
   function handleSave() {
+    const isPatient = user.role === 'patient'
+    // For patients, `name` is derived the exact same way
+    // EditProfileModal derives it — never taken directly from a
+    // freestanding "Full Name" input for this role, so it can't drift
+    // from Surname/First Name the way it did before (see buildForm's
+    // comment above).
+    const name = isPatient ? buildFullName(form, user.name) : form.name.trim() || user.name
     const updates = {
-      name: form.name.trim() || user.name,
+      name,
       email: form.email.trim().toLowerCase() || user.email,
       phone: form.phone.trim() || user.phone,
     }
-    if (user.role === 'patient') {
+    if (isPatient) {
+      updates.surname = form.surname.trim()
+      updates.givenName = form.givenName.trim()
       updates.student_number = form.studentNumber.trim() || user.student_number
       updates.course = form.course || user.course
       updates.year_level = form.yearLevel || user.year_level
@@ -123,10 +144,23 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }) {
         </div>
       </div>
       <div className="form-grid">
-        <div className="form-group full">
-          <label>FULL NAME</label>
-          <input className="form-input" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
-        </div>
+        {user.role === 'patient' ? (
+          <>
+            <div className="form-group">
+              <label>SURNAME</label>
+              <input className="form-input" value={form.surname} onChange={(e) => setField('surname')(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>FIRST NAME</label>
+              <input className="form-input" value={form.givenName} onChange={(e) => setField('givenName')(e.target.value)} />
+            </div>
+          </>
+        ) : (
+          <div className="form-group full">
+            <label>FULL NAME</label>
+            <input className="form-input" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
+          </div>
+        )}
         <div className="form-group">
           <label>EMAIL</label>
           <input className="form-input" value={form.email} onChange={(e) => setField('email')(e.target.value)} />

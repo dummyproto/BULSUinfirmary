@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { CheckCircleIcon } from '@components/ui/icons'
+import { CheckCircleIcon, PhoneIcon } from '@components/ui/icons'
 import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
 
 const EXIT_DURATION = 160
@@ -22,6 +22,9 @@ export default function EmergencySuccessOverlay({ result, onClose }) {
           Emergency alert for <strong>{shown.name}</strong> at <strong>{shown.location}</strong> has been sent to clinic staff.
         </p>
         <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Stay calm. Help is on the way.</p>
+        <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <PhoneIcon width={12} height={12} /> You can also call the clinic directly: <strong style={{ color: 'var(--text-2)' }}>0907-684-2769</strong>
+        </p>
         <button type="button" className="login-btn" style={{ marginTop: 18, maxWidth: 200 }} onClick={onClose}>
           OK
         </button>

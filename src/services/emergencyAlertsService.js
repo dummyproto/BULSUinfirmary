@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient'
 import { formatPHPhone } from '@features/emergency-alerts/lib/smsHelpers'
+import { invokeEdgeFunction } from './edgeFunctions'
+import { notify } from './notificationsService'
 
 // Post-Phase-A-migration: `emergency_alerts.sms_sent` is now a real column
 // (migration 001), and `patient_profiles.parent_phone_2` gives the SMS
@@ -119,35 +121,18 @@ export async function deleteSmsLogs(ids) {
  * Logs the SMS and, if it's linked to an emergency alert, marks that
  * alert's real `sms_sent` column true in the same call.
  */
-export async function sendSms({ emergencyAlertId, studentName, studentNumber, parentName, parentPhone, relation, situation, message, sentBy }) {
+export async function sendSms({ patientId, emergencyAlertId, studentName, studentNumber, parentName, parentPhone, relation, situation, message, sentBy }) {
   let deliveryStatus = 'sent'
   let providerMessageId = null
   let sendError = null
 
   try {
-    const { data, error: fnError } = await supabase.functions.invoke('send-sms', {
-      body: { to: formatPHPhone(parentPhone), message },
-    })
-    if (fnError) {
-      // supabase.functions.invoke() only exposes a generic "Edge
-      // Function returned a non-2xx status code" by default — the
-      // actual reason (set in send-sms/index.ts's jsonResponse calls,
-      // e.g. "SMS is not configured yet", an invalid number, or
-      // IPROG's own error text) is in the response body, reachable via
-      // fnError.context (the raw Response object). Falls back to the
-      // generic message only if that body can't be read/parsed for any
-      // reason, rather than ever silently losing the real reason.
-      let detailedMessage = fnError.message
-      try {
-        const body = await fnError.context?.json()
-        if (body?.error) detailedMessage = body.error
-      } catch {
-        // Response body wasn't valid JSON (or context was unavailable)
-        // — fall back to fnError.message above.
-      }
-      throw new Error(detailedMessage)
-    }
-    if (data?.error) throw new Error(data.error)
+    // invokeEdgeFunction() (edgeFunctions.js) is this exact same
+    // detailed-error-extraction logic, factored out so every Edge
+    // Function call gets it — including the ones that were still
+    // calling supabase.functions.invoke() directly and losing the real
+    // reason behind a generic 400.
+    const data = await invokeEdgeFunction('send-sms', { to: formatPHPhone(parentPhone), message })
     providerMessageId = data?.providerMessageId ?? null
   } catch (err) {
     // Logged below regardless (delivery_status:'failed'), so the
@@ -180,6 +165,31 @@ export async function sendSms({ emergencyAlertId, studentName, studentNumber, pa
   if (emergencyAlertId && deliveryStatus === 'sent') {
     const { error: linkError } = await supabase.from('emergency_alerts').update({ sms_sent: true }).eq('emergency_alert_id', emergencyAlertId)
     if (linkError) throw linkError
+  }
+
+  // Lets the patient themselves see, in their own Notifications bell,
+  // that a message was sent to their parent/guardian on their behalf —
+  // and exactly what it said, not just that "something" was sent. Only
+  // fires on an actually-successful send (deliveryStatus === 'sent'),
+  // and only if patientId was provided (a manually-typed phone number
+  // with no linked patient record has nobody to notify). Best-effort:
+  // a failure here shouldn't undo or fail the SMS send that already
+  // genuinely succeeded, so it's caught and logged rather than thrown.
+  if (patientId && deliveryStatus === 'sent') {
+    try {
+      await notify({
+        targetUserId: patientId,
+        message: `An SMS was sent to your parent/guardian${parentName ? ` (${parentName})` : ''} regarding: "${situation || 'an update'}". Message sent: "${message}"`,
+        type: 'info',
+        // No module/navigation target — /emergency-alerts is staff/admin
+        // only (see AppRoutes.jsx), so a patient clicking this would
+        // just get bounced with an "Access denied" toast. The
+        // notification's own message already has the full detail
+        // there's nowhere patient-facing for this to usefully link to.
+      })
+    } catch (notifyErr) {
+      console.error('[SMS_PATIENT_NOTIFY_FAILED]', notifyErr)
+    }
   }
 
   if (sendError) throw sendError

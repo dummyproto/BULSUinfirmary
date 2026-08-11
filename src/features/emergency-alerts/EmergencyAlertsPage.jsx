@@ -237,6 +237,7 @@ export default function EmergencyAlertsPage() {
 
     try {
       await sendSms({
+        patientId: patient.user_id,
         emergencyAlertId: linkedAlert?.emergency_alert_id ?? null,
         studentName: patient.name,
         studentNumber: patient.student_number,
