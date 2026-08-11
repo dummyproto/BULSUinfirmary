@@ -69,7 +69,7 @@ function summarizeLastScan(entry) {
   }
 }
 
-export default function ScanTab({ scanHistory, onProcessRaw }) {
+export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete }) {
   const [panel, setPanel] = useState(null) // 'manual' | 'upload' | null
   const [manualValue, setManualValue] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
@@ -79,6 +79,32 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const historyCardRef = useRef(null)
+
+  // Same enter-selection-mode-first pattern as NotificationCenterTab.jsx
+  // and the main Topbar notifications bell — checkboxes stay hidden
+  // until Delete is actually clicked, keeping the compact history list
+  // uncluttered the rest of the time.
+  const [historySelectionMode, setHistorySelectionMode] = useState(false)
+  const [historySelected, setHistorySelected] = useState([])
+  const visibleHistory = scanHistory.slice(0, 10)
+
+  function toggleHistorySelectionMode() {
+    setHistorySelectionMode((m) => !m)
+    setHistorySelected([])
+  }
+  function toggleHistoryOne(id) {
+    setHistorySelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+  }
+  function toggleHistoryAll() {
+    const visibleIds = visibleHistory.map((s) => s.scan_id)
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => historySelected.includes(id))
+    setHistorySelected(allSelected ? historySelected.filter((id) => !visibleIds.includes(id)) : [...new Set([...historySelected, ...visibleIds])])
+  }
+  async function handleDeleteHistorySelected() {
+    await onDelete(historySelected)
+    setHistorySelected([])
+    setHistorySelectionMode(false)
+  }
 
   // Below 768px, .qr-scan-layout collapses to a single column (see
   // legacy.css), so the Scanned Item + Scan History panel ends up
@@ -584,31 +610,59 @@ export default function ScanTab({ scanHistory, onProcessRaw }) {
         </div>
 
         <div className="card qr-history-card" ref={historyCardRef}>
-          <div className="card-header">
+          <div className="card-header" style={{ flexWrap: 'wrap', gap: 6 }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><HistoryIcon width={15} height={15} /> Scan History</h3>
-            <button type="button" className="qr-history-close-btn" onClick={() => setHistoryOpen(false)} aria-label="Close">
-              <XIcon width={14} height={14} />
-            </button>
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+              {canDelete && historySelectionMode && historySelected.length > 0 && (
+                <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteHistorySelected}>
+                  <TrashIcon width={12} height={12} /> Delete ({historySelected.length})
+                </button>
+              )}
+              {canDelete && (
+                <button type="button" className="btn btn-sm btn-outline" onClick={toggleHistorySelectionMode}>
+                  {historySelectionMode ? 'Cancel' : (<><TrashIcon width={12} height={12} /> Delete</>)}
+                </button>
+              )}
+              <button type="button" className="qr-history-close-btn" onClick={() => setHistoryOpen(false)} aria-label="Close">
+                <XIcon width={14} height={14} />
+              </button>
+            </div>
           </div>
+          {canDelete && historySelectionMode && visibleHistory.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-3)', cursor: 'pointer', padding: '8px 14px 0' }}>
+              <input type="checkbox" checked={visibleHistory.every((s) => historySelected.includes(s.scan_id))} onChange={toggleHistoryAll} />
+              Select all
+            </label>
+          )}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {scanHistory.length === 0 && (
               <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>No scans yet</div>
             )}
-            {scanHistory.slice(0, 10).map((s, idx) => (
-              <div className="scan-history-item" key={idx}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontWeight: 600, fontSize: 12 }}>{s.item_name}</div>
-                  <span
-                    className={`badge ${s.result === 'Saved' ? 'badge-green' : s.result === 'Duplicate' ? 'badge-orange' : 'badge-red'} badge-no-dot`}
-                    style={{ fontSize: 10 }}
-                  >
-                    {s.result}
-                  </span>
+            {visibleHistory.map((s) => (
+              <div className="scan-history-item" key={s.scan_id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                {historySelectionMode && (
+                  <input
+                    type="checkbox"
+                    checked={historySelected.includes(s.scan_id)}
+                    onChange={() => toggleHistoryOne(s.scan_id)}
+                    style={{ marginTop: 3, flexShrink: 0 }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{s.item_name}</div>
+                    <span
+                      className={`badge ${s.result === 'Saved' ? 'badge-green' : s.result === 'Duplicate' ? 'badge-orange' : 'badge-red'} badge-no-dot`}
+                      style={{ fontSize: 10 }}
+                    >
+                      {s.result}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
+                    Qty: {s.quantity} · {s.category}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{timeAgo(s.scanned_at)}</div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
-                  Qty: {s.quantity} · {s.category}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{timeAgo(s.scanned_at)}</div>
               </div>
             ))}
           </div>

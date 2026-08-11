@@ -36,6 +36,7 @@ import {
   deleteInventoryLogs,
   addInventoryLog,
   listScanHistory,
+  deleteScanHistory,
   addScanHistory,
   listInventoryBatches,
   createInventoryBatch,
@@ -65,7 +66,7 @@ import {
 } from '@services/medicineService'
 import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply, deactivateSupply } from '@services/supplyService'
 import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment, deactivateEquipment } from '@services/equipmentService'
-import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, clearInventoryNotifications } from '@services/inventoryNotificationsService'
+import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, deleteInventoryNotification, clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import { InventoryIcon, FolderIcon, CameraIcon, ClipboardIcon, BellIcon, AlertOctagonIcon, AlertTriangleIcon, TruckIcon, BarChartIcon, MailIcon } from '@components/ui/icons'
@@ -105,6 +106,15 @@ export default function InventoryPage() {
   const [supplierSearch, setSupplierSearch] = useState('')
 
   const [addItemOpen, setAddItemOpen] = useState(false)
+  // Pre-fill for AddItemModal when opened from a scanned "pending item"
+  // QR code (see handleProcessRaw below) — null means the modal opens
+  // blank as usual. addItemModalKey forces a full remount whenever a
+  // new pending item is scanned, so the form correctly resets to the
+  // new pre-fill data (React's own recommended fix for "reset state
+  // when external data changes," rather than an effect calling
+  // setState synchronously).
+  const [pendingItemPrefill, setPendingItemPrefill] = useState(null)
+  const [addItemModalKey, setAddItemModalKey] = useState(0)
   const [editItemId, setEditItemId] = useState(null)
   const [replenishItemId, setReplenishItemId] = useState(null)
   const [releaseItemId, setReleaseItemId] = useState(null)
@@ -260,6 +270,22 @@ export default function InventoryPage() {
       await deleteInventoryLogs(ids)
       setLogs((list) => list.filter((l) => !ids.includes(l.inventory_log_id)))
       show(ids.length === 1 ? 'Log entry deleted' : `${ids.length} log entries deleted`, 'success')
+    } catch (err) {
+      show(`Failed to delete: ${err.message}`, 'error')
+    }
+  }
+  async function handleDeleteScanHistory(ids) {
+    const ok = await confirm(
+      ids.length === 1
+        ? 'Delete this scan history entry?\nThis cannot be undone.'
+        : `Delete ${ids.length} scan history entries?\nThis cannot be undone.`,
+      { confirmLabel: 'Delete', danger: true }
+    )
+    if (!ok) return
+    try {
+      await deleteScanHistory(ids)
+      setScanHistory((list) => list.filter((s) => !ids.includes(s.scan_id)))
+      show(ids.length === 1 ? 'Scan history entry deleted' : `${ids.length} scan history entries deleted`, 'success')
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }
@@ -728,11 +754,32 @@ export default function InventoryPage() {
     // discriminator that doesn't disturb the existing generic flow at
     // all for anything that isn't one of our own codes.
     let batchPayload = null
+    let pendingItemPayload = null
     try {
       const obj = JSON.parse(raw.trim())
       if (obj && obj.type === 'batch' && obj.medicine_batch_id) batchPayload = obj
+      // "Pending item" QR codes come from the standalone QR generator
+      // tool — printed for an item that doesn't exist in inventory yet,
+      // so there's no medicine_batch_id to look up at all. Instead of
+      // failing, this opens Add Item pre-filled with whatever the QR
+      // itself carried (name/category/unit/notes), the same graceful
+      // "use the QR's own embedded data" fallback RegisterQrScan.jsx
+      // already uses for unseeded registration codes.
+      else if (obj && obj.type === 'pending_item' && obj.item_name) pendingItemPayload = obj
     } catch {
       // Not JSON, or not our format — falls through to the generic flow below.
+    }
+
+    if (pendingItemPayload) {
+      setPendingItemPrefill({
+        name: pendingItemPayload.item_name,
+        category: pendingItemPayload.category || 'Medicine',
+        unit: pendingItemPayload.unit || '',
+      })
+      setAddItemModalKey((k) => k + 1)
+      setAddItemOpen(true)
+      show('Scanned a pending item — review and save to add it to inventory.', 'info')
+      return
     }
 
     if (batchPayload) {
@@ -1059,6 +1106,23 @@ export default function InventoryPage() {
     }
   }
 
+  async function handleDeleteInventoryNotifications(ids) {
+    const ok = await confirm(
+      ids.length === 1
+        ? 'Delete this notification?\nThis cannot be undone.'
+        : `Delete ${ids.length} notifications?\nThis cannot be undone.`,
+      { confirmLabel: 'Delete', danger: true }
+    )
+    if (!ok) return
+    try {
+      await Promise.all(ids.map((id) => deleteInventoryNotification(id)))
+      await refreshInventoryNotifications()
+      show(ids.length === 1 ? 'Notification deleted' : `${ids.length} notifications deleted`, 'success')
+    } catch (err) {
+      show(`Failed to delete: ${err.message}`, 'error')
+    }
+  }
+
   async function handleMarkAllNotificationsRead() {
     try {
       await markAllInventoryNotificationsRead()
@@ -1373,7 +1437,7 @@ export default function InventoryPage() {
           />
         </div>
       )}
-      {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} /></div>}
+      {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} canDelete={canDeleteLogs} onDelete={handleDeleteScanHistory} /></div>}
       {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} canDelete={canDeleteLogs} onDelete={handleDeleteInventoryLogs} /></div>}
       {tab === 'alerts' && (
         <div>
@@ -1388,12 +1452,25 @@ export default function InventoryPage() {
             onMarkRead={handleMarkNotificationRead}
             onMarkAllRead={handleMarkAllNotificationsRead}
             onOpenRecord={handleOpenNotificationRecord}
+            canDelete={canDeleteLogs}
+            onDelete={handleDeleteInventoryNotifications}
           />
         </div>
       )}
 
 
-      <AddItemModal isOpen={addItemOpen} onClose={() => setAddItemOpen(false)} onSaveAll={handleSaveAllStaged} onError={(msg) => show(msg, 'error')} suppliers={suppliers} />
+      <AddItemModal
+        key={addItemModalKey}
+        isOpen={addItemOpen}
+        onClose={() => {
+          setAddItemOpen(false)
+          setPendingItemPrefill(null)
+        }}
+        onSaveAll={handleSaveAllStaged}
+        onError={(msg) => show(msg, 'error')}
+        suppliers={suppliers}
+        initialData={pendingItemPrefill}
+      />
 
       <EditItemModal key={editItemId ?? 'edit-item-closed'} isOpen={editItemId !== null} item={editingItem} onClose={() => setEditItemId(null)} onSave={handleEditSave} suppliers={suppliers} onError={(msg) => show(msg, 'error')} />
 

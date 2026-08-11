@@ -157,6 +157,17 @@ export async function listScanHistory() {
   return data
 }
 
+// Row-level security (migration 034) is what actually enforces this —
+// admin, or staff with the delete_logs permission (Maintenance ->
+// Staff Permissions, same flag gating every other log's delete). See
+// deleteInventoryLogs() above for why the count is checked explicitly.
+export async function deleteScanHistory(ids) {
+  const { error, count } = await supabase.from('scan_history').delete({ count: 'exact' }).in('scan_id', ids)
+  if (error) throw error
+  if (count === 0) throw new Error("You don't have permission to delete scan history entries.")
+  return count
+}
+
 export async function addScanHistory({ scannedBy, itemName, category, quantity, result, rawData, medicineId, medicineBatchId }) {
   const { data, error } = await supabase
     .from('scan_history')

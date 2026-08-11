@@ -73,3 +73,15 @@ export async function deleteDocumentRequest(id) {
   const { error } = await supabase.from('document_requests').delete().eq('doc_request_id', id)
   if (error) throw error
 }
+
+// Row-level security (migration 034) is what actually enforces this —
+// admin, or staff with the delete_logs permission (Maintenance ->
+// Staff Permissions, same flag gating Alert Log/SMS Log/Inventory Log/
+// Scan History). See deleteInventoryLogs() in inventoryService.js for
+// why the count is checked explicitly.
+export async function deleteDocumentRequests(ids) {
+  const { error, count } = await supabase.from('document_requests').delete({ count: 'exact' }).in('doc_request_id', ids)
+  if (error) throw error
+  if (count === 0) throw new Error("You don't have permission to delete document requests.")
+  return count
+}

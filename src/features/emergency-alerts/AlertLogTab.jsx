@@ -27,20 +27,34 @@ function exportAlertsCsv(alerts) {
 }
 
 /**
- * `canDelete` gates the checkboxes and delete buttons entirely — set by
+ * `canDelete` gates the Delete toggle entirely — set by
  * EmergencyAlertsPage.jsx from the current user's role/permissions
  * (admin, or a staff account granted the delete_logs permission in
  * Maintenance -> Staff Permissions). This is a UI convenience only; the
  * real enforcement is server-side (RLS, migration 028) — hiding the
  * button here just avoids showing an action that would fail anyway.
+ *
+ * Selection is opt-in via a "Delete" toggle (matching the pattern in
+ * NotificationsModal.jsx) rather than checkboxes always being visible —
+ * clicking it reveals "Select all" and a checkbox per row; clicking it
+ * again (now "Cancel") hides them and clears anything selected. Keeps
+ * the default view clean and puts bulk delete and the individual
+ * per-row delete on the same toggle instead of two separate, always-
+ * present controls.
  */
 export default function AlertLogTab({ alerts, canDelete, onDelete }) {
   const [status, setStatus] = useState('All')
   const [detailAlert, setDetailAlert] = useState(null)
   const [selected, setSelected] = useState([])
+  const [selectionMode, setSelectionMode] = useState(false)
   const filtered = (status === 'All' ? alerts : alerts.filter((a) => a.status === status))
     .slice()
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+  function toggleSelectionMode() {
+    setSelectionMode((m) => !m)
+    setSelected([])
+  }
 
   function toggleOne(id) {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -55,6 +69,7 @@ export default function AlertLogTab({ alerts, canDelete, onDelete }) {
   async function handleDeleteSelected() {
     await onDelete(selected)
     setSelected([])
+    setSelectionMode(false)
   }
 
   return (
@@ -67,9 +82,14 @@ export default function AlertLogTab({ alerts, canDelete, onDelete }) {
               <option key={s}>{s}</option>
             ))}
           </select>
-          {canDelete && selected.length > 0 && (
+          {canDelete && selectionMode && selected.length > 0 && (
             <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
               <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+              {selectionMode ? 'Cancel' : (<><TrashIcon width={13} height={13} /> Delete</>)}
             </button>
           )}
           <button type="button" className="btn btn-sm btn-outline" onClick={() => exportAlertsCsv(filtered)} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -78,7 +98,7 @@ export default function AlertLogTab({ alerts, canDelete, onDelete }) {
         </div>
       </div>
 
-      {canDelete && filtered.length > 0 && (
+      {selectionMode && filtered.length > 0 && (
         <div style={{ padding: '10px 18px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)', cursor: 'pointer' }}>
             <input
@@ -98,7 +118,7 @@ export default function AlertLogTab({ alerts, canDelete, onDelete }) {
         {filtered.map((a) => (
           <div className="emg-log-entry" key={a.emergency_alert_id}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-              {canDelete && (
+              {selectionMode && (
                 <input
                   type="checkbox"
                   checked={selected.includes(a.emergency_alert_id)}
@@ -122,7 +142,7 @@ export default function AlertLogTab({ alerts, canDelete, onDelete }) {
                   <button type="button" className="btn btn-sm btn-outline" onClick={() => setDetailAlert(a)}>
                     <EyeIcon width={12} height={12} /> View
                   </button>
-                  {canDelete && (
+                  {canDelete && !selectionMode && (
                     <button type="button" className="btn btn-sm btn-outline btn-red" onClick={() => onDelete([a.emergency_alert_id])} title="Delete this entry">
                       <TrashIcon width={12} height={12} />
                     </button>

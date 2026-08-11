@@ -212,20 +212,41 @@ export default function LoginPage() {
         // escalation below — see getRoleByEmail's doc comment in
         // usersService.js for why (only an admin can undo a disable, so
         // letting this system disable the only admin is a real
-        // denial-of-service risk). Falls through to the plain message
-        // with no attempt counting, no cooldown, and it can never reach
-        // the disable branch. If the role lookup itself fails (unknown
-        // email, network hiccup), treat it as non-admin and proceed with
-        // the normal escalation — failing open here would mean anyone
-        // could dodge the lockout just by causing the lookup to error.
-        let isAdmin
+        // denial-of-service risk).
+        //
+        // This same lookup also tells us whether the email is
+        // registered at all — reused here rather than a second RPC
+        // call. Three distinct outcomes matter:
+        //   - role is a real string (admin/staff/patient) → account
+        //     exists, proceed with normal counting below
+        //   - role === null → confirmed NOT registered. Shown as its
+        //     own message and explicitly does NOT count toward the
+        //     lockout — there's nothing to brute-force against an
+        //     account that doesn't exist.
+        //     Security tradeoff, stated plainly: this does let someone
+        //     probe which emails have accounts by watching which
+        //     response comes back (account enumeration) — the more
+        //     conservative default most login systems use is an
+        //     identical generic error either way, specifically to
+        //     avoid this. Implemented as requested regardless.
+        //   - role === undefined → the lookup itself failed (network
+        //     hiccup, etc.), not a confirmed answer either way. Falls
+        //     through to normal counting rather than skipping it —
+        //     treating "unknown" as "not registered" would let anyone
+        //     dodge the lockout just by causing this lookup to error.
+        let role
         try {
-          isAdmin = (await getRoleByEmail(email)) === 'admin'
+          role = await getRoleByEmail(email)
         } catch {
-          isAdmin = false
+          role = undefined
         }
 
-        if (isAdmin) {
+        if (role === null) {
+          setError('This account is not registered. Please register first.')
+          return
+        }
+
+        if (role === 'admin') {
           setError('Invalid email or password.')
           return
         }
