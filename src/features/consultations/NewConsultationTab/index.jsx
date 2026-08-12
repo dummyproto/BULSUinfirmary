@@ -229,7 +229,7 @@ export default function NewConsultationTab({
             <div className="form-group">
             <label>ATTENDED BY *</label>
               <select className="form-select" value={form.staffId} onChange={(e) => setField('staffId')(e.target.value)}>
-              <option value=""></option>
+              <option value="" disabled>-- Select Staff --</option>
               {staff.map((s) => (
               <option key={s.user_id} value={s.user_id}>
               {s.name}{s.position ? ` — ${s.position}` : ''} ({s.role === 'admin' ? 'Admin' : 'Staff'})

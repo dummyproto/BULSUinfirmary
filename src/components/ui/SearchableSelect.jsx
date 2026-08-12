@@ -122,7 +122,7 @@ export default function SearchableSelect({
                 {iconLabel ? (
                   <div className={`${iconClassName}${getIconClassName ? ` ${getIconClassName(opt)}` : ''}`} style={getIconStyle?.(opt)}>{iconLabel}</div>
                 ) : (
-                  <div className="patient-item-avatar">{opt.icon || opt.label.slice(0, 2).toUpperCase()}</div>
+                  <div className={`patient-item-avatar${getIconClassName ? ` ${getIconClassName(opt)}` : ''}`} style={getIconStyle?.(opt)}>{opt.icon || opt.label.slice(0, 2).toUpperCase()}</div>
                 )}
                 <div className="patient-item-info">
                   <div className="patient-item-name">{highlightMatch(opt.label, query)}</div>

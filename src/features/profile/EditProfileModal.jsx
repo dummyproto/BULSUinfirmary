@@ -1,15 +1,67 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Modal from '@components/ui/Modal'
-import { COURSES, YEAR_LEVELS, GENDERS, CIVIL_STATUSES, BLOOD_TYPES, buildFullName } from './lib/profileHelpers'
+import { COURSES, YEAR_LEVELS, GENDERS, CIVIL_STATUSES, BLOOD_TYPES, EXTENSIONS, buildFullName } from './lib/profileHelpers'
 import { normalizeSchoolIdCode } from '@lib/schoolId'
+import { getRegions, getProvinces, getCities, getBarangays } from '@lib/phAddress'
 import SchoolIdScanModal from './SchoolIdScanModal'
 import { EditIcon, SaveIcon, UserIcon, CreditCardIcon, PhoneIcon, MapPinIcon, GraduationCapIcon, BriefcaseIcon, QrCodeIcon } from '@components/ui/icons'
 
 export default function EditProfileModal({ isOpen, role, profile, onClose, onSave, onError }) {
   const [scanOpen, setScanOpen] = useState(false)
   const [form, setForm] = useState(() => ({ ...profile }))
+  const [regionOptions, setRegionOptions] = useState([])
+  const [provinceOptions, setProvinceOptions] = useState([])
+  const [cityOptions, setCityOptions] = useState([])
+  const [barangayOptions, setBarangayOptions] = useState([])
+
+  // Loads the full region list once, the moment this modal is actually
+  // open — the ~1.8MB PSGC dataset (see phAddress.js) is dynamically
+  // imported on first call, so nothing here downloads it until a
+  // patient actually opens their profile editor.
+  useEffect(() => {
+    if (!isOpen) return
+    getRegions().then(setRegionOptions)
+  }, [isOpen])
+
+  // Each level re-loads its options whenever its PARENT selection
+  // changes — including on the very first open, so an already-saved
+  // address (e.g. addrRegion: "CALABARZON" from before this was a
+  // dropdown) correctly populates Province/City/Barangay with the
+  // right options instead of starting empty.
+  useEffect(() => {
+    if (!isOpen) return
+    getProvinces(form.addrRegion).then(setProvinceOptions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, form.addrRegion])
+
+  useEffect(() => {
+    if (!isOpen) return
+    getCities(form.addrProvince, form.addrRegion).then(setCityOptions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, form.addrProvince, form.addrRegion])
+
+  useEffect(() => {
+    if (!isOpen) return
+    getBarangays(form.addrCity, form.addrProvince).then(setBarangayOptions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, form.addrCity, form.addrProvince])
+
   if (!isOpen) return null
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
+  // Picking a new value at any address level invalidates whatever was
+  // selected below it (a different region has entirely different
+  // provinces) — clearing them here, rather than leaving a now-stale
+  // value in form state that no longer matches any option in the
+  // freshly-loaded list below it.
+  function setRegion(val) {
+    setForm((f) => ({ ...f, addrRegion: val, addrProvince: '', addrCity: '', addrBarangay: '' }))
+  }
+  function setProvince(val) {
+    setForm((f) => ({ ...f, addrProvince: val, addrCity: '', addrBarangay: '' }))
+  }
+  function setCity(val) {
+    setForm((f) => ({ ...f, addrCity: val, addrBarangay: '' }))
+  }
 
   function handleSave() {
     const email = (form.email || '').trim().toLowerCase()
@@ -69,16 +121,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
                   onChange={(e) => setField('mi')(e.target.value.replace(/[^a-zA-Z]/g, ''))}
                 />
               </div>
-              <div className="form-group">
-                <label>EXT. (Jr. / Sr.)</label>
-                <input
-                  className="form-input"
-                  placeholder="e.g. Jr"
-                  maxLength={2}
-                  value={form.ext || ''}
-                  onChange={(e) => setField('ext')(e.target.value.replace(/[^a-zA-Z]/g, ''))}
-                />
-              </div>
+              <SelectField label="EXT. (Jr. / Sr.)" value={form.ext} options={EXTENSIONS} onChange={setField('ext')} />
               <div className="form-group full">
                 <label>USERNAME</label>
                 <input
@@ -139,28 +182,20 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
 
           <FormSection Icon={MapPinIcon} title="Address">
             <div className="form-grid" style={{ gap: 10 }}>
-              {/* Simplified to plain text inputs — the legacy PH region/province/
-                  city/barangay cascading-select dataset (PH.regionOptions etc.)
-                  isn't part of this project, so it's not available to port. */}
-              <div className="form-group">
-                <label>REGION</label>
-                <input className="form-input" value={form.addrRegion || ''} onChange={(e) => setField('addrRegion')(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>PROVINCE</label>
-                <input className="form-input" value={form.addrProvince || ''} onChange={(e) => setField('addrProvince')(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>CITY / MUNICIPALITY</label>
-                <input className="form-input" value={form.addrCity || ''} onChange={(e) => setField('addrCity')(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>BARANGAY</label>
-                <input className="form-input" placeholder="Enter barangay name" value={form.addrBarangay || ''} onChange={(e) => setField('addrBarangay')(e.target.value)} />
-              </div>
+              <SelectField label="REGION" value={form.addrRegion} options={regionOptions} onChange={setRegion} />
+              <SelectField label="PROVINCE" value={form.addrProvince} options={provinceOptions} onChange={setProvince} />
+              <SelectField label="CITY / MUNICIPALITY" value={form.addrCity} options={cityOptions} onChange={setCity} />
+              <SelectField label="BARANGAY" value={form.addrBarangay} options={barangayOptions} onChange={setField('addrBarangay')} />
               <div className="form-group">
                 <label>ZIP CODE</label>
-                <input className="form-input" placeholder="e.g. 1101" maxLength={10} value={form.addrZip || ''} onChange={(e) => setField('addrZip')(e.target.value)} />
+                <input
+                  className="form-input"
+                  placeholder="e.g. 1101"
+                  maxLength={4}
+                  inputMode="numeric"
+                  value={form.addrZip || ''}
+                  onChange={(e) => setField('addrZip')(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                />
               </div>
             </div>
           </FormSection>
@@ -275,7 +310,9 @@ function SelectField({ label, value, options, onChange }) {
     <div className="form-group">
       <label>{label}</label>
       <select className="form-select" value={value || ''} onChange={(e) => onChange(e.target.value)}>
-        <option value="">-- Select --</option>
+        <option value="" disabled>
+          -- Select --
+        </option>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}

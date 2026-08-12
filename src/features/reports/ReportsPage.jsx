@@ -114,7 +114,7 @@ export default function ReportsPage() {
   const canReset = role === 'admin' || !!profile?.permissions?.reset_reports
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
-  const [reportType, setReportType] = useState('doc')
+  const [reportType, setReportType] = useState('')
   const [dateFrom, setDateFrom] = useState(firstOfMonthStr())
   const [dateTo, setDateTo] = useState(todayStr())
   const [report, setReport] = useState(null)
@@ -143,7 +143,14 @@ export default function ReportsPage() {
   const hasAnyReportAccess = clinicTypes.length > 0 || inventoryTypes.length > 0
 
   const allReportValues = [...clinicTypes, ...inventoryTypes].map((t) => t.value)
-  const validReportType = allReportValues.includes(reportType) ? reportType : (allReportValues[0] ?? reportType)
+  // '' is deliberately preserved as "nothing chosen yet" (the new
+  // "-- Select Report Type --" placeholder state) rather than being
+  // silently substituted with the first available type — this fallback
+  // still exists for a genuinely different case: a PREVIOUSLY selected
+  // type becoming invalid mid-session (e.g. a staff permission getting
+  // revoked), where falling back to the first available type avoids
+  // leaving the dropdown stuck showing a value that's no longer valid.
+  const validReportType = reportType === '' ? '' : allReportValues.includes(reportType) ? reportType : (allReportValues[0] ?? '')
 
   // Inventory-only cache — populated lazily the first time it's actually
   // needed, reused across report generations within the same visit so
@@ -324,6 +331,7 @@ export default function ReportsPage() {
   }
 
   async function handleGenerate() {
+    if (!validReportType) return show('Please select a report type', 'error')
     if (!dateFrom || !dateTo) return show('Please select both date range fields', 'error')
     if (dateFrom > dateTo) return show('Date From must be before or equal to Date To', 'error')
     setGenerating(true)
@@ -396,6 +404,9 @@ export default function ReportsPage() {
           <div className="form-group" style={{ minWidth: 200 }}>
             <label>REPORT TYPE</label>
             <select className="form-select" value={validReportType} onChange={(e) => setReportType(e.target.value)}>
+              <option value="" disabled>
+                -- Select Report Type --
+              </option>
               {clinicTypes.length > 0 && (
                 <optgroup label="Clinic">
                   {clinicTypes.map((t) => (

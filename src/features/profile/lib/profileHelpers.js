@@ -3,6 +3,13 @@ export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th
 export const GENDERS = ['Male', 'Female', 'Prefer not to say']
 export const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Separated', 'Annulled']
 export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+// No periods — the previous free-text field stripped non-letter
+// characters (including periods) via its own onChange handler, so any
+// value already saved for an existing patient is plain letters only
+// (e.g. "Jr", not "Jr."). Matching that here means existing saved
+// values still match one of these options instead of falling through
+// to the dropdown's blank "-- Select --" state.
+export const EXTENSIONS = ['Jr', 'Sr', 'II', 'III', 'IV', 'V']
 export const RELATIONS = ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Uncle', 'Aunt', 'Sibling', 'Guardian', 'Other']
 
 export const ROLE_LABELS = { admin: 'System Administrator', staff: 'Clinic Personnel', patient: 'Patient' }

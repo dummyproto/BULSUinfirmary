@@ -3,7 +3,7 @@ import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { supabase } from '@services/supabaseClient'
 import { getAlertById } from '@services/emergencyAlertsService'
-import { playEmergencySiren } from '@lib/emergencySound'
+import { playEmergencySiren, stopEmergencySiren } from '@lib/emergencySound'
 import EmergencyLivePopup from '@features/emergency-alerts/EmergencyLivePopup'
 
 // The gap this fixes: a patient filing an SOS already notified staff/admin
@@ -112,8 +112,14 @@ export default function EmergencyAlertListener() {
     <EmergencyLivePopup
       alert={activeAlert}
       currentUserId={currentUserId}
-      onClose={() => setActiveAlert(null)}
-      onAcknowledged={() => setActiveAlert(null)}
+      onClose={() => {
+        stopEmergencySiren()
+        setActiveAlert(null)
+      }}
+      onAcknowledged={() => {
+        stopEmergencySiren()
+        setActiveAlert(null)
+      }}
       onError={(msg) => show(`Failed to acknowledge alert: ${msg}`, 'error')}
     />
   )

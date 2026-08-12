@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { COURSES, YEAR_LEVELS } from '@features/maintenance/data/formOptions'
+import SearchableSelect from '@components/ui/SearchableSelect'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
 import { registerPatient, checkStudentNumberRegistered } from '@services/usersService'
 import { notify } from '@services/notificationsService'
@@ -157,6 +158,7 @@ export default function RegisterModal({ isOpen, onClose }) {
       if (!form.lastName.trim()) return setErr('Last name is required.')
       if (!form.userId.trim()) return setErr('User Number is required.')
       if (!/^\d+$/.test(form.userId.trim())) return setErr('User Number must contain numbers only.')
+      if (form.userId.trim().length !== 10) return setErr('User Number must be 10 digits, in the format 2023-000-000.')
       if (form.phone.trim() && !/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
 
       setCheckingDuplicate(true)
@@ -449,26 +451,24 @@ export default function RegisterModal({ isOpen, onClose }) {
                   <label>
                     Course / Program <span className="reg-req">*</span>
                   </label>
-                  <input
-                    className="reg-input"
-                    list="course-options"
-                    placeholder="Type to search your course…"
-                    autoComplete="off"
+                  <SearchableSelect
+                    options={COURSES.map((c) => ({ value: c, label: c }))}
                     value={form.course}
-                    onChange={(e) => setField('course')(e.target.value)}
+                    displayValue={form.course}
+                    onSelect={(val) => setField('course')(val)}
+                    onClear={() => setField('course')('')}
+                    placeholder="Type to search your course…"
+                    emptyLabel="No matching course"
                   />
-                  <datalist id="course-options">
-                    {COURSES.map((c) => (
-                      <option value={c} key={c} />
-                    ))}
-                  </datalist>
                 </div>
                 <div className="reg-field">
                   <label>
                     Year Level <span className="reg-req">*</span>
                   </label>
                   <select className="reg-input reg-select" value={form.year} onChange={(e) => setField('year')(e.target.value)}>
-                    <option value="">— Select year level —</option>
+                    <option value="" disabled>
+                      — Select year level —
+                    </option>
                     {YEAR_LEVELS.map((y) => (
                       <option value={y} key={y}>
                         {y}

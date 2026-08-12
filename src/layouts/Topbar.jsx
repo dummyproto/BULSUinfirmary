@@ -5,9 +5,8 @@ import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
 import { useTheme } from '@context/ThemeContext'
 import { TOPBAR_GRADIENT, ROLE_LABELS as PORTAL_LABELS } from '@routes/navItems'
-import { MenuIcon, BellIcon, HelpCircleIcon, ChevronDownIcon, SettingsIcon, LogoutIcon, SunIcon, MoonIcon } from '@components/ui/icons'
+import { MenuIcon, BellIcon, ChevronDownIcon, SettingsIcon, LogoutIcon, SunIcon, MoonIcon } from '@components/ui/icons'
 import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
-import UserManualModal from '@components/ui/UserManualModal'
 import NotificationsModal from '@features/notifications/NotificationsModal'
 import logo from '@/assets/logo.png'
 import { countUnread, listForUser, markRead, markAllRead, deleteNotification } from '@services/notificationsService'
@@ -20,6 +19,7 @@ import {
 } from '@services/inventoryNotificationsService'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
+import { stopEmergencySiren } from '@lib/emergencySound'
 
 // Lazy — this is global chrome loaded on every route, but the full report
 // form (with its patient search) is only ever needed if a patient actually
@@ -89,7 +89,6 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
-  const [manualOpen, setManualOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef(null)
 
@@ -356,9 +355,6 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
             <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => goToProfileTab('personal')}>
               <SettingsIcon width={15} height={15} /> Account Settings
             </button>
-            <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => { setProfileMenuOpen(false); setManualOpen(true) }}>
-              <HelpCircleIcon width={15} height={15} /> User Manual
-            </button>
             <div className="topbar-profile-menu-divider" />
             <button type="button" className="topbar-profile-menu-item danger" role="menuitem" onClick={handleLogout}>
               <LogoutIcon width={15} height={15} /> Logout
@@ -397,9 +393,13 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
         />
       </Suspense>
 
-      <EmergencySuccessOverlay result={emgSuccess} onClose={() => setEmgSuccess(null)} />
-
-      <UserManualModal isOpen={manualOpen} onClose={() => setManualOpen(false)} />
+      <EmergencySuccessOverlay
+        result={emgSuccess}
+        onClose={() => {
+          stopEmergencySiren()
+          setEmgSuccess(null)
+        }}
+      />
     </div>
   )
 }

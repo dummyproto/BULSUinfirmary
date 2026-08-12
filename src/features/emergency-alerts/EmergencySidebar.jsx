@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import SearchableSelect from '@components/ui/SearchableSelect'
-import { SMS_TEMPLATES } from './lib/smsHelpers'
+import { SMS_TEMPLATES, validatePHPhone } from './lib/smsHelpers'
 import { EmergencyIcon, ClipboardIcon, PhoneIcon, MessageSquareIcon, UserIcon, AlertTriangleIcon, RefreshCwIcon, ChevronDownIcon } from '@components/ui/icons'
 
 export const EMERGENCY_TABS = [
@@ -58,7 +58,23 @@ export default function EmergencySidebar({
   onReset,
 }) {
   const tabItems = EMERGENCY_TABS.map((t) => (t.key === 'list' && activeCount > 0 ? { ...t, label: `${t.label} (${activeCount})` } : t))
-  const options = patients.map((p) => ({ value: String(p.user_id), label: p.name, sub: `${p.student_number} \u00b7 ${p.year_level}` }))
+  // Whether a patient has a usable parent/guardian number — same check
+  // used everywhere else a number actually gets sent to (the SMS
+  // Composer's own primaryPhoneValid below). Surfaced directly in the
+  // list (both as text and as the avatar color) so staff can see who
+  // has a number on file before picking someone, not only after.
+  function hasParentPhone(p) {
+    return validatePHPhone(p.parent_phone) || validatePHPhone(p.parent_phone2)
+  }
+  const options = patients.map((p) => ({
+    value: String(p.user_id),
+    label: p.name,
+    sub: `${p.student_number} \u00b7 ${p.year_level} \u00b7 ${hasParentPhone(p) ? 'Has parent number' : 'No parent number'}`,
+    hasPhone: hasParentPhone(p),
+  }))
+  function getPatientIconClassName(opt) {
+    return opt.hasPhone ? 'has-phone' : 'no-phone'
+  }
 
   return (
     <div className="sms-chat-sidebar">
@@ -88,6 +104,7 @@ export default function EmergencySidebar({
               onClear={() => onSelectStudent('')}
               placeholder="Search patient by name or ID…"
               emptyLabel="No patients found"
+              getIconClassName={getPatientIconClassName}
             />
             {patient && (
               <div className={`sms-parent-info-box${primaryPhoneValid ? '' : ' needs-manual-phone'}`}>

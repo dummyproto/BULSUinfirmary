@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { NAV_ITEMS } from '@routes/navItems'
+import { BookOpenIcon } from '@components/ui/icons'
 
 // Shorter labels for the bottom bar specifically — "Document Requests"
 // or "Consultation / Walk-in" comfortably fit the sidebar's full-width
@@ -27,7 +28,7 @@ const SHORT_LABELS = {
  * matching the bottom-tab-bar pattern most mobile apps already use
  * instead of a slide-out drawer for primary navigation.
  */
-export default function MobileBottomNav() {
+export default function MobileBottomNav({ onOpenManual }) {
   const { role } = useAuth()
   const items = NAV_ITEMS[role] || []
 
@@ -60,6 +61,14 @@ export default function MobileBottomNav() {
           <span>{SHORT_LABELS[item.key] || item.label}</span>
         </NavLink>
       ))}
+      {/* Not a NavLink — opens the User Manual modal rather than
+          navigating to a route, moved here from the Topbar profile
+          dropdown where it used to live. Styled identically to the
+          route tabs above via the same .mobile-bottom-nav-item class. */}
+      <button type="button" className="mobile-bottom-nav-item" onClick={onOpenManual} title="User Manual" aria-label="User Manual">
+        <BookOpenIcon width={20} height={20} />
+        <span>Manual</span>
+      </button>
     </nav>
   )
 }

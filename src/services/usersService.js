@@ -348,6 +348,28 @@ function flattenUser(row) {
     // ("—") regardless of what was actually saved at registration.
     surname: patient_profiles?.surname ?? null,
     givenName: patient_profiles?.given_name ?? null,
+    // Every field below is a real patient_profiles column that
+    // EditProfileModal/handleSaveProfile already correctly save — this
+    // was the same bug as surname/given_name above, just for the rest
+    // of the Personal Info form: the save always worked, but none of
+    // these ever made it back onto the object every page actually
+    // reads, so they reverted to blank on the very next load/refresh —
+    // indistinguishable from "the edit didn't save" to anyone testing
+    // it, even though the database had the right value the whole time.
+    middle_initial: patient_profiles?.middle_initial ?? null,
+    suffix: patient_profiles?.suffix ?? null,
+    date_of_birth: patient_profiles?.date_of_birth ?? null,
+    birth_place: patient_profiles?.birth_place ?? null,
+    gender: patient_profiles?.gender ?? null,
+    civil_status: patient_profiles?.civil_status ?? null,
+    religion: patient_profiles?.religion ?? null,
+    nationality: patient_profiles?.nationality ?? null,
+    blood_type: patient_profiles?.blood_type ?? null,
+    addr_region: patient_profiles?.addr_region ?? null,
+    addr_province: patient_profiles?.addr_province ?? null,
+    addr_city: patient_profiles?.addr_city ?? null,
+    addr_barangay: patient_profiles?.addr_barangay ?? null,
+    addr_zip: patient_profiles?.addr_zip ?? null,
     // Phase Q: surfaced so ProfilePage can show the "finish your profile"
     // banner. `?? false` (not `?? null`) — the column is NOT NULL with a
     // default, so `false` is the only meaningful "no row / not set" value.

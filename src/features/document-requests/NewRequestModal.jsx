@@ -3,7 +3,7 @@ import Modal from '@components/ui/Modal'
 import { DocumentIcon } from '@components/ui/icons'
 import { DOC_TYPES } from './data/docTypes'
 
-const EMPTY_FORM = { docType: '', purpose: '', dateNeeded: '' }
+const EMPTY_FORM = { docType: '', customDocType: '', purpose: '', dateNeeded: '' }
 
 export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) {
   const [form, setForm] = useState(EMPTY_FORM)
@@ -12,6 +12,7 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
 
   const handleSubmit = () => {
     if (!form.docType) return onError('Please select a document type')
+    if (form.docType === 'Other' && !form.customDocType.trim()) return onError('Please specify the document type')
     if (!form.purpose.trim()) return onError('Please enter the purpose')
     if (!form.dateNeeded) return onError('Please enter the date needed')
 
@@ -22,7 +23,11 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
       return onError('Date needed cannot be in the past. Please select a valid future date.')
     }
 
-    onSubmit({ docType: form.docType, purpose: form.purpose.trim(), dateNeeded: form.dateNeeded })
+    // Sends the actual typed-in name for "Other", not the literal word
+    // "Other" — staff reviewing the request should see what document
+    // was actually asked for, not a placeholder category label.
+    const docType = form.docType === 'Other' ? form.customDocType.trim() : form.docType
+    onSubmit({ docType, purpose: form.purpose.trim(), dateNeeded: form.dateNeeded })
   }
 
   return (
@@ -46,7 +51,9 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
         <div className="form-group full">
           <label htmlFor="new-request-doc-type">DOCUMENT TYPE *</label>
           <select id="new-request-doc-type" name="docType" className="form-select" value={form.docType} onChange={setField('docType')}>
-            <option value=""></option>
+            <option value="" disabled>
+              -- Select Document Type --
+            </option>
             {DOC_TYPES.map((d) => (
               <option key={d} value={d}>
                 {d}
@@ -54,6 +61,19 @@ export default function NewRequestModal({ isOpen, onClose, onSubmit, onError }) 
             ))}
           </select>
         </div>
+        {form.docType === 'Other' && (
+          <div className="form-group full">
+            <label htmlFor="new-request-custom-doc-type">PLEASE SPECIFY *</label>
+            <input
+              id="new-request-custom-doc-type"
+              name="customDocType"
+              className="form-input"
+              placeholder="Enter the document type you need…"
+              value={form.customDocType}
+              onChange={setField('customDocType')}
+            />
+          </div>
+        )}
         <div className="form-group full">
           <label htmlFor="new-request-purpose">PURPOSE / REASON *</label>
           <textarea

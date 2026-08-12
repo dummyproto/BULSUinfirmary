@@ -338,6 +338,18 @@
 [data-theme="dark"] .patient-item-name        { color: var(--text); }
 [data-theme="dark"] .patient-item-sub         { color: var(--text-3); }
 [data-theme="dark"] .patient-dropdown-item:hover { background: var(--primary-light); }
+/* The hover rule above lightens the row to a pale mint
+   (var(--primary-light)) — but .patient-item-name/-sub just above force
+   light text UNCONDITIONALLY (var(--text)/var(--text-3), both light
+   colors in dark mode), matching the item's normal dark-background
+   look. On hover, those combine into light text on a pale mint
+   background — nearly unreadable. This affects every SearchableSelect
+   dropdown app-wide in dark mode (patient pickers, diagnosis search,
+   etc.), not just one screen — needs its own dark-text override for
+   the hovered state specifically, since the background actually flips
+   light there. */
+[data-theme="dark"] .patient-dropdown-item:hover .patient-item-name { color: #1A1310; }
+[data-theme="dark"] .patient-dropdown-item:hover .patient-item-sub { color: #2E2420; }
 
 /* ── DARK MODE: SVG icons inside buttons/nav inherit light color ── */
 [data-theme="dark"] .icon-btn svg,
@@ -493,6 +505,18 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);color:#1A1310;font-family:'DM Sans',sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
 @media(max-width:768px){
+  /* .card-header (e.g. "Request History" + record count/action buttons
+     on MyRequestsPage.jsx, and similar headers elsewhere) has no
+     flex-wrap by default — on a narrow phone screen, cramming a record
+     count plus several buttons into one unwrapping row forces them all
+     into whatever sliver of space is left after the title, which is
+     exactly what makes plain text wrap character-by-character (nothing
+     else can shrink enough to give it room) and pushes buttons past the
+     card's own edge. Letting it wrap onto a second line fixes both at
+     once — nothing needs to compress below a sane minimum anymore. */
+  .card-header{flex-wrap:wrap}
+  .card-header > div{flex-wrap:wrap}
+
   /* Safety net against horizontal overflow on mobile — a single element
      rendering even 1px wider than the viewport (a long unbroken string,
      a table that hasn't wrapped in a scroll container, a fixed pixel
@@ -562,6 +586,12 @@ button{font-family:'DM Sans',sans-serif}
   color:#B8AFA5;text-decoration:none;
   transition:color .15s ease,background .15s ease,transform .15s cubic-bezier(.34,1.56,.64,1);
 }
+/* The "Manual" tab (MobileBottomNav.jsx) is a <button>, not the <a>
+   (NavLink) every other tab here is — button elements carry their own
+   browser-default border/background/font/cursor that a shared class
+   name alone doesn't override, so these need resetting explicitly for
+   it to actually look identical to the route tabs beside it. */
+button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:pointer;padding:0}
 /* Icon-only, matching the reference — the label text stays in the DOM
    (visually hidden) as this link's accessible name for screen readers,
    rather than being removed outright. */
@@ -725,6 +755,21 @@ button{font-family:'DM Sans',sans-serif}
 /* Navigation items container */
 .sidebar-nav{padding:10px 8px;flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none}
 .sidebar-nav::-webkit-scrollbar{display:none}
+/* User Manual — bottom-anchored, outside .sidebar-nav's own scroll area
+   (Sidebar.jsx). .sidebar-nav already has flex:1, so this sibling
+   naturally sits at the bottom of the sidebar's flex column without
+   needing its own margin-top:auto — kept simple rather than fighting
+   the layout that already does this. It's a <button>, not the <a>
+   (NavLink) the rest of .nav-item is normally applied to, so the usual
+   button-element defaults (border, background, font, text-align, full
+   width) need resetting explicitly to actually look identical to the
+   items above it, not just share the class name. */
+.sidebar-manual-btn{
+  border:none;background:transparent;font:inherit;text-align:left;width:100%;
+  margin:8px 8px 12px;padding:9px 12px;
+  border-top:1px solid rgba(255,255,255,.12);
+  border-radius:8px;
+}
 /* Navigation section labels (MENU, etc.) */
 .nav-section-label{font-size:10px;font-weight:700;color:#B8AFA5;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
 /* Individual navigation items with hover and active states */
@@ -2336,8 +2381,57 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 
   /* Ensure sidebar/topbar never print */
   .sidebar,.topbar,.help-fab,.help-panel{display:none!important}
+
+  /* Document request "Print" button (MyRequestsPage.jsx) — isolates
+     just the request-details block being printed, hiding everything
+     else on the page (the modal chrome, the page behind it, nav, etc.)
+     rather than printing a screenshot of the whole app. Mirrors the
+     already-established .no-print/.print-only pattern above, scoped to
+     this one printable block specifically since it needs to stay
+     visible/interactive normally (it's not a permanently print-only
+     element like those two classes assume).
+     Toggled via a `printing-doc-request` class on <body> (added right
+     before window.print(), removed on the browser's `afterprint`
+     event) rather than a :has() selector — :has() isn't supported in
+     Safari before 15.4 or Firefox before 121, both within this app's
+     stated browser support range (see .browserslistrc), so a plain
+     class toggle keeps this working everywhere instead of silently
+     doing nothing in older browsers.
+     !important on the print-time position/left/top below because
+     .doc-request-printable-hidden's inline-style-free positioning
+     still needs to beat that class's own normal (hidden, off-screen)
+     rule at the same specificity level — see .doc-request-printable-
+     hidden just below for why this is a CSS class, not an inline
+     style, in the first place. */
+  body.printing-doc-request *{visibility:hidden}
+  body.printing-doc-request .doc-request-printable,
+  body.printing-doc-request .doc-request-printable *{visibility:visible}
+  body.printing-doc-request .doc-request-printable{
+    /* position:fixed, not absolute — the printable div sits inside the
+       Modal, which has its own positioned ancestor for centering it in
+       the viewport (typical modal-overlay pattern). position:absolute
+       positions relative to that ancestor, not the actual page, so
+       top:0 was landing wherever the modal happened to be vertically
+       centered — the large blank gap above the content, with the
+       letterhead pushed toward the bottom of the printed page instead
+       of starting at the top. position:fixed always positions relative
+       to the viewport itself, bypassing any ancestor's positioning
+       entirely, which is what top:0/left:0 actually needs here. */
+    position:fixed!important;top:0!important;left:0!important;width:100%!important;
+    padding:24px;background:#fff!important;
+  }
 }
 .print-only{display:none}
+
+/* Default (non-printing) state for MyRequestsPage.jsx's hidden
+   letterhead template — kept out of the visible layout via position,
+   not display:none, since html2canvas (the "Save as PNG" button) can't
+   capture an element that was never actually laid out. A CSS class
+   rather than an inline style specifically so the print rule above can
+   override it through normal cascade order/specificity instead of
+   fighting an inline style, which always wins over any stylesheet rule
+   regardless of !important games. */
+.doc-request-printable-hidden{position:fixed;left:-9999px;top:0}
 
 /* ── UTILS ── */
 .flex{display:flex}
@@ -3099,7 +3193,7 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   text-align:center;box-shadow:0 20px 60px rgba(220,38,38,.25);
   animation:emg-pop .15s ease;
 }
-.emg-confirm-icon{font-size:44px;margin-bottom:12px;animation:pulse-emg 1.2s infinite}
+.emg-confirm-icon{font-size:44px;margin-bottom:12px;animation:pulse-emg 1.2s infinite;color:#FCA5A5}
 .emg-confirm-box h3{font-size:20px;font-weight:700;color:#F1F5F9;margin-bottom:8px}
 .emg-confirm-box p{font-size:13px;color:#C0B8B0;margin-bottom:24px;line-height:1.6}
 .emg-confirm-btns{display:flex;gap:10px;justify-content:center}
@@ -3498,6 +3592,37 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-select{-webkit-appearance:none;appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px}
 .reg-select option{background:#2A211A;color:#EDE8E0}
 .reg-hint-text{font-size:11px;color:#A0988E;margin-top:4px;display:block}
+
+/* Course/Program field (RegisterModal.jsx) uses SearchableSelect —
+   replacing what used to be a native <input list> + <datalist> combo,
+   which rendered as the browser's own unstyleable OS-native autocomplete
+   popup (plain black box, no rounded corners, didn't match the app at
+   all — the actual bug being fixed here).
+   .reg-box has a FIXED dark background regardless of the site's
+   light/dark theme toggle (registration happens pre-login, so there's
+   no reliable per-user theme context yet) — but SearchableSelect's own
+   dropdown only goes dark under [data-theme="dark"], so on a
+   light-theme visitor it would render a plain light dropdown clashing
+   against this always-dark card. Forced dark here specifically, using
+   the SAME literal colors .reg-input already uses elsewhere in this box
+   (not var(--text)/var(--text-3), which are theme-conditional and would
+   be unreadable if the visitor's actual theme is light while this stays
+   forced dark).
+*/
+.reg-box .patient-dropdown{background:rgba(22,18,14,.98)!important;border-color:var(--primary)!important;max-height:380px!important}
+.reg-box .patient-item-name{color:#F1F5F9!important}
+.reg-box .patient-item-sub{color:#A0988E!important}
+.reg-box .patient-dropdown-item:hover{background:var(--primary-light)!important}
+/* The hover rule above lightens the row's background to a pale mint
+   (var(--primary-light)) — but .patient-item-name/-sub just above force
+   near-white text UNCONDITIONALLY, matching the item's normal dark-
+   background look. On hover those two rules combine into white text on
+   a pale mint background — nearly invisible, exactly the bug reported.
+   Needs its own explicit dark-text override for the hovered state
+   specifically, since the background actually flips light there. */
+.reg-box .patient-dropdown-item:hover .patient-item-name{color:#1A1310!important}
+.reg-box .patient-dropdown-item:hover .patient-item-sub{color:#2E2420!important}
+.reg-box .search-input{background:rgba(255,255,255,.06)!important;color:#F1F5F9!important;border-color:rgba(255,255,255,.1)!important}
 
 /* Password wrap */
 .reg-pw-wrap{position:relative}
@@ -5921,6 +6046,14 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   justify-content: center;
   flex-shrink: 0;
 }
+/* Notify Parent/Guardian's "Select Patient" list (EmergencySidebar.jsx)
+   — colors each patient's avatar by whether they have a usable parent/
+   guardian phone number on file, so staff can see who does and doesn't
+   at a glance in the list itself, instead of only finding out after
+   selecting someone. Same green/red as the rest of the app's success/
+   danger states, not a new color scheme. */
+.patient-item-avatar.has-phone { background: var(--success); }
+.patient-item-avatar.no-phone { background: var(--danger); }
 
 .patient-item-info {
   flex: 1;

@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { NAV_ITEMS, ROLE_LABELS } from '@routes/navItems'
-import { MenuIcon } from '@components/ui/icons'
+import { MenuIcon, BookOpenIcon } from '@components/ui/icons'
 import logo from '@/assets/logo.png'
 
-export default function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate }) {
+export default function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, onOpenManual }) {
   const { role } = useAuth()
   const items = NAV_ITEMS[role] || []
 
@@ -51,6 +51,25 @@ export default function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate })
           </NavLink>
         ))}
       </nav>
+
+      {/* Bottom-anchored, separate from the main nav list (positioned
+          via .sidebar-manual-btn in legacy.css, not a NavLink since it
+          opens a modal rather than navigating to a route) — moved here
+          from the Topbar profile dropdown, where it used to live. */}
+      <button
+        type="button"
+        className="nav-item sidebar-manual-btn"
+        onClick={() => {
+          onOpenManual?.()
+          onNavigate?.()
+        }}
+        data-label="User Manual"
+      >
+        <span className="nav-icon" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          <BookOpenIcon />
+        </span>
+        <span className="nav-label">User Manual</span>
+      </button>
     </aside>
   )
 }

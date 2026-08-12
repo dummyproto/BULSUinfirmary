@@ -9,6 +9,7 @@ import SMSComposerTab from './SMSComposerTab'
 import SmsLogTab from './SmsLogTab'
 import SmsSuccessOverlay from './SmsSuccessOverlay'
 import EmergencySidebar, { PICKUP_OPTIONS } from './EmergencySidebar'
+import { stopEmergencySiren } from '@lib/emergencySound'
 import { SMS_TEMPLATES, validatePHPhone, buildSMSMessage } from './lib/smsHelpers'
 import {
   listEmergencyAlerts,
@@ -148,6 +149,7 @@ export default function EmergencyAlertsPage() {
   }
 
   async function handleAck(id) {
+    stopEmergencySiren()
     try {
       const updated = await acknowledgeAlert(id, currentUserId)
       setAlerts((list) => list.map((a) => (a.emergency_alert_id === id ? { ...a, ...updated } : a)))

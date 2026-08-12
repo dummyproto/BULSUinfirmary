@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
-import { AlertOctagonIcon } from '@components/ui/icons'
+import { AlertOctagonIcon, Volume2Icon, VolumeXIcon } from '@components/ui/icons'
 import BotFace from './BotFace'
 
 // Bot messages can come from two places: our own trusted rule-engine
@@ -17,11 +17,24 @@ function sanitizeBotHtml(text) {
   return DOMPurify.sanitize(text, { ALLOWED_TAGS, ALLOWED_ATTR: [] })
 }
 
-export default function ChatMessage({ message, userInitials, userAvatarUrl }) {
+// Plain-text version of a bot reply, for the "tap to listen" button
+// (useSpeechSynthesis.js) — speaking the raw HTML string directly would
+// read the tags themselves aloud (literally saying "strong", "br", the
+// angle brackets, etc.). <br>/</div> become ". " first so a line break
+// still reads as a natural pause instead of running two lines together
+// with no gap at all once the tags are gone.
+export function toSpeechText(html) {
+  const withPauses = (html || '').replace(/<br\s*\/?>/gi, '. ').replace(/<\/div>/gi, '. ')
+  const plain = DOMPurify.sanitize(withPauses, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+  return plain.replace(/\s+/g, ' ').trim()
+}
+
+export default function ChatMessage({ message, userInitials, userAvatarUrl, speakId, speakingId, onToggleSpeak, speechSupported }) {
   const time = <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{timeAgo(message.ts)}</div>
 
   if (message.type === 'bot') {
     const bubbleClass = `msg-bubble bot${message.emergency ? ' emergency' : ''}`
+    const isSpeaking = speakingId === speakId
     return (
       <div className="msg msg-bot-wrap">
         <div className="msg-avatar bot-av">
@@ -29,7 +42,20 @@ export default function ChatMessage({ message, userInitials, userAvatarUrl }) {
         </div>
         <div className="msg-content-wrap">
           <div className={bubbleClass} dangerouslySetInnerHTML={{ __html: sanitizeBotHtml(message.text) }} />
-          {time}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {time}
+            {speechSupported && (
+              <button
+                type="button"
+                className="msg-listen-btn"
+                title={isSpeaking ? 'Stop reading aloud' : 'Listen to this reply'}
+                aria-label={isSpeaking ? 'Stop reading aloud' : 'Listen to this reply'}
+                onClick={() => onToggleSpeak(speakId, toSpeechText(message.text))}
+              >
+                {isSpeaking ? <VolumeXIcon width={12} height={12} /> : <Volume2Icon width={12} height={12} />}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )

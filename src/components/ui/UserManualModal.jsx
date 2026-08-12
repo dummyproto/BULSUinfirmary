@@ -32,14 +32,20 @@ const SECTIONS = [
       <>
         <h4>Signing in</h4>
         <p>
-          Sign in with your registered email and password, or tap <strong>Scan ID</strong> on the login screen to identify your
-          account by scanning your school ID's QR/barcode — you'll still need to enter your password afterward.
+          Sign in with your registered email or username and password, or tap <strong>Scan ID</strong> on the login screen to
+          identify your account by scanning your school ID's QR/barcode — you'll still need to enter your password afterward.
+        </p>
+        <h4>Creating an account</h4>
+        <p>
+          New patients register from the <strong>Register</strong> link on the login page — First Name, Last Name,
+          Student/User ID, phone, course, year level, email, a username, and a password. Scanning a school ID's QR code
+          during registration can pre-fill some of these fields automatically.
         </p>
         <h4>If your password is entered wrong repeatedly</h4>
         <p>
           After 5 wrong attempts, the sign-in form locks for 60 seconds. After the cooldown, you get 10 more attempts before the
           account is automatically disabled for security. A disabled account shows <em>"Your account is disabled — contact
-          admin"</em> — only an administrator can re-enable it (Maintenance → User Management), even if you later enter the
+          admin"</em> — only staff can re-enable it (Maintenance → User Management), even if you later enter the
           correct password.
         </p>
         <h4>Emergency Alert (SOS)</h4>
@@ -48,16 +54,25 @@ const SECTIONS = [
           even sign in. It opens a confirmation, then a short form to describe the emergency and send it directly to clinic
           staff.
         </p>
-        <h4>Notifications &amp; dark mode</h4>
+        <h4>Notifications, dark mode &amp; live updates</h4>
         <p>
           The bell icon in the top bar shows your notifications. To delete one or several, tap <strong>Delete</strong> next to
-          Mark All Read — this reveals checkboxes so you can select exactly which ones to remove. Dark/light mode is no longer
-          in the top bar — switch it from <strong>Profile → Account Settings → Appearance</strong>.
+          Mark All Read — this reveals checkboxes so you can select exactly which ones to remove. The sun/moon icon next to it
+          switches between light and dark mode instantly.
+        </p>
+        <p>
+          Most of what you see — document request statuses, your profile, notifications — updates live in real time. If
+          someone else (or you, on another device) changes something, you'll usually see it update on screen without needing
+          to refresh the page.
         </p>
         <h4>Mobile view</h4>
         <p>
-          On phones, tap the ☰ menu icon (top-left) to open the sidebar. A floating up-arrow button appears in the bottom-right
-          corner once you've scrolled down a page — tap it to jump back to the top instantly.
+          On phones, use the bottom navigation bar to access the main features and pages. A floating up-arrow button appears in the bottom-right corner once you've scrolled down a page — tap it to jump back to the top instantly.
+        </p>
+        <h4>If you're suddenly signed out</h4>
+        <p>
+          If a staff member deletes or deactivates your account while you're signed in, you'll be signed out immediately
+          with a message explaining why — this isn't a bug, it's a deliberate security measure.
         </p>
       </>
     ),
@@ -67,19 +82,24 @@ const SECTIONS = [
     label: 'Dashboard',
     Icon: GridIcon,
     roles: ['admin', 'staff', 'patient'],
-    content: (
+    // A function of the viewer's own role, not static content — a
+    // patient only ever sees their own patient-dashboard description,
+    // not also a bullet about a staff/admin dashboard they don't have
+    // access to (and vice versa for staff/admin).
+    content: (role) => (
       <>
-        <p>Your Dashboard is the first thing you see after signing in, and its contents depend on your role:</p>
-        <ul>
-          <li>
-            <strong>Patients</strong> see their recent document requests, a summary of their own health record (if any
-            consultations are on file), and their emergency alert status.
-          </li>
-          <li>
-            <strong>Staff and Admin</strong> see clinic-wide activity — pending document requests, low-stock/expiring
-            inventory alerts, and recent emergency alerts — so you can spot what needs attention without opening every tab.
-          </li>
-        </ul>
+        <p>Your Dashboard is the first thing you see after signing in.</p>
+        {role === 'patient' ? (
+          <p>
+            You'll see your recent document requests, a summary of your own health record (if any consultations are on
+            file), and your emergency alert status.
+          </p>
+        ) : (
+          <p>
+            You'll see clinic-wide activity — pending document requests, low-stock/expiring inventory alerts, and recent
+            emergency alerts — so you can spot what needs attention without opening every tab.
+          </p>
+        )}
         <p>Widgets with a "View All" button jump straight to the relevant tab for more detail.</p>
       </>
     ),
@@ -139,8 +159,18 @@ const SECTIONS = [
             <strong>Declined</strong>, with a note explaining why).
           </li>
           <li>
+            Once a request is <strong>Approved</strong>, open it and you'll see <strong>Print</strong>,{' '}
+            <strong>Save as PNG</strong>, and <strong>Save as Word</strong> options — a ready-made copy of your request to
+            bring when you go claim the actual document.
+          </li>
+          <li>
+            Tap <strong>Select</strong> to check requests and delete them — only requests already marked{' '}
+            <strong>Claimed</strong> can be removed this way; anything still active or pending can't be deleted, since it's
+            still an open request staff are tracking.
+          </li>
+          <li>
             The <strong>Processing Information</strong> card at the bottom of this page shows typical turnaround time, what to
-            bring, and pickup hours.
+            bring, pickup hours, and the clinic's phone number and Facebook page.
           </li>
         </ul>
       </>
@@ -184,7 +214,9 @@ const SECTIONS = [
           <li>
             <strong>Batches</strong> — every batch is tracked separately (a new delivery is always a new batch, never merged
             into an existing one), grouped by medicine. This is how expiry dates and FIFO (first-expiring-first-out) dispensing
-            work correctly even when the same medicine has multiple batches on hand.
+            work correctly even when the same medicine has multiple batches on hand. A batch can also be marked
+            <strong> Damaged</strong> (removes a quantity from usable stock) or <strong>Archived</strong> (removed from active
+            stock but kept for history) — archived batches can be restored later.
           </li>
           <li>
             <strong>Suppliers</strong> — your supplier directory. A supplier that's linked to any batch can't be deleted until
@@ -192,11 +224,13 @@ const SECTIONS = [
           </li>
           <li>
             <strong>QR Scanner</strong> — scan a batch's QR code (printed from Batches → QR) to quickly look it up or verify it
-            during receiving/dispensing.
+            during receiving/dispensing. No code to scan? <strong>Upload an image</strong> instead (iPhone photos convert
+            automatically), or use <strong>Read Text</strong> to pull text off a handwritten label for you to review before
+            typing it in — either way, nothing is saved until you confirm it on the verification screen.
           </li>
           <li>
             <strong>Log</strong> — a full audit trail of every stock movement (additions, releases, adjustments) with who did
-            it and when. Admins (or staff with the delete permission from Maintenance → Staff Permissions) can remove entries
+            it and when. Staff with the delete permission (granted from Maintenance → Staff Permissions) can remove entries
             individually or in bulk with the Delete button.
           </li>
           <li>
@@ -219,8 +253,7 @@ const SECTIONS = [
           <li>Choose a report type and date range, then generate a preview before exporting.</li>
           <li>Exported reports are formatted for printing/sharing (e.g. for monthly clinic summaries).</li>
           <li>
-            The <strong>Reset</strong> button clears the current report and filters — admins always have it; staff need it
-            granted in Maintenance → Staff Permissions.
+            The <strong>Reset</strong> button clears the current report and filters — staff need it granted in Maintenance → Staff Permissions.
           </li>
         </ul>
       </>
@@ -230,7 +263,12 @@ const SECTIONS = [
     key: 'emergency-alerts',
     label: 'Emergency Alerts',
     Icon: EmergencyIcon,
-    roles: ['admin', 'staff', 'patient'],
+    // Patients still learn how to use the SOS button itself in
+    // "Getting Started" (universal to every role) — this dedicated
+    // section is staff/admin-only now, since its actual content is
+    // about reviewing/responding to incoming alerts and notifying
+    // parents, not something a patient does.
+    roles: ['admin', 'staff'],
     content: (
       <>
         <p>
@@ -244,11 +282,17 @@ const SECTIONS = [
             automatically carried into the emergency description for you — you can still edit it before sending.
           </li>
           <li>
-            <strong>Staff and Admin</strong> see every incoming alert on the Emergency Alerts page in real time, with the
-            sender's name and location, and can respond directly.
+            <strong>Staff</strong> see every incoming alert on the Emergency Alerts page in real time, with the
+            sender's name and location, and can respond directly. A loud alert sound plays automatically when a new one
+            arrives — it keeps sounding until the alert is <strong>acknowledged</strong> or <strong>dismissed</strong>, from
+            either the live pop-up or the Alert List tab.
+          </li>
+          <li>
+            After sending, the confirmation screen also shows the clinic's direct phone number as a backup way to reach
+            someone right away.
           </li>
         </ul>
-        <h4>Notify Parent/Guardian (Staff and Admin)</h4>
+        <h4>Notify Parent/Guardian (Staff)</h4>
         <p>
           Sends a real SMS text message straight to a patient's parent/guardian — this is an actual message delivery, not just
           an in-app notice.
@@ -268,8 +312,8 @@ const SECTIONS = [
           </li>
           <li>
             <strong>SMS Log</strong> and <strong>Alert Log</strong> keep a full history of everything sent — tap{' '}
-            <strong>View</strong> on any entry to see the complete message. Admins (or staff specifically granted the
-            permission in Maintenance → Staff Permissions) can delete entries individually or select several at once with the{' '}
+            <strong>View</strong> on any entry to see the complete message. Staff specifically granted the
+            permission in Maintenance → Staff Permissions can delete entries individually or select several at once with the{' '}
             <strong>Delete</strong> button.
           </li>
         </ul>
@@ -283,17 +327,19 @@ const SECTIONS = [
     roles: ['admin'],
     content: (
       <>
-        <p>Admin-only settings for managing the system itself.</p>
+        <p>Staff-only settings for managing the system itself.</p>
         <ul>
           <li>
             <strong>User Management</strong> — create, edit, activate, or deactivate any account. This is also the only place
-            to re-enable an account that got disabled from repeated failed logins.
+            to re-enable an account that got disabled from repeated failed logins. For patient accounts, Add/Edit User uses
+            separate Surname and First Name fields (not one combined "Full Name" box), and the User ID follows the same
+            2023-000-000 format used at registration.
           </li>
           <li>
             <strong>Staff Permissions</strong> — grant individual staff accounts specific abilities beyond their default role:
             printing inventory reports, document requests, or health records; deleting entries from the Alert Log, SMS Log, or
-            Inventory Transaction Log; and resetting the Reports page. Admins always have every ability regardless of these
-            toggles — this only controls what staff accounts can do.
+            Inventory Transaction Log; and resetting the Reports page. These toggles are what actually control what a staff
+            account can do — an account without a toggle granted won't have that ability.
           </li>
         </ul>
       </>
@@ -306,15 +352,34 @@ const SECTIONS = [
     roles: ['patient'],
     content: (
       <>
-        <p>MediBot answers questions about clinic hours, documents, services, and general health tips 24/7.</p>
+        <p>MediBot answers questions about clinic hours, documents, services, using this app, and general health tips 24/7.</p>
         <ul>
-          <li>Tap a topic tile, or just type your question naturally.</li>
+          <li>Tap a topic tile, or just type your question naturally — MediBot replies in whichever language you write in.</li>
+          <li>
+            <strong>Voice Mode</strong> (the switch at the top of the chat) has MediBot read its replies out loud
+            automatically as they arrive. Tap the speaker icon on any individual message to replay it, or to stop it early.
+          </li>
           <li>
             On mobile, tap <strong>Info</strong> in the chat header to open Topic Categories, Clinic Contacts, and the Medical
             Disclaimer in a slide-out panel — it closes automatically once you pick a topic.
           </li>
           <li>
             Typing <strong>"sos"</strong> anywhere opens the Emergency Alert form immediately.
+          </li>
+          <li>
+            MediBot can also tell you the status of your own document requests directly, and answer questions about how to
+            use this app — but it won't discuss staff-only screens, or anyone's personal staff information.
+          </li>
+          <li>
+            Describing symptoms (e.g. "I have fever, headache, and body pain") gets you a <strong>Symptom Analysis</strong> —
+            commonly-associated conditions and a general risk level (Low/Medium/High) with a suggested next step. This is a
+            summary of what you typed, <strong>not a diagnosis</strong> — only a healthcare provider can properly evaluate
+            symptoms.
+          </li>
+          <li>
+            If you write about feeling sad, anxious, lonely, or overwhelmed, MediBot responds supportively rather than just
+            factually — and if a message suggests you may be thinking about harming yourself, it immediately shows crisis
+            resources (the clinic, campus security, a national crisis hotline, and emergency services) alongside its reply.
           </li>
           <li>MediBot provides general information only — it is not a medical diagnosis. For emergencies, use SOS or call 911.</li>
         </ul>
@@ -331,17 +396,24 @@ const SECTIONS = [
         <p>Tap your avatar (top-right) to open your profile. It has up to three tabs:</p>
         <ul>
           <li>
-            <strong>Personal Information</strong> — your name, contact details, and (for patients) academic info. Staff
-            accounts can view but not edit this themselves — an admin manages it via Maintenance.
+            <strong>Personal Information</strong> — your name (Surname, First Name, M.I., and a Jr./Sr./II/III extension
+            dropdown), contact details, address, and (for patients) academic info. Staff accounts can view but not edit this
+            themselves — a staff member manages it via Maintenance.
           </li>
           <li>
             <strong>Family Background</strong> (patients only) — father's, mother's, and guardian's contact information.
           </li>
           <li>
-            <strong>Account Settings</strong> — includes <strong>Appearance</strong> (light/dark mode), your read-only account
-            details, and <strong>Change Password</strong>.
+            <strong>Account Settings</strong> — your username, email, read-only account details, and{' '}
+            <strong>Change Password</strong>. Input your current password, enter your new password, confirm it, and click the Update Password button.
           </li>
         </ul>
+        <h4>Address</h4>
+        <p>
+          Region, Province, City/Municipality, and Barangay are cascading dropdowns using real Philippine location data —
+          pick a Region to see its actual Provinces, pick a Province to see its actual Cities/Municipalities, and so on. Zip
+          Code is a 4-digit field.
+        </p>
         <h4>Linking your School ID for Scan ID login</h4>
         <p>
           In Personal Information, the <strong>School ID / Barcode Code</strong> field has a <strong>Scan</strong> button — use
@@ -387,7 +459,7 @@ export default function UserManualModal({ isOpen, onClose }) {
           </nav>
           <div className="manual-content">
             <h2>{active?.label}</h2>
-            {active?.content}
+            {typeof active?.content === 'function' ? active.content(role) : active?.content}
           </div>
         </div>
       </div>

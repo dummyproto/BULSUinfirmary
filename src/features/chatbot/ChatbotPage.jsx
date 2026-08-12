@@ -6,7 +6,9 @@ import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { getOrCreateActiveConversation, addMessage, createConversation, getAiReply, listConversationsForUser, listRecentUserMessages, deleteAllConversationsForUser } from '@services/chatService'
 import { classifyIntent, getBotReply, isHealthConcernMessage } from './lib/botEngine'
-import ChatMessage from './ChatMessage'
+import { useSpeechSynthesis } from '@hooks/useSpeechSynthesis'
+import Toggle from '@components/ui/Toggle'
+import ChatMessage, { toSpeechText } from './ChatMessage'
 import ChatLogModal from './ChatLogModal'
 import BotFace from './BotFace'
 import {
@@ -48,7 +50,7 @@ function greetingMessage() {
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   return {
     type: 'bot',
-    text: `${greet}! 👋 I'm <strong>MediBot</strong>, your 24/7 intelligent clinic assistant.<br><br>I can help you with clinic information, health tips, symptom checking, document guidance, and <strong>emotional support</strong>. 💙<br><br>How are you feeling today?`,
+    text: `${greet}! I'm <strong>MediBot</strong>, your 24/7 intelligent clinic assistant.<br><br>I can help you with clinic information, health tips, symptom checking, document guidance, and <strong>emotional support</strong>.<br><br>How are you feeling today?`,
     ts: new Date().toISOString(),
   }
 }
@@ -58,6 +60,25 @@ function greetingMessage() {
 // triggers the emergency form instead of a normal bot reply.
 function isSosTrigger(text) {
   return /\bsos\b/i.test(text)
+}
+
+// Voice Mode is a per-device UI preference, not sensitive/account data
+// — same reasoning as ThemeContext.jsx's dark/light mode persistence.
+// Without this, turning it off only lasted until the next refresh,
+// since it was plain in-memory React state with nothing writing it
+// anywhere persistent.
+const VOICE_MODE_STORAGE_KEY = 'chatbot_voice_mode'
+function getInitialVoiceMode() {
+  try {
+    const stored = localStorage.getItem(VOICE_MODE_STORAGE_KEY)
+    // Only an explicit "off" ever overrides the default-on behavior —
+    // anything else (never set yet, a corrupted value, storage
+    // blocked) falls back to true, matching what every user already
+    // saw before this had any persistence at all.
+    return stored !== 'off'
+  } catch {
+    return true
+  }
 }
 
 export default function ChatbotPage() {
@@ -85,6 +106,53 @@ export default function ChatbotPage() {
   const [inputValue, setInputValue] = useState('')
   const [typing, setTyping] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
+  const { speakingId, toggle: toggleSpeak, stop: stopSpeaking, supported: speechOutputSupported } = useSpeechSynthesis()
+  // Voice mode is output-only now — MediBot can read its replies aloud,
+  // but voice input (the mic/speech-recognition button) has been
+  // removed entirely, not just hidden. Only shown at all (see the
+  // header below) in a browser that actually supports speech synthesis
+  // — no point offering a switch that can't do anything.
+  const [voiceMode, setVoiceMode] = useState(getInitialVoiceMode)
+  const voiceModeAvailable = speechOutputSupported
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VOICE_MODE_STORAGE_KEY, voiceMode ? 'on' : 'off')
+    } catch {
+      // Persistence failing (storage blocked/full) shouldn't block the
+      // toggle from working for the rest of this session — it just
+      // won't survive the next refresh.
+    }
+  }, [voiceMode])
+
+  // Auto-speaks a new bot reply the moment it arrives, when Voice Mode
+  // is on — without this, "voice mode" only ever did anything if the
+  // person manually tapped the speaker icon on each individual message,
+  // which isn't how an always-on toggle reads to someone using it: with
+  // Voice Mode on (the default), MediBot should just talk back, not
+  // require a tap per reply to hear anything at all.
+  // Only triggers when the list grew by exactly one message (a single
+  // reply appended) — not on the initial greeting, not when switching/
+  // loading a past conversation's full history, and not on a "New
+  // Chat" reset, all of which replace/reset the whole array rather than
+  // appending one message, and none of which followed a fresh user
+  // gesture (several browsers silently block speechSynthesis.speak()
+  // without one — same silent-failure category as the voices-not-
+  // loaded bug fixed in useSpeechSynthesis.js). A genuine new reply
+  // naturally follows the person having just typed and sent a message,
+  // which does satisfy that requirement.
+  const prevMessageCountRef = useRef(0)
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current
+    prevMessageCountRef.current = messages.length
+    if (messages.length !== prevCount + 1) return
+    if (!voiceMode || !speechOutputSupported) return
+    const last = messages[messages.length - 1]
+    if (!last || last.type !== 'bot') return
+    const id = last.id ?? `local-${messages.length - 1}`
+    toggleSpeak(id, toSpeechText(last.text))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages])
   // Mobile-only — the Topic Categories / Clinic Contacts / Medical
   // Disclaimer panel renders as an off-canvas drawer below 900px (no
   // room next to the chat itself). Starts OPEN (not closed-until-tapped)
@@ -246,27 +314,43 @@ export default function ChatbotPage() {
     let reply
     let emergency = false
     try {
-      // Real AI reply (Groq, via the chat-completion Edge Function) when
-      // it's deployed and configured.
-      const ai = await getAiReply(conversationId, msg)
-      reply = ai.reply
-      emergency = ai.emergency
-    } catch {
-      // Not deployed, no GROQ_API_KEY yet, rate-limited, or genuinely
-      // down — fall back to the built-in rule-based engine so the chat
-      // still works, just less capably. Keeps the original simulated
-      // "thinking" delay for this path only, since there's no real
-      // network round-trip to provide one naturally.
-      await new Promise((resolve) => setTimeout(resolve, 500 + Math.min(msg.length * 8, 800)))
-      const currentMessages = messages.filter((m) => m.type === 'user').map((m) => ({ text: m.text, ts: m.ts }))
-    reply = getBotReply(msg, { firstName, docRequests: myDocRequests, awaitingSymptoms, setAwaitingSymptoms, pastMessages, currentMessages })
-    }
+      try {
+        // Real AI reply (Groq, via the chat-completion Edge Function) when
+        // it's deployed and configured.
+        const ai = await getAiReply(conversationId, msg)
+        reply = ai.reply
+        emergency = ai.emergency
+      } catch {
+        // Not deployed, no GROQ_API_KEY yet, rate-limited, or genuinely
+        // down — fall back to the built-in rule-based engine so the chat
+        // still works, just less capably. Keeps the original simulated
+        // "thinking" delay for this path only, since there's no real
+        // network round-trip to provide one naturally.
+        await new Promise((resolve) => setTimeout(resolve, 500 + Math.min(msg.length * 8, 800)))
+        const currentMessages = messages.filter((m) => m.type === 'user').map((m) => ({ text: m.text, ts: m.ts }))
+        reply = getBotReply(msg, { firstName, docRequests: myDocRequests, awaitingSymptoms, setAwaitingSymptoms, pastMessages, currentMessages })
+      }
 
-    setMessages((list) => [...list, { type: 'bot', text: reply, ts: new Date().toISOString(), emergency }])
-    setTyping(false)
-    addMessage({ conversationId, senderType: 'bot', message: reply }).catch((err) =>
-      show(`Reply may not have saved: ${err.message}`, 'warning')
-    )
+      setMessages((list) => [...list, { type: 'bot', text: reply, ts: new Date().toISOString(), emergency }])
+      addMessage({ conversationId, senderType: 'bot', message: reply }).catch((err) =>
+        show(`Reply may not have saved: ${err.message}`, 'warning')
+      )
+    } catch (err) {
+      // Both the AI path AND the rule-based fallback failed (e.g. a bug
+      // in getBotReply itself, not just Groq being unreachable) — without
+      // this, that exception would propagate straight out of
+      // handleSend, skipping setTyping(false) below entirely and
+      // leaving the input permanently stuck on "Waiting for a reply…"
+      // with no way to type again short of a full page refresh. A
+      // visible error is still far better than a silently broken input.
+      show(`MediBot couldn't respond: ${err.message}`, 'error')
+    } finally {
+      // Guaranteed to run whether the reply succeeded, fell back, or
+      // both attempts failed above — this is what actually re-enables
+      // the input, and it needs to run unconditionally, not just on the
+      // success path.
+      setTyping(false)
+    }
   }
 
   function handleInputKeyPress(e) {
@@ -426,6 +510,19 @@ export default function ChatbotPage() {
             </div>
           </div>
           <div className="chat-header-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {voiceModeAvailable && (
+              <div className="chat-voice-toggle" title="Talking chatbot — voice replies and the mic button">
+                <Toggle
+                  checked={voiceMode}
+                  onChange={(next) => {
+                    setVoiceMode(next)
+                    if (!next) stopSpeaking()
+                  }}
+                  label="Talking chatbot (voice replies and mic input)"
+                />
+                <span>Voice</span>
+              </div>
+            )}
             <button type="button" className="btn btn-sm btn-outline chat-panel-toggle-btn" onClick={() => setMobilePanelOpen(true)} title="View topics, contacts & disclaimer">
               <InfoIcon width={13} height={13} /> Info
             </button>
@@ -440,7 +537,16 @@ export default function ChatbotPage() {
 
         <div className="chat-messages" ref={messagesRef} onClick={handleMessagesClick}>
           {messages.map((m, i) => (
-            <ChatMessage key={m.id ?? `local-${i}`} message={m} userInitials={profile?.avatar_initials} userAvatarUrl={profile?.profile_img_url} />
+            <ChatMessage
+              key={m.id ?? `local-${i}`}
+              message={m}
+              userInitials={profile?.avatar_initials}
+              userAvatarUrl={profile?.profile_img_url}
+              speakId={m.id ?? `local-${i}`}
+              speakingId={speakingId}
+              onToggleSpeak={toggleSpeak}
+              speechSupported={speechOutputSupported && voiceMode}
+            />
           ))}
           {typing && (
             <div className="msg msg-bot-wrap">

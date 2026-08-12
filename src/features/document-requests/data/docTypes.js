@@ -3,4 +3,5 @@ export const DOC_TYPES = [
   'Health Clearance',
   'Fit to Work Certificate',
   'Physical Exam Form',
+  'Other',
 ]

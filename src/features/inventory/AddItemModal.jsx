@@ -9,7 +9,7 @@ const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'R
 
 const EMPTY_FORM = {
   name: '',
-  category: 'Medicine',
+  category: '',
   unit: '',
   quantity: '',
   minStock: '',
@@ -31,6 +31,13 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
 
   function stageItem() {
     if (!form.name.trim()) return onError('Item name is required')
+    // Category never had a validation check before — it always
+    // defaulted to a real value ('Medicine'), so there was nothing to
+    // catch. Now that it starts blank (an explicit "-- Select Category
+    // --" placeholder, not a silent default), submitting without
+    // choosing one needs to be caught explicitly, the same way Unit
+    // already is just below.
+    if (!form.category) return onError('Please select a category')
     if (!form.unit.trim()) return onError('Unit is required')
     // Quantity is marked required (see the "QUANTITY *" label below) but
     // was silently defaulting an empty field to 0 via `|| 0` further
@@ -124,6 +131,9 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
           <div className="form-group">
             <label>CATEGORY *</label>
             <select className="form-select" value={form.category} onChange={(e) => setField('category')(e.target.value)}>
+              <option value="" disabled>
+                -- Select Category --
+              </option>
               <option>Medicine</option>
               <option>Supply</option>
               <option>Equipment</option>
@@ -132,7 +142,9 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
           <div className="form-group">
             <label>UNIT *</label>
             <select className="form-select" value={form.unit} onChange={(e) => setField('unit')(e.target.value)}>
-              <option value=""></option>
+              <option value="" disabled>
+                -- Select Unit --
+              </option>
               {UNITS.map((u) => (
                 <option value={u} key={u}>
                   {u}

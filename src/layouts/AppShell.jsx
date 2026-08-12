@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
@@ -9,6 +9,7 @@ import AccountStatusGuard from './AccountStatusGuard'
 import ToastViewport from '@components/ui/ToastViewport'
 import OfflineBanner from '@components/ui/OfflineBanner'
 import ScrollToTopButton from '@components/ui/ScrollToTopButton'
+import UserManualModal from '@components/ui/UserManualModal'
 import { useSidebar } from '@hooks/useSidebar'
 import { useAuth } from '@context/AuthContext'
 import { NAV_ITEMS } from '@routes/navItems'
@@ -31,6 +32,11 @@ export default function AppShell() {
   const { open, mobileOpen, toggle, closeDrawer } = useSidebar()
   const title = useCurrentPageTitle()
   const pageContentRef = useRef(null)
+  // Lifted up from Topbar (where it used to live, inside the profile
+  // dropdown) so both Sidebar (desktop) and MobileBottomNav (mobile) can
+  // trigger the SAME modal instance — rendered once here rather than
+  // duplicated in either of them.
+  const [manualOpen, setManualOpen] = useState(false)
 
   return (
     <>
@@ -40,6 +46,7 @@ export default function AppShell() {
           mobileOpen={mobileOpen}
           onToggle={toggle}
           onNavigate={closeDrawer}
+          onOpenManual={() => setManualOpen(true)}
         />
         <div className="main-area">
           <Topbar title={title} onToggleSidebar={toggle} />
@@ -57,8 +64,9 @@ export default function AppShell() {
       <EmergencyAlertListener />
       <SessionTimeoutManager />
       <AccountStatusGuard />
-      <MobileBottomNav />
+      <MobileBottomNav onOpenManual={() => setManualOpen(true)} />
       <ScrollToTopButton targetRef={pageContentRef} />
+      <UserManualModal isOpen={manualOpen} onClose={() => setManualOpen(false)} />
     </>
   )
 }
