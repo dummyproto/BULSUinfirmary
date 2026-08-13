@@ -69,6 +69,21 @@ export async function updateDocumentRequestStatus(id, status, { processedBy, not
   return flattenRequest(data)
 }
 
+// Edits the request's own details (not its status/notes — that's what
+// updateDocumentRequestStatus() is for). RLS (migration 042) only allows
+// this to actually succeed while the row is still 'Pending', so the caller
+// (MyRequestsPage) also only shows the Edit action for Pending requests.
+export async function updateDocumentRequest(id, { docType, purpose, dateNeeded }) {
+  const { data, error } = await supabase
+    .from('document_requests')
+    .update({ doc_type: docType, purpose, date_needed: dateNeeded, updated_at: new Date().toISOString() })
+    .eq('doc_request_id', id)
+    .select(SELECT_WITH_PATIENT)
+    .single()
+  if (error) throw error
+  return flattenRequest(data)
+}
+
 export async function deleteDocumentRequest(id) {
   const { error } = await supabase.from('document_requests').delete().eq('doc_request_id', id)
   if (error) throw error

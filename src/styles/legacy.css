@@ -623,7 +623,13 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
 [data-theme="light"] .mobile-bottom-nav-item{color:#5A5148}
 [data-theme="light"] .mobile-bottom-nav-item:hover{color:#1A1310;background:rgba(0,0,0,.06)}
 [data-theme="light"] .mobile-bottom-nav-item.nav-item-emg{color:#C0392B}
-@media(max-width:768px){
+/* Also matched on (hover:none) and (pointer:coarse) so a touch tablet in
+   LANDSCAPE (e.g. an iPad at 1024px wide — wider than 768px) still gets
+   the bottom nav, matching the same touch detection used for the sidebar
+   drawer above/below. A real desktop/laptop (hover:hover + pointer:fine)
+   is unaffected even in a narrow window, since a resized desktop browser
+   window isn't a "device" this app needs to adapt its nav for. */
+@media(max-width:768px), (hover:none) and (pointer:coarse){
   .mobile-bottom-nav{display:flex}
   /* Room at the bottom of the scrollable page area so the last bit of
      content (e.g. a table's final row, a form's submit button) never
@@ -631,6 +637,14 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
      the bar's own height plus its padding/safe-area inset with a small
      margin to spare. */
   .page-content{padding-bottom:76px}
+  /* Sidebar removed entirely wherever the bottom nav is showing —
+     Dashboard/My Requests/Chat-Bot/Manual are all one tap away down
+     there already, and the topbar's profile dropdown covers Logout
+     (see Topbar.jsx), so the sidebar drawer had nothing left to offer
+     here and was just a redundant, overlapping second nav surface (as
+     seen with both open at once). Hides its hamburger trigger and
+     backdrop too, since there's nothing left for either to open. */
+  .sidebar,.hamburger-btn,.sidebar-overlay{display:none!important}
 }
 
 /* ========== SIDEBAR: Navigation and user info ========== */
@@ -674,7 +688,18 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
    still exists but nothing sets it anymore now that the toggle button
    is gone; left in place as inert, harmless CSS rather than ripped out,
    since removing it entirely isn't necessary for this to work. */
-@media(min-width:769px){
+@media(min-width:769px) and (hover:hover) and (pointer:fine){
+  /* (hover:hover) and (pointer:fine) added: min-width:769px alone can't
+     tell a real desktop monitor apart from a touch tablet held in
+     landscape (e.g. an iPad at 1024px wide is ≥769px too) — both report
+     the same width. A touch screen reports hover:none + pointer:coarse;
+     an actual mouse/trackpad reports hover:hover + pointer:fine. Gating
+     this hover-rail behind that stops a landscape tablet from getting
+     the desktop-only rail — it now falls through to the portrait/touch
+     drawer rules further down this file instead (that block is now
+     matched on touch as well as orientation:portrait — see its own
+     comment). Untouched for actual desktops/laptops with a mouse or
+     trackpad, which still report hover:hover + pointer:fine here. */
   /* !important on the width/position declarations below is deliberate,
      not sloppy — this range (769px+) overlaps with several older
      landscape/tablet/aspect-ratio breakpoints elsewhere in this file
@@ -2753,48 +2778,24 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
 
 /* SPECIFIC DEVICE ORIENTATIONS */
 
-/* ══ PORTRAIT: sidebar is a slide-in drawer ══════════════════ */
-@media (orientation:portrait){
+/* ══ PORTRAIT (or any touch device): mobile layout ═══════════════ */
+/* Also matched on (hover:none) and (pointer:coarse) — a touch tablet
+   held in LANDSCAPE (e.g. an iPad at 1024px wide) isn't portrait and
+   isn't narrow enough for the mobile max-width rules, so without this
+   it fell through to the desktop hover-rail sidebar meant for a
+   mouse-driven monitor. Touch screens report hover:none + pointer:coarse;
+   a real mouse/trackpad reports hover:hover + pointer:fine (see the
+   min-width:769px hover-rail block above, now gated the same way) — so
+   this correctly picks up touch tablets in either orientation while
+   leaving actual desktops/laptops on the rail behavior below.
+   The sidebar itself (drawer, hamburger trigger, close button) no
+   longer has rules here — it's hidden outright wherever the bottom nav
+   shows (see the max-width:768px/touch block near the top of this
+   file), so there's nothing left to open/close/animate in this range. */
+@media (orientation:portrait), (hover:none) and (pointer:coarse){
   .app-container { flex-direction: row; position: relative; }
   .main-area     { width: 100vw; }
   .page-content  { max-height: calc(100vh - var(--topbar-h)); padding: 14px; }
-  .hamburger-btn { display: flex !important; }
-
-  /* Sidebar: off-screen by default, slides in when .mobile-open */
-  .sidebar {
-    position: fixed;
-    top: 0; left: 0;
-    width: var(--sidebar-w) !important;
-    min-width: var(--sidebar-w) !important;
-    height: 100vh;
-    z-index: 1000;
-    transform: translateX(-100%);
-    transition: transform .24s cubic-bezier(.22,.68,0,1.2),
-                box-shadow .24s ease;
-    box-shadow: none;
-    overflow-y: auto;
-    overflow-x: hidden;
-    will-change: transform;
-    /* Ensure clicks on nav items always reach them */
-    pointer-events: auto;
-  }
-  .sidebar.mobile-open {
-    transform: translateX(0);
-    box-shadow: 6px 0 32px rgba(0,0,0,.35), 2px 0 8px rgba(0,0,0,.2);
-  }
-  .sidebar.collapsed {
-    transform: translateX(-100%);
-    box-shadow: none;
-  }
-
-  /* Nav items fully clickable */
-  .sidebar .nav-item {
-    pointer-events: auto;
-    cursor: pointer;
-    position: relative;
-    z-index: 1;
-  }
-  .sidebar-close-btn { display: flex; }
 }
 
 /* Landscape: sidebar sizing now fully owned by the min-width:769px
@@ -2810,21 +2811,15 @@ button,.btn,.nav-item,.tab-btn,.chip,.topic-chip{touch-action:manipulation}
   /* Overlay hidden in landscape — pointer-events already none when opacity:0 */
   .main-area{flex:1;width:auto;overflow:hidden}
   .page-content{max-height:100vh;padding:10px;overflow-y:auto}
-  .hamburger-btn{display:flex!important}
 }
 
-/* Hamburger restored on mobile-width screens (matches MobileBottomNav's
-   own max-width:768px breakpoint exactly, regardless of orientation) —
-   this was previously removed entirely on the reasoning that the bottom
-   tab bar + profile dropdown already cover primary nav and Logout on
-   mobile, but it's back now per explicit request: it opens the sidebar
-   drawer, which is still a legitimate way to reach it on mobile even
-   with the bottom nav available. Desktop (≥769px) is untouched by this
-   rule — it still relies purely on the sidebar's hover-rail behavior,
-   no button there at all. */
-@media(max-width:768px){
-  .hamburger-btn{display:flex!important}
-}
+/* Sidebar/hamburger are hidden outright wherever the bottom nav shows
+   (see the max-width:768px/touch block near the top of this file) — the
+   two rules that used to force .hamburger-btn back to visible here for
+   narrow/mobile widths have been removed so they can't override that
+   hide with their own !important later in the cascade. Desktop
+   (≥769px, real mouse/trackpad) still relies purely on the sidebar's
+   hover-rail behavior and never had a button here to begin with. */
 
 /* Ultra-wide screens (1440px+) */
 @media (min-width:1440px){
@@ -3494,9 +3489,9 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 
 /* Overlay backdrop */
 .reg-overlay{
-  position:fixed;inset:0;background:transparent;z-index:9800;
-  display:none;align-items:flex-start;justify-content:center;
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9800;
+   display:none;align-items:flex-start;justify-content:center;
+   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   padding:40px 20px;overflow-y:auto;
   scrollbar-width:none;-ms-overflow-style:none;
 }
@@ -6446,35 +6441,11 @@ td {
     min-width: max-content;
   }
 
-  .hamburger-btn {
-    display: flex !important;
-  }
-
-  .sidebar {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    width: var(--sidebar-w) !important;
-    min-width: var(--sidebar-w) !important;
-    max-width: 86vw;
-    height: 100vh;
-    height: 100dvh;
-    height: var(--app-height, 100dvh);
-    z-index: 1000;
-    transform: translateX(-105%) !important;
-    transition: transform .18s ease, box-shadow .18s ease !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-  }
-
-  .sidebar.mobile-open {
-    transform: translateX(0) !important;
-    box-shadow: 8px 0 28px rgba(0,0,0,.32);
-  }
-
-  .sidebar.collapsed {
-    transform: translateX(-105%) !important;
-  }
+  /* .hamburger-btn / .sidebar are hidden outright wherever the bottom
+     nav shows (see the max-width:768px/touch block near the top of
+     this file) — the rules that used to force them back to
+     visible/positioned here have been removed so they can't override
+     that hide with their own !important later in the cascade. */
 
   .sidebar-overlay {
     z-index: 900;

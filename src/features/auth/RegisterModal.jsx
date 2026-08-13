@@ -13,15 +13,24 @@ import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icon
 // "fill in manually" path, still the default) never need.
 const RegisterQrScan = lazy(() => import('./RegisterQrScan'))
 
-// Display-only formatting for the User Number field — inserts dashes as
-// 4-3-3 (matching the field's own "e.g. 2023-000-000" placeholder) while
-// the underlying form.userId state stays plain digits. Kept separate from
-// state deliberately: validation (`/^\d+$/`), the duplicate-number check,
-// and the final registerPatient() payload all already expect a plain
-// digit string — formatting only the input's rendered value avoids
-// touching any of that.
-function formatUserNumber(digits) {
-  const parts = [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 10)].filter(Boolean)
+// Display-only formatting for the User Number field — the underlying
+// form.userId state stays plain alphanumeric characters (no dashes); this
+// only formats what's rendered in the input. Two shapes are supported:
+//  - Student numbers: digits only, formatted 4-3-3 (e.g. 2023-400-878),
+//    matching the field's "e.g. 2023-000-000" placeholder.
+//  - Instructor / campus personnel numbers: a short letter prefix followed
+//    by digits, formatted LETTERS-DIGITS (e.g. CMP-123456).
+// Kept separate from state deliberately: validation, the duplicate-number
+// check, and the final registerPatient() payload all work off the plain
+// alphanumeric string — formatting only touches the input's rendered value.
+function formatUserNumber(raw) {
+  const clean = String(raw || '').toUpperCase()
+  const letters = clean.match(/^[A-Z]+/)?.[0] || ''
+  if (letters) {
+    const digits = clean.slice(letters.length)
+    return digits ? `${letters}-${digits}` : letters
+  }
+  const parts = [clean.slice(0, 4), clean.slice(4, 7), clean.slice(7, 10)].filter(Boolean)
   return parts.join('-')
 }
 
@@ -100,7 +109,7 @@ function strengthOf(pw) {
   return levels[Math.min(score, 5)]
 }
 
-export default function RegisterModal({ isOpen, onClose }) {
+export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
@@ -114,13 +123,34 @@ export default function RegisterModal({ isOpen, onClose }) {
 
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
 
+  // Just hides the modal — deliberately does NOT touch `form`/`step`/etc.
+  // Used by the X button, clicking the backdrop, and the "Sign in here"
+  // link, so an accidental or intentional exit mid-registration never
+  // loses what the person already typed. RegisterModal is kept mounted
+  // by LoginPage (see registerMounted there) specifically so this state
+  // survives the modal being closed and reopened.
   function handleClose() {
+    onClose()
+  }
+
+  // Clears the form back to empty. Only called once registration has
+  // actually succeeded (see handleSubmit) — at that point there's
+  // nothing left worth preserving, and the next time someone opens
+  // Register they should get a blank form, not the just-submitted data.
+  function resetForm() {
     setStep(1)
     setForm(EMPTY)
     setErr('')
-    setSuccess('')
     setEntryMode('manual')
     setDuplicateBlocked(false)
+  }
+
+  // Used only by the post-success "Back to sign in" button (the fallback
+  // path when no onRegistered callback was passed in) — resets the form
+  // AND closes, since the account was already created successfully.
+  function handleDoneClose() {
+    resetForm()
+    setSuccess('')
     onClose()
   }
 
@@ -157,8 +187,12 @@ export default function RegisterModal({ isOpen, onClose }) {
       if (!form.firstName.trim()) return setErr('First name is required.')
       if (!form.lastName.trim()) return setErr('Last name is required.')
       if (!form.userId.trim()) return setErr('User Number is required.')
-      if (!/^\d+$/.test(form.userId.trim())) return setErr('User Number must contain numbers only.')
-      if (form.userId.trim().length !== 10) return setErr('User Number must be 10 digits, in the format 2023-000-000.')
+      const rawUserId = form.userId.trim().toUpperCase()
+      const isStudentNumber = /^\d{10}$/.test(rawUserId)
+      const isPersonnelNumber = /^[A-Z]{2,6}\d{4,10}$/.test(rawUserId)
+      if (!isStudentNumber && !isPersonnelNumber) {
+        return setErr('User Number must be a 10-digit student number (2023-400-878) or a personnel ID like CMP-123456.')
+      }
       if (form.phone.trim() && !/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
 
       setCheckingDuplicate(true)
@@ -190,6 +224,17 @@ export default function RegisterModal({ isOpen, onClose }) {
   function stepBack() {
     setErr('')
     if (step > 1) setStep(step - 1)
+  }
+
+  // Step 2 (Academic Info) has no separate "Next" anymore — its one button
+  // always advances without requiring course/year, so instructors/campus
+  // personnel (who have neither) can get past it. profileIncomplete is only
+  // set when those fields are actually still empty, so a student who did
+  // fill them in isn't wrongly flagged incomplete just for using this button.
+  function stepSkip() {
+    setErr('')
+    setForm((f) => ({ ...f, profileIncomplete: !f.course.trim() || !f.year.trim() }))
+    setStep(3)
   }
 
   async function handleSubmit() {
@@ -232,11 +277,16 @@ export default function RegisterModal({ isOpen, onClose }) {
       } catch {
         // Non-critical — registration itself already succeeded.
       }
-      setSuccess(
-        needsEmailConfirmation
-          ? 'Account created! Check your email to confirm your address, then sign in.'
-          : 'Account created successfully! You can now sign in with your email and password.'
-      )
+      const message = needsEmailConfirmation
+        ? 'Account created! Check your email to confirm your address, then sign in.'
+        : 'Account created successfully! You can now sign in with your email and password.'
+      resetForm()
+      if (onRegistered) {
+        // Straight back to the login screen — no extra click needed.
+        onRegistered(email, message)
+      } else {
+        setSuccess(message)
+      }
     } catch (error) {
       // Postgres unique-violation (23505) on email/username/student_number
       // — friendlier message than the raw constraint error. Pre-checking
@@ -266,6 +316,11 @@ export default function RegisterModal({ isOpen, onClose }) {
   }
 
   const strength = strengthOf(form.password)
+  const passwordCheck = validatePassword(form.password)
+  // Same pattern stepNext() uses to validate the User Number at Step 1 —
+  // recomputed here (not stored in state) so Step 2 always reflects the
+  // current value of form.userId without an extra effect to keep in sync.
+  const isPersonnel = /^[A-Z]{2,6}\d{4,10}$/.test(form.userId.trim().toUpperCase())
 
   return createPortal(
     <div className="reg-overlay open" onMouseDown={(e) => e.target === e.currentTarget && handleClose()}>
@@ -318,6 +373,9 @@ export default function RegisterModal({ isOpen, onClose }) {
 
             {step === 1 && !duplicateBlocked && (
               <div className="reg-step-content">
+                <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
+                  Please complete your personal information in Account Settings.
+                </div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <button
                     type="button"
@@ -396,18 +454,17 @@ export default function RegisterModal({ isOpen, onClose }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="e.g. 2023-000-000"
-                      inputMode="numeric"
+                      placeholder="User number"
                       autoComplete="off"
-                      maxLength={12}
+                      maxLength={13}
                       value={formatUserNumber(form.userId)}
                       onChange={(e) => {
                         setDuplicateBlocked(false)
-                        setField('userId')(e.target.value.replace(/\D/g, '').slice(0, 10))
+                        setField('userId')(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Numbers only</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Student number or personnel ID</span>
                       <span style={{ fontSize: 11, color: form.userId.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.userId.length}/10</span>
                     </div>
                   </div>
@@ -424,7 +481,7 @@ export default function RegisterModal({ isOpen, onClose }) {
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
                       <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Numbers only · starts with 09</span>
-                      <span style={{ fontSize: 11, color: form.phone.length === 11 ? '#16A34A' : 'var(--text-3)' }}>{form.phone.length}/11</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{form.phone.length}/11</span>
                     </div>
                   </div>
                 </div>
@@ -447,6 +504,11 @@ export default function RegisterModal({ isOpen, onClose }) {
 
             {step === 2 && (
               <div className="reg-step-content">
+                {isPersonnel && (
+                  <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
+                    Detected a personnel ID — course and year level aren't needed. Click Skip below.
+                  </div>
+                )}
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
                     Course / Program <span className="reg-req">*</span>
@@ -456,16 +518,23 @@ export default function RegisterModal({ isOpen, onClose }) {
                     value={form.course}
                     displayValue={form.course}
                     onSelect={(val) => setField('course')(val)}
-                    onClear={() => setField('course')('')}
+                    onClear={() => setForm((f) => ({ ...f, course: '', year: '' }))}
                     placeholder="Type to search your course…"
                     emptyLabel="No matching course"
+                    disabled={isPersonnel}
                   />
                 </div>
                 <div className="reg-field">
                   <label>
                     Year Level <span className="reg-req">*</span>
                   </label>
-                  <select className="reg-input reg-select" value={form.year} onChange={(e) => setField('year')(e.target.value)}>
+                  <select
+                    className="reg-input reg-select"
+                    value={form.year}
+                    onChange={(e) => setField('year')(e.target.value)}
+                    disabled={isPersonnel}
+                    style={isPersonnel ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                  >
                     <option value="" disabled>
                       — Select year level —
                     </option>
@@ -504,9 +573,9 @@ export default function RegisterModal({ isOpen, onClose }) {
                     placeholder="Choose a username"
                     maxLength={50}
                     value={form.username}
-                    onChange={(e) => setField('username')(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 50))}
+                    onChange={(e) => setField('username')(e.target.value.replace(/[\s'"`]/g, '').slice(0, 50))}
                   />
-                  <span className="reg-hint-text">Letters and numbers only. This is what you'll sign in with, along with your password.</span>
+                  <span className="reg-hint-text">Letters, numbers, and special characters allowed (no spaces). This is what you'll sign in with, along with your password.</span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
@@ -521,6 +590,17 @@ export default function RegisterModal({ isOpen, onClose }) {
                     onChange={(e) => setField('password')(e.target.value)}
                   />
                   <span className="reg-hint-text">Must be 8+ chars with uppercase, number, and special character (!@#$%)</span>
+                  {form.password && !passwordCheck.ok && (
+                    <span className="reg-hint-text" style={{ color: '#EF4444' }}>{passwordCheck.msg}</span>
+                  )}
+                  <div className="reg-pw-strength-wrap" style={{ marginTop: 8 }}>
+                    <div className="reg-pw-strength-bar">
+                      <div className="reg-pw-bar-fill" style={{ transform: `scaleX(${strength.scale})`, background: strength.color }} />
+                    </div>
+                    <span className="reg-pw-label" style={{ color: strength.color }}>
+                      {strength.text}
+                    </span>
+                  </div>
                 </div>
                 <div className="reg-field">
                   <label>
@@ -534,14 +614,9 @@ export default function RegisterModal({ isOpen, onClose }) {
                     value={form.confirm}
                     onChange={(e) => setField('confirm')(e.target.value)}
                   />
-                </div>
-                <div className="reg-pw-strength-wrap" style={{ marginTop: 10 }}>
-                  <div className="reg-pw-strength-bar">
-                    <div className="reg-pw-bar-fill" style={{ transform: `scaleX(${strength.scale})`, background: strength.color }} />
-                  </div>
-                  <span className="reg-pw-label" style={{ color: strength.color }}>
-                    {strength.text}
-                  </span>
+                  {form.confirm && form.confirm !== form.password && (
+                    <span className="reg-hint-text" style={{ color: '#EF4444' }}>Passwords do not match.</span>
+                  )}
                 </div>
               </div>
             )}
@@ -553,8 +628,23 @@ export default function RegisterModal({ isOpen, onClose }) {
                 </button>
               )}
               {step < 3 && !(step === 1 && entryMode === 'scan') && !duplicateBlocked && (
-                <button type="button" className="reg-next-btn" onClick={stepNext} disabled={checkingDuplicate}>
-                  {checkingDuplicate ? 'Checking…' : 'Next →'}
+                <button
+                  type="button"
+                  className="reg-next-btn"
+                  // Skip is only ever offered to a detected personnel ID —
+                  // a student-pattern User Number has no skip path and must
+                  // clear stepNext()'s course/year validation like any other
+                  // step, so this always calls stepNext for them.
+                  onClick={step === 2 ? (isPersonnel ? stepSkip : stepNext) : stepNext}
+                  disabled={checkingDuplicate}
+                >
+                  {checkingDuplicate
+                  ? 'Checking…'
+                  : step === 2
+                  ? isPersonnel
+                    ? 'Skip →'
+                    : 'Next →'
+                  : 'Next →'}
                 </button>
               )}
               {step === 3 && (
@@ -572,7 +662,7 @@ export default function RegisterModal({ isOpen, onClose }) {
 
         <div className="reg-login-link">
           {success ? (
-            <button type="button" onClick={handleClose}>Back to sign in</button>
+            <button type="button" onClick={handleDoneClose}>Back to sign in</button>
           ) : (
             <>
               Already have an account? <button type="button" onClick={handleClose}>Sign in here</button>

@@ -1,5 +1,5 @@
 export const COURSES = ['BS Computer Science', 'BS Information Technology', 'BS Nursing', 'BS Education', 'BS Business Administration', 'BS Accountancy', 'BS Engineering', 'BS Architecture', 'BS Medicine', 'BS Psychology', 'AB Communication', 'AB Political Science']
-export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
+export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
 export const GENDERS = ['Male', 'Female', 'Prefer not to say']
 export const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Separated', 'Annulled']
 export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
@@ -24,6 +24,14 @@ export function buildFullName({ surname, givenName, mi, ext }, fallback) {
   const miPart = mi ? `${mi}. ` : ''
   const extPart = ext ? `, ${ext}` : ''
   return `${givenName} ${miPart}${surname}${extPart}`.trim()
+}
+
+// Same personnel-ID pattern RegisterModal.jsx uses at registration (letter
+// prefix + digits, e.g. CMP-123456) vs. a plain 10-digit student number —
+// reused here so Account Settings can tell the two apart from the stored
+// User/ID Number alone, without a separate role/type column.
+export function isPersonnelNumber(userId) {
+  return /^[A-Z]{2,6}\d{4,10}$/.test(String(userId || '').trim().toUpperCase())
 }
 
 export function calcAge(dob) {

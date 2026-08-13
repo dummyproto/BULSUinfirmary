@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import Spinner from '@components/ui/Spinner'
-import { ROLE_LABELS, ROLE_GRADIENTS, calcAge } from './lib/profileHelpers'
+import { ROLE_LABELS, ROLE_GRADIENTS, calcAge, isPersonnelNumber } from './lib/profileHelpers'
 import { compressImageFile } from '@lib/imageCompression'
 import EditProfileModal from './EditProfileModal'
 import EditFamilyModal from './EditFamilyModal'
@@ -428,13 +428,20 @@ export default function ProfilePage() {
                       <div className="card-header">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <GraduationCapIcon width={15} height={15} />
-                          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Academic</h3>
+                          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>User Campus Information</h3>
                         </div>
                       </div>
                       <div style={{ padding: '14px 18px' }}>
                         <DetailRow label="User ID" value={user.userId} />
-                        <DetailRow label="Course" value={user.course} />
-                        <DetailRow label="Year Level" value={user.yearLevel} />
+                        {isPersonnelNumber(user.userId) ? (
+                          <DetailRow label="Role" value="Campus Personnel" />
+                        ) : (
+                          <>
+                            <DetailRow label="Role" value="Student" />
+                            <DetailRow label="Course" value={user.course} />
+                            <DetailRow label="Year Level" value={user.yearLevel} />
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -545,10 +552,15 @@ export default function ProfilePage() {
                   <DetailRow label="Email" value={user.email} />
                   <DetailRow label="Phone" value={user.phone} />
                   {role === 'patient' ? (
-                    <>
-                      <DetailRow label="Course" value={user.course} />
-                      <DetailRow label="Year Level" value={user.yearLevel} />
-                    </>
+                    isPersonnelNumber(user.userId) ? (
+                      <DetailRow label="Role" value="Campus Personnel" />
+                    ) : (
+                      <>
+                        <DetailRow label="Role" value="Student" />
+                        <DetailRow label="Course" value={user.course} />
+                        <DetailRow label="Year Level" value={user.yearLevel} />
+                      </>
+                    )
                   ) : (
                     <>
                       <DetailRow label="Department" value={user.department} />

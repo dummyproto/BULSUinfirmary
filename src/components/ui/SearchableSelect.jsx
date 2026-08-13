@@ -43,6 +43,7 @@ export default function SearchableSelect({
   getIconStyle, // optional (opt) => style object, to color the badge per-row (e.g. by diagnosis category) instead of every row sharing one fixed color
   getIconClassName, // optional (opt) => extra class name, same purpose as getIconStyle but via a CSS class — prefer this over getIconStyle when the color needs to respect [data-theme="dark"], since an inline style always overrides a class regardless of theme
   emptyLabel = 'No results found',
+  disabled = false,
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -60,6 +61,7 @@ export default function SearchableSelect({
   const inputValue = open ? query : query || displayValue || ''
 
   function handleFocus() {
+    if (disabled) return
     setOpen(true)
     setQuery('')
   }
@@ -83,7 +85,11 @@ export default function SearchableSelect({
 
   return (
     <div className="patient-search-wrap" ref={wrapRef}>
-      <div className="patient-search-box" onClick={handleFocus}>
+      <div
+        className="patient-search-box"
+        onClick={handleFocus}
+        style={disabled ? { opacity: 0.6, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+      >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0, color: 'var(--text-3)' }}>
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
@@ -97,8 +103,9 @@ export default function SearchableSelect({
           onFocus={handleFocus}
           onBlur={handleBlur}
           autoComplete="off"
+          disabled={disabled}
         />
-        {(value || query) && (
+        {!disabled && (value || query) && (
           <span className="patient-search-clear" onClick={handleClear}>
             ×
           </span>

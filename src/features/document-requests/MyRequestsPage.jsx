@@ -8,15 +8,15 @@ import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
 import Modal from '@components/ui/Modal'
 import { formatDate } from '@lib/format'
-import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus, deleteDocumentRequests } from '@services/documentRequestsService'
+import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus, updateDocumentRequest } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
 import { exportElementAsPng, exportRequestAsDocx } from '@lib/exportRequestDoc'
 import logo from '@/assets/logo.png'
 import NewRequestModal from './NewRequestModal'
-import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon, PhoneIcon, MessageSquareIcon, TrashIcon, PrinterIcon, ImageIcon, DownloadIcon } from '@components/ui/icons'
+import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon, PhoneIcon, MessageSquareIcon, EditIcon, PrinterIcon, ImageIcon, DownloadIcon } from '@components/ui/icons'
 import { useDefaultShowMore } from '@hooks/useDefaultShowMore'
 
-const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined']
+const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined', 'Cancelled']
 
 const INFO_CARDS = [
   [ClockIcon, 'Processing Time', '2–3 working days for standard documents'],
@@ -79,6 +79,13 @@ function renderNotes(request) {
       </span>
     )
   }
+  if (status === 'Cancelled') {
+    return (
+      <span style={{ color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+        <XCircleIcon width={13} height={13} /> Cancelled by you.
+      </span>
+    )
+  }
   return notes || '—'
 }
 
@@ -94,8 +101,7 @@ export default function MyRequestsPage() {
   const [showMore, setShowMore] = useDefaultShowMore()
   const [newRequestOpen, setNewRequestOpen] = useState(false)
   const [detailId, setDetailId] = useState(null)
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selected, setSelected] = useState([])
+  const [editId, setEditId] = useState(null)
   const printableRef = useRef(null)
 
   useEffect(() => {
@@ -130,63 +136,36 @@ export default function MyRequestsPage() {
     label: counts[t] ? `${t} (${counts[t]})` : t,
   }))
 
-  // Selection itself is unrestricted — every visible row can be checked
-  // regardless of status. The database (migration 040's RLS policy)
-  // still only actually deletes Pending/Declined rows though, so
-  // handleDeleteSelected() below checks the real deleted count against
-  // how many were selected and reports honestly if some couldn't be
-  // removed, rather than silently pretending the whole selection was
-  // deleted when only part of it actually was.
-  function toggleSelectionMode() {
-    setSelectionMode((m) => !m)
-    setSelected([])
-  }
-  function toggleOne(id) {
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
-  }
-  function toggleAll() {
-    const visibleIds = filtered.map((r) => r.doc_request_id)
-    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
-    setSelected(allSelected ? [] : visibleIds)
-  }
-  async function handleDeleteSelected() {
-    const ok = await confirm(
-      selected.length === 1
-        ? 'Delete this document request?\nThis cannot be undone.'
-        : `Delete ${selected.length} document requests?\nThis cannot be undone.`,
-      { confirmLabel: 'Delete', danger: true }
-    )
-    if (!ok) return
+  // Edit and Cancel are both only offered (and only actually permitted by
+  // RLS — migration 042) while the request is still 'Pending': once staff
+  // has started acting on it, the requester can no longer change its
+  // details or back out of it themselves.
+  async function handleEditSubmit({ docType, purpose, dateNeeded }) {
     try {
-      // deleteDocumentRequests() returns how many rows were ACTUALLY
-      // deleted — RLS silently excludes any selected row it doesn't
-      // allow (anything not Claimed — see migration 041) from the
-      // delete rather than erroring, so this can legitimately be less
-      // than selected.length whenever the selection included one of
-      // those.
-      const deletedCount = await deleteDocumentRequests(selected)
-      setRequests((list) => list.filter((r) => !(selected.includes(r.doc_request_id) && r.status === 'Claimed')))
-      if (deletedCount === selected.length) {
-        show(deletedCount === 1 ? 'Request deleted' : `${deletedCount} requests deleted`, 'success')
-      } else if (deletedCount > 0) {
-        show(`${deletedCount} of ${selected.length} requests deleted. Only claimed documents can be deleted — the rest are still active or pending.`, 'warning')
-      }
-      setSelected([])
-      setSelectionMode(false)
+      const updated = await updateDocumentRequest(editId, { docType, purpose, dateNeeded })
+      setRequests((list) => list.map((r) => (r.doc_request_id === editId ? updated : r)))
+      setEditId(null)
+      show('Request updated', 'success')
     } catch (err) {
-      // deleteDocumentRequests() throws this exact message when it
-      // deletes zero rows — written for the staff-side caller, where
-      // that really does mean "no permission at all". Here, selecting a
-      // mix of statuses and having none of them be Claimed is a normal,
-      // expected outcome, not a permission failure, so it gets a
-      // message that reflects that instead of the generic one.
-      if (/permission to delete/i.test(err.message)) {
-        show('Only claimed documents can be deleted — none of the selected requests are.', 'warning')
-        setSelected([])
-        setSelectionMode(false)
-      } else {
-        show(`Failed to delete: ${err.message}`, 'error')
-      }
+      show(`Failed to update request: ${err.message}`, 'error')
+    }
+  }
+
+  async function handleCancel(id) {
+    const doc = requests.find((r) => r.doc_request_id === id)
+    if (!doc) return
+    if (doc.status !== 'Pending') {
+      show('Only pending requests can be cancelled.', 'warning')
+      return
+    }
+    if (!(await confirm('Cancel this document request?\nThis cannot be undone.', { confirmLabel: 'Cancel Request', danger: true }))) return
+
+    try {
+      const updated = await updateDocumentRequestStatus(id, 'Cancelled')
+      setRequests((list) => list.map((r) => (r.doc_request_id === id ? updated : r)))
+      show('Request cancelled', 'success')
+    } catch (err) {
+      show(`Failed to cancel request: ${err.message}`, 'error')
     }
   }
 
@@ -275,14 +254,6 @@ export default function MyRequestsPage() {
           </h3>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{filtered.length} record(s)</span>
-            {selectionMode && selected.length > 0 && (
-              <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
-              </button>
-            )}
-            <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              {selectionMode ? 'Cancel' : <><TrashIcon width={13} height={13} /> Select</>}
-            </button>
             <button
               type="button"
               className="btn btn-sm btn-outline inv-view-more-btn"
@@ -295,24 +266,10 @@ export default function MyRequestsPage() {
             </button>
           </div>
         </div>
-        {selectionMode && (
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={filtered.length > 0 && filtered.every((r) => selected.includes(r.doc_request_id))}
-                onChange={toggleAll}
-                title="Select all requests on this page"
-              />
-              Select All
-            </label>
-          </div>
-        )}
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                {selectionMode && <th style={{ width: 30 }} />}
                 <th>Document Type</th>
                 {showMore && (
                   <>
@@ -329,22 +286,13 @@ export default function MyRequestsPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={(showMore ? 7 : 3) + (selectionMode ? 1 : 0)} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                  <td colSpan={showMore ? 7 : 3} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                     No {tab.toLowerCase()} requests
                   </td>
                 </tr>
               )}
               {filtered.map((d) => (
                 <tr key={d.doc_request_id}>
-                  {selectionMode && (
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(d.doc_request_id)}
-                        onChange={() => toggleOne(d.doc_request_id)}
-                      />
-                    </td>
-                  )}
                   <td>
                     <strong>{d.doc_type}</strong>
                   </td>
@@ -366,6 +314,16 @@ export default function MyRequestsPage() {
                       <button type="button" className="btn btn-sm btn-outline" title="View details" onClick={() => setDetailId(d.doc_request_id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                         <EyeIcon width={13} height={13} /> View
                       </button>
+                      {d.status === 'Pending' && (
+                        <>
+                          <button type="button" className="btn btn-sm btn-outline" title="Edit request" onClick={() => setEditId(d.doc_request_id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <EditIcon width={13} height={13} /> Edit
+                          </button>
+                          <button type="button" className="btn btn-sm btn-red" title="Cancel request" onClick={() => handleCancel(d.doc_request_id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <XCircleIcon width={13} height={13} /> Cancel
+                          </button>
+                        </>
+                      )}
                       {d.status === 'Approved' && (
                         <button
                           type="button"
@@ -414,6 +372,20 @@ export default function MyRequestsPage() {
         onClose={() => setNewRequestOpen(false)}
         onSubmit={handleNewRequestSubmit}
         onError={(msg) => show(msg, 'error')}
+      />
+
+      <NewRequestModal
+        key={editId ?? 'no-edit'}
+        isOpen={editId !== null}
+        onClose={() => setEditId(null)}
+        onSubmit={handleEditSubmit}
+        onError={(msg) => show(msg, 'error')}
+        initialData={(() => {
+          const d = requests.find((r) => r.doc_request_id === editId)
+          return d ? { docType: d.doc_type, purpose: d.purpose, dateNeeded: d.date_needed } : null
+        })()}
+        title="Edit Document Request"
+        submitLabel="Save Changes"
       />
 
       <Modal

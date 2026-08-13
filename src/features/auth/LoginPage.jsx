@@ -115,6 +115,11 @@ export default function LoginPage() {
   const [info, setInfo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [registerOpen, setRegisterOpen] = useState(false)
+  // Separate from registerOpen: once true, RegisterModal stays mounted
+  // (just visually hidden) for the rest of this LoginPage session, so its
+  // internal form state isn't destroyed by React unmounting it — that's
+  // what lets an accidental close/reopen keep whatever was typed.
+  const [registerMounted, setRegisterMounted] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
@@ -151,6 +156,22 @@ export default function LoginPage() {
     setError('')
     setInfo(`Identified account for ${foundEmail} — enter your password to continue.`)
     setMode('password')
+  }
+
+  function openRegister() {
+    setRegisterMounted(true)
+    setRegisterOpen(true)
+  }
+
+  // Called by RegisterModal right after a successful account creation —
+  // closes the register modal and lands straight on the sign-in form with
+  // the new email prefilled, instead of requiring an extra manual click.
+  function handleRegistered(newEmail, message) {
+    setEmail(newEmail)
+    setError('')
+    setInfo(message)
+    setMode('password')
+    setRegisterOpen(false)
   }
 
   const handleSubmit = async (e) => {
@@ -422,13 +443,13 @@ export default function LoginPage() {
 
       {mode === 'password' && (
         <div className="login-register-link">
-          Don&apos;t have an account? <button type="button" onClick={() => setRegisterOpen(true)}>Register here</button>
+          Don&apos;t have an account? <button type="button" onClick={openRegister}>Register here</button>
         </div>
       )}
 
-      {registerOpen && (
+      {registerMounted && (
         <Suspense fallback={null}>
-          <RegisterModal isOpen={registerOpen} onClose={() => setRegisterOpen(false)} />
+          <RegisterModal isOpen={registerOpen} onClose={() => setRegisterOpen(false)} onRegistered={handleRegistered} />
         </Suspense>
       )}
 

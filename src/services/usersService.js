@@ -209,6 +209,12 @@ export async function registerPatient({ email, password, username, name, surname
 
   if (data.session) {
     const user = await finalizeSelfRegistration(data.user)
+    // Registering shouldn't silently log the person in — sign this
+    // auto-created session back out so LoginPage's isAuthenticated check
+    // stays false and they land on the sign-in form (with their email
+    // prefilled, see RegisterModal/LoginPage's onRegistered handoff) to
+    // enter their password themselves, same as any other first sign-in.
+    await supabase.auth.signOut()
     return { needsEmailConfirmation: false, user }
   }
   return { needsEmailConfirmation: true, user: null }
