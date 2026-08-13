@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail } from '@services/usersService'
 import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClient'
@@ -93,9 +93,6 @@ function clearAttempts(email) {
 // with email/password, which is most people, most of the time) never
 // need. Only fetched once someone actually clicks "Scan ID".
 const QrLoginScan = lazy(() => import('./QrLoginScan'))
-// Same idea — the multi-step registration form is a lot of markup most
-// visitors (returning users, the common case) never need.
-const RegisterModal = lazy(() => import('./RegisterModal'))
 // Forgot-password is a small, rarely-clicked modal — no real bundle-size
 // reason to defer it the same way, but consistent with the surrounding
 // lazy pattern for auth-adjacent modals anyway.
@@ -107,19 +104,21 @@ const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/Emerg
 export default function LoginPage() {
   const { isAuthenticated, role, signIn } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [mode, setMode] = useState('password') // 'password' | 'scan'
-  const [email, setEmail] = useState('')
+  // Seeded directly from router state (not via an Effect) when arriving
+  // here right after a successful sign-up on the separate /register route
+  // — see RegisterPage's onRegistered, which navigates here with
+  // { registeredEmail, registeredMessage }. That state is already present
+  // on this component's very first render (RegisterPage navigates before
+  // LoginPage mounts), so reading it into useState's lazy initializer here
+  // avoids needing a setState call inside an Effect at all.
+  const [email, setEmail] = useState(() => location.state?.registeredEmail || '')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
+  const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
   const [submitting, setSubmitting] = useState(false)
-  const [registerOpen, setRegisterOpen] = useState(false)
-  // Separate from registerOpen: once true, RegisterModal stays mounted
-  // (just visually hidden) for the rest of this LoginPage session, so its
-  // internal form state isn't destroyed by React unmounting it — that's
-  // what lets an accidental close/reopen keep whatever was typed.
-  const [registerMounted, setRegisterMounted] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
@@ -139,6 +138,21 @@ export default function LoginPage() {
     return () => clearInterval(id)
   }, [lockUntil])
 
+  // Clears the router state that carried registeredEmail/registeredMessage
+  // (already read directly into email/info's useState initializers above)
+  // so a page refresh or the browser back button doesn't keep re-delivering
+  // the same success message. Runs once on mount only, and deliberately
+  // calls ONLY navigate() here — no setState — since synchronously calling
+  // a state setter inside an Effect is exactly the cascading-render pattern
+  // the react-hooks/set-state-in-effect rule flags; reading the state
+  // straight into the initializers above sidesteps that entirely.
+  useEffect(() => {
+    if (location.state?.registeredEmail || location.state?.registeredMessage) {
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (isAuthenticated) {
     const fromPath = location.state?.from?.pathname
     const redirectTo = fromPath && isRouteAllowedForRole(fromPath, role) ? fromPath : '/dashboard'
@@ -156,22 +170,6 @@ export default function LoginPage() {
     setError('')
     setInfo(`Identified account for ${foundEmail} — enter your password to continue.`)
     setMode('password')
-  }
-
-  function openRegister() {
-    setRegisterMounted(true)
-    setRegisterOpen(true)
-  }
-
-  // Called by RegisterModal right after a successful account creation —
-  // closes the register modal and lands straight on the sign-in form with
-  // the new email prefilled, instead of requiring an extra manual click.
-  function handleRegistered(newEmail, message) {
-    setEmail(newEmail)
-    setError('')
-    setInfo(message)
-    setMode('password')
-    setRegisterOpen(false)
   }
 
   const handleSubmit = async (e) => {
@@ -443,14 +441,8 @@ export default function LoginPage() {
 
       {mode === 'password' && (
         <div className="login-register-link">
-          Don&apos;t have an account? <button type="button" onClick={openRegister}>Register here</button>
+          Don&apos;t have an account? <button type="button" onClick={() => navigate('/register')}>Register here</button>
         </div>
-      )}
-
-      {registerMounted && (
-        <Suspense fallback={null}>
-          <RegisterModal isOpen={registerOpen} onClose={() => setRegisterOpen(false)} onRegistered={handleRegistered} />
-        </Suspense>
       )}
 
       {forgotOpen && (

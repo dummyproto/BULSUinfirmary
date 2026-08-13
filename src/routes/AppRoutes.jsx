@@ -25,6 +25,7 @@ const MaintenancePage = lazy(() => import('@features/maintenance/MaintenancePage
 const ChatbotPage = lazy(() => import('@features/chatbot/ChatbotPage'))
 const ProfilePage = lazy(() => import('@features/profile/ProfilePage'))
 const ResetPasswordPage = lazy(() => import('@features/auth/ResetPasswordPage'))
+const RegisterPage = lazy(() => import('@features/auth/RegisterPage'))
 
 const STAFF_ADMIN = ['admin', 'staff']
 
@@ -50,6 +51,17 @@ export default function AppRoutes() {
           <AuthLayout>
             <LazyPage>
               <ResetPasswordPage />
+            </LazyPage>
+          </AuthLayout>
+        }
+      />
+
+      <Route
+        path="/register"
+        element={
+          <AuthLayout>
+            <LazyPage>
+              <RegisterPage />
             </LazyPage>
           </AuthLayout>
         }

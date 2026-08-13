@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { COURSES, YEAR_LEVELS } from '@features/maintenance/data/formOptions'
 import SearchableSelect from '@components/ui/SearchableSelect'
@@ -77,6 +77,44 @@ const EMPTY = {
   prefilledFromQr: false,
 }
 
+// Persists an in-progress registration form across the modal being
+// closed/unmounted — the X button, backdrop click, "Sign in here",
+// navigating away, or a full browser refresh — so an accidental exit
+// never loses what was already typed. localStorage (not sessionStorage)
+// specifically so it survives a hard refresh reliably; it's only ever
+// cleared explicitly, via clearDraft() once registration succeeds.
+const DRAFT_KEY = 'bulsu_register_draft'
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveDraft(data) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
+  } catch {
+    // Storage full/unavailable (e.g. private browsing) — draft persistence
+    // is a nice-to-have, never worth breaking registration over.
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // Nothing to clean up if storage isn't available.
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', clearDraft)
+}
+
 function strengthOf(pw) {
   if (!pw) return { scale: 0, color: 'transparent', text: '' }
 
@@ -110,14 +148,22 @@ function strengthOf(pw) {
 }
 
 export default function RegisterModal({ isOpen, onClose, onRegistered }) {
-  const [step, setStep] = useState(1)
-  const [form, setForm] = useState(EMPTY)
+  const [step, setStep] = useState(() => loadDraft()?.step || 1)
+  const [form, setForm] = useState(() => ({ ...EMPTY, ...(loadDraft()?.form || {}) }))
   const [err, setErr] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [entryMode, setEntryMode] = useState('manual') // 'manual' | 'scan' — Step 1 only
+  const [entryMode, setEntryMode] = useState(() => loadDraft()?.entryMode || 'manual') // 'manual' | 'scan' — Step 1 only
   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [duplicateBlocked, setDuplicateBlocked] = useState(false)
+
+  // Keep the saved draft in sync with whatever's currently typed, so if
+  // this component unmounts (X button, backdrop, navigating away, a
+  // refresh) there's something to restore from the next time Register
+  // is opened.
+  useEffect(() => {
+    saveDraft({ form, step, entryMode })
+  }, [form, step, entryMode])
 
   if (!isOpen) return null
 
@@ -143,6 +189,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     setErr('')
     setEntryMode('manual')
     setDuplicateBlocked(false)
+    clearDraft()
   }
 
   // Used only by the post-success "Back to sign in" button (the fallback

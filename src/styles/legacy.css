@@ -7110,3 +7110,23 @@ td {
   .session-warning-banner{bottom:calc(72px + 12px)!important}
   .offline-banner{bottom:calc(72px + 12px)!important}
 }
+/* ══ Chatbot vs mobile bottom nav on TABLETS — final override ═════
+   The bottom nav pill (.mobile-bottom-nav) shows on ANY touchscreen —
+   see "(hover:none) and (pointer:coarse)" further up this file — not
+   just narrow phones. But the chat panel's own "leave 72px clear for
+   the pill" height adjustment was only ever wired up under
+   max-width:768px, so a touch tablet in the 769px-1112px range (e.g.
+   an iPad ~1024px wide, or a Windows touch tablet/2-in-1 resized a bit
+   wider) still showed the mobile bottom nav pill with nothing carving
+   out its space — the pill floated directly on top of the chat input
+   row instead of above it. Matches the same touch-detection condition
+   (not a width cutoff) and the same 72px figure used everywhere else
+   in this file for the same bar, so it stays consistent whether the
+   device is a phone or a tablet. Placed last + !important so it wins
+   regardless of which narrower-width block also happens to match. */
+@media (hover:none) and (pointer:coarse){
+  .chatbot-layout{
+    height:calc(100vh - var(--topbar-h) - 28px - 72px) !important;
+    height:calc(100dvh - var(--topbar-h) - 28px - 72px) !important;
+  }
+}
