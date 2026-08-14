@@ -43,6 +43,17 @@ export async function getAlertById(id) {
   return flattenAlert(data)
 }
 
+// Used to stop the SAME reporter from sending a second emergency alert
+// (myself or for another person) while an earlier one from them is still
+// unresolved. Goes through the narrow has_active_emergency_alert RPC
+// (migration 043) rather than a direct SELECT, since the pre-login (anon)
+// sender case can't read the emergency_alerts table directly under RLS.
+export async function hasActiveEmergencyAlert(reporterId) {
+  const { data, error } = await supabase.rpc('has_active_emergency_alert', { p_reporter_id: reporterId })
+  if (error) throw error
+  return !!data
+}
+
 export async function createEmergencyAlert({ reportedBy, subjectId, subjectStudentNum, subjectName, emergencyType, location, description }) {
   const { data, error } = await supabase
     .from('emergency_alerts')

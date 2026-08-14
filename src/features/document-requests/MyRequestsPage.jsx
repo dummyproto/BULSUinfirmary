@@ -499,8 +499,25 @@ export default function MyRequestsPage() {
                 </div>
               )}
 
+              {canExport && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: '#C0392B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <InfoIcon width={14} height={14} />
+                  Please print or save a copy of this document (PNG or Word) below for your records.
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                {!canExport && (
+                {!canExport && d.status !== 'Claimed' && (
                   <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Print / Save options are available once this request is Approved.</span>
                 )}
                 {canExport && (

@@ -311,9 +311,15 @@ If user mentions or describes any of the following:
 - Thoughts of self-harm or suicide, or mention of overdose
 
 Immediately respond with something like:
-"This may be an emergency. Please seek immediate medical attention or go to the nearest
-hospital/clinic right now. If you're on campus, go straight to the school clinic or call for
-help immediately."
+"This may be an emergency. [One short first-thing-to-do action for this situation, e.g. stay
+calm and don't leave the person alone / keep them still / apply firm pressure to the wound].
+Please seek immediate medical attention or go to the nearest hospital/clinic right now — if
+you're on campus, go straight to the school clinic or call for help immediately. You can type
+"SOS" here to open the Emergency Alert form directly, or tap the SOS button at the top of the
+screen."
+
+Still keep this reply within your normal 2-5 short sentence limit — an emergency reply is not an
+exception to that, it should stay just as short and direct as any other answer, not longer.
 
 What to do in urgent situations (general guidance you can give)
 - Stay calm and do not leave the person alone.
@@ -323,16 +329,23 @@ What to do in urgent situations (general guidance you can give)
 - For choking, severe bleeding, or unconsciousness: get trained first aid help immediately —
   do not attempt detailed medical procedures based on chatbot instructions alone.
 
-Do not continue giving step-by-step health advice once an emergency is identified — prioritize
-getting the person to real, in-person help.
+Do not continue giving step-by-step health advice once an emergency is identified — one short
+first-thing-to-do action plus the guidance above is enough; prioritize getting the person to
+real, in-person help and to the SOS option over anything else.
 `.trim()
 
 // Instant local safety net — catches obvious emergencies without waiting
 // on (or paying for) a model call, so the warning is never delayed,
 // rate-limited, or lost to an API failure. Ported directly from the
-// original server.js.
+// original server.js, then extended with a first-thing-to-do action and
+// a pointer to the in-app SOS options (typing "SOS" in the chat box —
+// see ChatbotPage.jsx's isSosTrigger() — or the SOS button in the
+// topbar) so a person doesn't have to go hunting for either while
+// already in a stressful moment. Kept to the same short, direct style
+// as every other reply (see SYSTEM_PROMPT's 2-5 sentence rule above) —
+// an emergency reply isn't an excuse to get long-winded.
 export const EMERGENCY_PATTERN =
   /(chest pain|can'?t breathe|difficulty breathing|severe bleeding|seizure|unconscious|loss of consciousness|suicid|overdose|stroke|slurred speech|facial droop|can'?t stop bleeding|severe allergic reaction|anaphyla)/i
 
 export const EMERGENCY_REPLY =
-  "This may be an emergency. Please seek immediate medical attention or go to the nearest hospital/clinic right now. If you're on campus, go straight to the school clinic or call for help immediately."
+  "This may be an emergency. Stay calm, don't leave the person alone, and get help immediately — go straight to the school clinic or the nearest hospital. You can type \"SOS\" here to open the Emergency Alert form directly, or tap the SOS button at the top of the screen."

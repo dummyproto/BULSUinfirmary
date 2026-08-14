@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import { searchPatientsPublic } from '@services/usersService'
+import { maskUserNumber } from '@lib/format'
 
 /**
  * Same SearchableSelect component Consultation's "PATIENT *" field
@@ -33,13 +34,13 @@ export default function EmergencyPatientPicker({ selected, onSelect, onClear, pl
 
   const options = allPatients
     .filter((p) => !excludeUserId || p.user_id !== excludeUserId)
-    .map((p) => ({ value: String(p.user_id), label: p.name, sub: p.student_number }))
+    .map((p) => ({ value: String(p.user_id), label: p.name, sub: maskUserNumber(p.student_number) }))
 
   return (
     <SearchableSelect
       options={options}
       value={selected ? String(selected.user_id) : ''}
-      displayValue={selected ? `${selected.name} — ${selected.student_number}` : ''}
+      displayValue={selected ? `${selected.name} — ${maskUserNumber(selected.student_number)}` : ''}
       onSelect={(val) => {
         const p = allPatients.find((x) => String(x.user_id) === val)
         if (p) onSelect({ user_id: p.user_id, name: p.name, student_number: p.student_number })

@@ -1,3 +1,25 @@
+/**
+ * Payload for a scannable QR code representing this signed-in user —
+ * shown in the Topbar profile dropdown (MyQrCodeModal) so staff can scan
+ * it directly off a phone screen instead of the person typing their
+ * number. Deliberately compatible with extractSchoolIdCode() below, which
+ * already knows how to pull an identifier out of data.schoolIdBarcode /
+ * data.userId / data.studentId — so scanning this QR through this app's
+ * own existing QR-login/registration scanner correctly recognizes this
+ * user, preferring their physical school ID's saved barcode value (if
+ * they've scanned and saved one in Account Settings) over their raw
+ * student/personnel number.
+ */
+export function buildUserQrPayload(profile) {
+  return JSON.stringify({
+    type: 'user',
+    userId: profile.user_id,
+    name: profile.name || `${profile.givenName || ''} ${profile.surname || ''}`.trim(),
+    studentNumber: profile.student_number || null,
+    schoolIdBarcode: profile.school_id_barcode || null,
+  })
+}
+
 export function normalizeSchoolIdCode(value) {
   return String(value || '')
     .trim()

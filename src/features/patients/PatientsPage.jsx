@@ -5,6 +5,7 @@ import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import Spinner from '@components/ui/Spinner'
 import { listUsers } from '@services/usersService'
+import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 import PatientDetailModal from './PatientDetailModal'
 import { GraduationCapIcon, EyeIcon, ChevronDownIcon } from '@components/ui/icons'
 
@@ -49,7 +50,13 @@ export default function PatientsPage() {
 
   const q = search.toLowerCase()
   const filtered = search
-    ? patients.filter((p) => p.name.toLowerCase().includes(q) || (p.student_number || '').toLowerCase().includes(q) || (p.course || '').toLowerCase().includes(q))
+    ? patients.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.student_number || '').toLowerCase().includes(q) ||
+          (p.course || '').toLowerCase().includes(q) ||
+          (isPersonnelNumber(p.student_number) ? 'personnel' : 'student').includes(q)
+      )
     : patients
 
   if (loading) return <Spinner label="Loading patients…" />
@@ -76,6 +83,7 @@ export default function PatientsPage() {
               <tr>
                 <th>Patient</th>
                 <th>User ID</th>
+                <th>Type</th>
                 <th>Course</th>
                 <th>Year Level</th>
                 <th>Status</th>
@@ -85,7 +93,7 @@ export default function PatientsPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                     No patients found
                   </td>
                 </tr>
@@ -100,6 +108,11 @@ export default function PatientsPage() {
                   </td>
                   <td>
                     <code style={{ fontSize: 11 }}>{p.student_number || '—'}</code>
+                  </td>
+                  <td>
+                    <span className={`badge badge-no-dot badge-${isPersonnelNumber(p.student_number) ? 'purple' : 'blue'}`}>
+                      {isPersonnelNumber(p.student_number) ? 'Personnel' : 'Student'}
+                    </span>
                   </td>
                   <td style={{ fontSize: 12 }}>{p.course || '—'}</td>
                   <td style={{ fontSize: 12 }}>{p.year_level || '—'}</td>

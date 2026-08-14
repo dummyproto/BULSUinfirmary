@@ -5,9 +5,10 @@ import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
 import { useTheme } from '@context/ThemeContext'
 import { TOPBAR_GRADIENT, ROLE_LABELS as PORTAL_LABELS } from '@routes/navItems'
-import { MenuIcon, BellIcon, ChevronDownIcon, SettingsIcon, LogoutIcon, SunIcon, MoonIcon } from '@components/ui/icons'
+import { MenuIcon, BellIcon, ChevronDownIcon, SettingsIcon, LogoutIcon, SunIcon, MoonIcon, QrCodeIcon } from '@components/ui/icons'
 import { ROLE_LABELS } from '@features/profile/lib/profileHelpers'
 import NotificationsModal from '@features/notifications/NotificationsModal'
+import MyQrCodeModal from '@features/profile/MyQrCodeModal'
 import logo from '@/assets/logo.png'
 import { countUnread, listForUser, markRead, markAllRead, deleteNotification } from '@services/notificationsService'
 import {
@@ -90,6 +91,7 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [qrModalOpen, setQrModalOpen] = useState(false)
   const profileMenuRef = useRef(null)
 
   const userId = profile?.user_id ?? null
@@ -348,9 +350,25 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
               same dual-path pattern the sidebar's own hover-expand needs
               a click for on touch-only devices without true hover. */}
           <div className="topbar-profile-menu" role="menu">
-            <div className="topbar-profile-menu-header">
-              <strong>{displayName || 'My Profile'}</strong>
-              <span>{ROLE_LABELS[role] || role}</span>
+            <div className="topbar-profile-menu-header" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{displayName || 'My Profile'}</strong>
+                <span style={{ display: 'block' }}>{ROLE_LABELS[role] || role}</span>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                title="My QR Code"
+                aria-label="Show my QR code"
+                style={{ flexShrink: 0 }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setProfileMenuOpen(false)
+                  setQrModalOpen(true)
+                }}
+              >
+                <QrCodeIcon width={17} height={17} />
+              </button>
             </div>
             <button type="button" className="topbar-profile-menu-item" role="menuitem" onClick={() => goToProfileTab('personal')}>
               <SettingsIcon width={15} height={15} /> Account Settings
@@ -362,6 +380,8 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
           </div>
         </div>
       </div>
+
+      <MyQrCodeModal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} profile={profile} />
 
       <NotificationsModal
         isOpen={notifOpen}

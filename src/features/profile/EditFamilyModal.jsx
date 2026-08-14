@@ -10,10 +10,25 @@ const SECTION_CONFIG = {
 }
 
 export default function EditFamilyModal({ isOpen, section, initial, onClose, onSave }) {
-  const [form, setForm] = useState(initial || { name: '', phone: '', address: '', relation: '' })
+  const [form, setForm] = useState(() => {
+    const base = initial || { name: '', phone: '', address: '', relation: '' }
+    if (base.relation && !RELATIONS.includes(base.relation)) {
+      return { ...base, relation: 'Other', relationOther: base.relation }
+    }
+    return { ...base }
+  })
   const config = section ? SECTION_CONFIG[section] : null
   if (!isOpen || !config) return null
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
+
+  // "Other" is a dropdown placeholder, not a real relationship — swap in
+  // whatever was typed into the free-text box instead. relationOther is
+  // UI-only bookkeeping and is deliberately left out of what gets saved.
+  function handleSave() {
+    const { relationOther, ...rest } = form
+    const relation = form.relation === 'Other' ? (relationOther || '').trim() : form.relation
+    onSave(section, { ...rest, relation })
+  }
 
   return (
     <Modal
@@ -26,7 +41,7 @@ export default function EditFamilyModal({ isOpen, section, initial, onClose, onS
           <button type="button" className="btn btn-outline" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-blue" onClick={() => onSave(section, form)}>
+          <button type="button" className="btn btn-blue" onClick={handleSave}>
             <SaveIcon width={13} height={13} /> Save Changes
           </button>
         </>
@@ -35,7 +50,13 @@ export default function EditFamilyModal({ isOpen, section, initial, onClose, onS
       <div className="form-grid" style={{ gap: 10 }}>
         <div className="form-group full">
           <label>{config.nameLabel}</label>
-          <input className="form-input" placeholder={config.namePlaceholder} value={form.name} onChange={(e) => setField('name')(e.target.value)} />
+          <input
+            className="form-input"
+            placeholder={config.namePlaceholder}
+            maxLength={100}
+            value={form.name}
+            onChange={(e) => setField('name')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 100))}
+          />
         </div>
         {config.hasRelation && (
           <div className="form-group">
@@ -46,6 +67,16 @@ export default function EditFamilyModal({ isOpen, section, initial, onClose, onS
                 <option key={r}>{r}</option>
               ))}
             </select>
+            {form.relation === 'Other' && (
+              <input
+                className="form-input"
+                style={{ marginTop: 6 }}
+                placeholder="Specify relationship"
+                maxLength={30}
+                value={form.relationOther || ''}
+                onChange={(e) => setField('relationOther')(e.target.value.slice(0, 30))}
+              />
+            )}
           </div>
         )}
         <div className="form-group">

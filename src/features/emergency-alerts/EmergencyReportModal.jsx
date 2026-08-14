@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import Modal from '@components/ui/Modal'
 import EmergencyPatientPicker from './EmergencyPatientPicker'
-import { createEmergencyAlert } from '@services/emergencyAlertsService'
+import { createEmergencyAlert, hasActiveEmergencyAlert } from '@services/emergencyAlertsService'
+import { searchPatientsPublic } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import { addAuditLog } from '@services/auditLogsService'
 import { playEmergencySiren } from '@lib/emergencySound'
+import { formatUserNumber } from '@lib/format'
 import { AlertOctagonIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
 import LocationPicker from './LocationPicker'
 
@@ -50,12 +52,17 @@ function markSubmitted(reporterId) {
  */
 export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess, initialDescription = '' }) {
   const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
+  const [reporterQuery, setReporterQuery] = useState('') // free text: name OR user number — pre-login self-identify input
+  const [reporterSuggestions, setReporterSuggestions] = useState([])
+  const [reporterLookup, setReporterLookup] = useState('idle') // idle | checking | suggestions | notfound
   const [emgType, setEmgType] = useState('myself')
   const [affected, setAffected] = useState(null)
   const [location, setLocation] = useState('')
   const [description, setDescription] = useState(initialDescription)
   const [submitting, setSubmitting] = useState(false)
   const [cooldownLeft, setCooldownLeft] = useState(0)
+  const [hasActiveAlert, setHasActiveAlert] = useState(false)
+  const [checkingActiveAlert, setCheckingActiveAlert] = useState(false)
 
   const reporterUser = profile ? { user_id: profile.user_id, name: profile.name, student_number: profile.student_number } : reporter
 
@@ -77,8 +84,95 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
 
   const effectiveCooldown = isOpen && reporterUser ? cooldownLeft : 0
 
+  // Blocks the SAME reporter from sending a second alert — myself or for
+  // another person, doesn't matter which — while an earlier one from them
+  // is still Active/Acknowledged. Re-checks whenever the modal opens or
+  // the identified reporter changes, same trigger as the cooldown effect
+  // above, so reopening the modal after staff resolves the earlier alert
+  // correctly un-blocks them without needing a page refresh.
+  useEffect(() => {
+    const clearActiveAlert = () => setHasActiveAlert(false)
+    if (!isOpen || !reporterUser) {
+      clearActiveAlert()
+      return undefined
+    }
+    let cancelled = false
+    const startChecking = () => setCheckingActiveAlert(true)
+    startChecking()
+    hasActiveEmergencyAlert(reporterUser.user_id)
+      .then((active) => {
+        if (!cancelled) setHasActiveAlert(active)
+      })
+      .catch(() => {
+        if (!cancelled) setHasActiveAlert(false)
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingActiveAlert(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, reporterUser?.user_id])
+
+  // Pre-login self-identify: as the person types their name or User
+  // Number, search_patients_public() (matches name OR student_number)
+  // returns candidates, shown as a short suggestion list to click —
+  // never a full browsable list of every patient, and never
+  // auto-selected off a name match alone (names aren't unique, so the
+  // person confirms which result is actually them). Debounced so it
+  // doesn't fire an RPC call on every keystroke.
+  useEffect(() => {
+    if (profile) return undefined // logged-in case never uses this field
+    const raw = reporterQuery.trim()
+    const clearLookup = () => {
+      setReporterSuggestions([])
+      setReporterLookup('idle')
+    }
+    if (!raw) {
+      clearLookup()
+      return undefined
+    }
+    const startChecking = () => setReporterLookup('checking')
+    startChecking()
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchPatientsPublic(raw)
+        if (results.length > 0) {
+          setReporterSuggestions(results.slice(0, 6))
+          setReporterLookup('suggestions')
+        } else {
+          setReporterSuggestions([])
+          setReporterLookup('notfound')
+        }
+      } catch {
+        setReporterSuggestions([])
+        setReporterLookup('notfound')
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [reporterQuery, profile])
+
+  function selectReporter(match) {
+    setReporter({ user_id: match.user_id, name: match.name, student_number: match.student_number })
+    setReporterSuggestions([])
+    setReporterLookup('idle')
+  }
+
+  function changeReporter() {
+    setReporter(null)
+    setReporterQuery('')
+    setReporterSuggestions([])
+    setReporterLookup('idle')
+  }
+
   function reset() {
     setReporter(null)
+    setReporterQuery('')
+    setReporterSuggestions([])
+    setReporterLookup('idle')
+    setHasActiveAlert(false)
+    setCheckingActiveAlert(false)
     setEmgType('myself')
     setAffected(null)
     setLocation('')
@@ -102,6 +196,19 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
       const remaining = Math.max(0, EMERGENCY_COOLDOWN_MS - (Date.now() - lastSubmitAt(reporterUser.user_id)))
       if (remaining > 0) {
         return onError(`Please wait ${Math.ceil(remaining / 1000)}s before sending another emergency alert.`)
+      }
+      // Re-checked fresh here (not just the hasActiveAlert state from the
+      // effect above) since that could be a few seconds stale by the time
+      // Send is actually clicked — this is the real gate, the banner is
+      // just an early heads-up.
+      try {
+        if (await hasActiveEmergencyAlert(reporterUser.user_id)) {
+          setHasActiveAlert(true)
+          return onError('You already have an active emergency alert that clinic staff hasn\u2019t resolved yet. Please wait until it\u2019s resolved before sending another.')
+        }
+      } catch {
+        // Couldn't verify — fail open rather than blocking a genuine
+        // emergency report over a network hiccup on this check.
       }
     }
 
@@ -153,13 +260,29 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
           <button type="button" className="btn btn-outline" onClick={handleClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting || effectiveCooldown > 0}>
-            {submitting ? 'Sending…' : effectiveCooldown > 0 ? `Wait ${effectiveCooldown}s…` : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
+          <button type="button" className="btn btn-red" onClick={handleSubmit} disabled={submitting || effectiveCooldown > 0 || hasActiveAlert}>
+            {submitting
+              ? 'Sending…'
+              : hasActiveAlert
+                ? 'Alert already active'
+                : effectiveCooldown > 0
+                  ? `Wait ${effectiveCooldown}s…`
+                  : (<><AlertOctagonIcon width={13} height={13} /> Send Emergency Alert</>)}
           </button>
         </>
       }
     >
       <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16 }}>Fill in the details below. All fields are required.</div>
+
+      {reporterUser && hasActiveAlert && (
+        <div className="alert alert-danger" style={{ marginBottom: 16, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <AlertOctagonIcon width={14} height={14} style={{ flexShrink: 0 }} />
+          You already have an emergency alert that clinic staff hasn&apos;t resolved yet. You can&apos;t send another — for yourself or for someone else — until it&apos;s resolved.
+        </div>
+      )}
+      {reporterUser && checkingActiveAlert && !hasActiveAlert && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>Checking for existing alerts…</div>
+      )}
 
       <div className="emg-section-label">Emergency Type</div>
       <div className="emg-type-row">
@@ -198,7 +321,71 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
           <label>
             Select Patient (that&apos;s you) <span className="emg-req">*</span>
           </label>
-          <EmergencyPatientPicker selected={reporter} onSelect={setReporter} onClear={() => setReporter(null)} placeholder="Search by name or patient number…" />
+          {reporter ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+              <span style={{ fontSize: 13, color: '#22C55E' }}>
+                Recognized: <strong>{reporter.name}</strong> ({formatUserNumber(reporter.student_number)})
+              </span>
+              <button type="button" className="btn btn-sm btn-outline" onClick={changeReporter}>
+                Change
+              </button>
+            </div>
+          ) : (
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="emg-input"
+                placeholder="Enter your name or Student/Personnel Number…"
+                autoComplete="off"
+                value={reporterQuery}
+                onChange={(e) => setReporterQuery(e.target.value)}
+              />
+              {reporterLookup === 'checking' && (
+                <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>Searching…</span>
+              )}
+              {reporterLookup === 'notfound' && (
+                <span style={{ fontSize: 11, color: '#EF4444', marginTop: 4, display: 'block' }}>
+                  No registered patient matches that. Check your spelling or number and try again.
+                </span>
+              )}
+              {reporterLookup === 'suggestions' && reporterSuggestions.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: 'var(--surface)',
+                  }}
+                >
+                  {reporterSuggestions.map((p, i) => (
+                    <button
+                      key={p.user_id}
+                      type="button"
+                      onClick={() => selectReporter(p)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'none',
+                        border: 'none',
+                        borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                        cursor: 'pointer',
+                        fontSize: 12.5,
+                        textAlign: 'left',
+                        color: 'inherit',
+                      }}
+                    >
+                      <span>{p.name}</span>
+                      <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{formatUserNumber(p.student_number)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

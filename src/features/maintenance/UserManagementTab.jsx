@@ -3,6 +3,7 @@ import Avatar from '@components/ui/Avatar'
 import SearchInput from '@components/ui/SearchInput'
 import Toggle from '@components/ui/Toggle'
 import { roleBadgeInfo } from './lib/userHelpers'
+import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
 
@@ -92,6 +93,11 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
                         <span className={`badge badge-no-dot badge-${badge.color}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {badge.Icon && <badge.Icon width={11} height={11} />} {badge.label}
                         </span>
+                        {usr.role === 'patient' && (
+                          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 3 }}>
+                            {isPersonnelNumber(usr.student_number) ? 'Personnel' : 'Student'}
+                          </div>
+                        )}
                       </td>
                       <td style={groupDividerStyle}>
                         <code style={{ fontSize: 11 }}>{usr.student_number || 'N/A'}</code>

@@ -1,4 +1,15 @@
-export const COURSES = ['BS Computer Science', 'BS Information Technology', 'BS Nursing', 'BS Education', 'BS Business Administration', 'BS Accountancy', 'BS Engineering']
+export const COURSES = [
+  'Bachelor of Science in Hospitality Management',
+  'Bachelor of Industrial Technology – Computer Technology',
+  'Bachelor of Industrial Technology – Major in Culinary and Food Processing Technology',
+  'Bachelor of Science in Information Technology',
+  'Bachelor of Science in Business Administration',
+  'Bachelor of Secondary Education – Major in English',
+  'Bachelor of Secondary Education – Major in Science',
+  'Bachelor of Secondary Education – Major in Filipino',
+  'Bachelor of Secondary Education – Major in Mathematics',
+  'Bachelor of Physical Education',
+]
 export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
 export const PRINT_PERMISSIONS = [
   ['print_inventory', 'Inventory Reports', null],

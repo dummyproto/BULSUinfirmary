@@ -26,6 +26,19 @@ export async function exportElementAsPng(element, filename) {
   const canvas = await html2canvas(element, {
     backgroundColor: '#ffffff',
     scale: 2, // sharper output than a raw 1:1 screen capture
+    // The real element is hidden off-screen for capture
+    // (position:fixed; left:-9999px -- see .doc-request-printable-hidden
+    // in legacy.css) so it doesn't flash on screen. html2canvas renders
+    // its own private clone of the page to do the capture though, which
+    // the user never sees -- so it's safe to reset position on that
+    // clone here. This avoids a known html2canvas bug where a source
+    // element sitting that far outside the page bounds captures as
+    // washed-out or fully blank.
+    onclone: (_clonedDoc, clonedEl) => {
+      clonedEl.style.position = 'static'
+      clonedEl.style.left = '0'
+      clonedEl.style.top = '0'
+    },
   })
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not generate the image.')

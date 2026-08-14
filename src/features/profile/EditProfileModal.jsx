@@ -1,14 +1,52 @@
 import { useEffect, useState } from 'react'
 import Modal from '@components/ui/Modal'
-import { COURSES, YEAR_LEVELS, GENDERS, CIVIL_STATUSES, BLOOD_TYPES, EXTENSIONS, buildFullName } from './lib/profileHelpers'
+import { COURSES, YEAR_LEVELS, GENDERS, CIVIL_STATUSES, BLOOD_TYPES, EXTENSIONS, RELIGIONS, buildFullName } from './lib/profileHelpers'
 import { normalizeSchoolIdCode } from '@lib/schoolId'
 import { getRegions, getProvinces, getCities, getBarangays } from '@lib/phAddress'
 import SchoolIdScanModal from './SchoolIdScanModal'
 import { EditIcon, SaveIcon, UserIcon, CreditCardIcon, PhoneIcon, MapPinIcon, GraduationCapIcon, BriefcaseIcon, QrCodeIcon } from '@components/ui/icons'
 
+// Youngest a patient can be. Enforced two ways below: the DATE OF BIRTH
+// input's `max` attribute stops the picker from even offering a too-recent
+// date, and ageFromDob() backs that up in handleSave() — the native date
+// input can still be bypassed by typing digits directly on some
+// browsers/devices, so the picker restriction alone isn't a real guarantee.
+const MIN_AGE = 10
+
+// Latest birth date the DATE OF BIRTH input will accept, i.e. "exactly
+// MIN_AGE years ago today". Computed fresh on every call (not a
+// module-level constant) so it's always correct relative to today rather
+// than whenever the app bundle happened to be built.
+function maxDobForMinAge(minAge) {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - minAge)
+  return d.toISOString().slice(0, 10)
+}
+
+// Exact age in whole years as of today — same leap-day-safe logic as
+// calcAge() in profileHelpers.js, just returning a number instead of a
+// "N years old" string so it can be compared against MIN_AGE directly.
+function ageFromDob(dob) {
+  if (!dob) return null
+  const today = new Date()
+  const b = new Date(dob)
+  if (Number.isNaN(b.getTime())) return null
+  let age = today.getFullYear() - b.getFullYear()
+  const m = today.getMonth() - b.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--
+  return age
+}
+
 export default function EditProfileModal({ isOpen, role, profile, onClose, onSave, onError }) {
   const [scanOpen, setScanOpen] = useState(false)
-  const [form, setForm] = useState(() => ({ ...profile }))
+  const [form, setForm] = useState(() => {
+    const base = { ...profile }
+    if (base.religion && !RELIGIONS.includes(base.religion)) {
+      base.religionOther = base.religion
+      base.religion = 'Other'
+    }
+    return base
+  })
   const [regionOptions, setRegionOptions] = useState([])
   const [provinceOptions, setProvinceOptions] = useState([])
   const [cityOptions, setCityOptions] = useState([])
@@ -68,6 +106,9 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return onError('Invalid email format')
 
     if (role === 'patient') {
+      const age = ageFromDob(form.dateOfBirth)
+      if (age !== null && age < MIN_AGE) return onError(`Patient must be at least ${MIN_AGE} years old`)
+
       const username = (form.username || '').replace(/\s/g, '').toLowerCase()
       if (!username) return onError('Username cannot be empty')
       const name = buildFullName(form, profile.name)
@@ -75,7 +116,14 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
       // `RegisterQrScan`/`QrLoginScan` use), so a manually-typed code
       // matches on lookup regardless of case/whitespace differences.
       const schoolIdBarcode = form.schoolIdBarcode ? normalizeSchoolIdCode(form.schoolIdBarcode) : ''
-      onSave({ ...form, email, username, name, schoolIdBarcode })
+      // "Other" is a dropdown placeholder, not a real religion — swap in
+      // whatever was typed into the free-text box instead. religionOther
+      // is UI-only bookkeeping (see the useState initializer above) and
+      // is deliberately destructured out here so it never leaks into the
+      // saved profile.
+      const { religionOther, ...rest } = form
+      const religion = form.religion === 'Other' ? (religionOther || '').trim() : form.religion
+      onSave({ ...rest, email, username, name, schoolIdBarcode, religion })
     } else {
       const name = (form.name || '').trim() || profile.name
       onSave({ ...form, email, name })
@@ -105,20 +153,32 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
             <div className="form-grid" style={{ gap: 10 }}>
               <div className="form-group">
                 <label>SURNAME</label>
-                <input className="form-input" placeholder="Last name" value={form.surname || ''} onChange={(e) => setField('surname')(e.target.value)} />
+                <input
+                  className="form-input"
+                  placeholder="Last name"
+                  maxLength={50}
+                  value={form.surname || ''}
+                  onChange={(e) => setField('surname')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                />
               </div>
               <div className="form-group">
                 <label>FIRST NAME</label>
-                <input className="form-input" placeholder="First name" value={form.givenName || ''} onChange={(e) => setField('givenName')(e.target.value)} />
+                <input
+                  className="form-input"
+                  placeholder="First name"
+                  maxLength={50}
+                  value={form.givenName || ''}
+                  onChange={(e) => setField('givenName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                />
               </div>
               <div className="form-group">
                 <label>M.I.</label>
                 <input
                   className="form-input"
-                  placeholder="e.g. B"
-                  maxLength={1}
+                  placeholder="e.g. BC"
+                  maxLength={2}
                   value={form.mi || ''}
-                  onChange={(e) => setField('mi')(e.target.value.replace(/[^a-zA-Z]/g, ''))}
+                  onChange={(e) => setField('mi')(e.target.value.replace(/[^a-zA-Z]/g, '').slice(0, 2))}
                 />
               </div>
               <SelectField label="EXT. (Jr. / Sr.)" value={form.ext} options={EXTENSIONS} onChange={setField('ext')} />
@@ -140,7 +200,13 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
             <div className="form-grid" style={{ gap: 10 }}>
               <div className="form-group">
                 <label>DATE OF BIRTH</label>
-                <input className="form-input" type="date" value={form.dateOfBirth || ''} onChange={(e) => setField('dateOfBirth')(e.target.value)} />
+                <input
+                  className="form-input"
+                  type="date"
+                  max={maxDobForMinAge(MIN_AGE)}
+                  value={form.dateOfBirth || ''}
+                  onChange={(e) => setField('dateOfBirth')(e.target.value)}
+                />
               </div>
               <div className="form-group">
                 <label>PLACE OF BIRTH</label>
@@ -148,13 +214,28 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               </div>
               <SelectField label="GENDER" value={form.gender} options={GENDERS} onChange={setField('gender')} />
               <SelectField label="CIVIL STATUS" value={form.civilStatus} options={CIVIL_STATUSES} onChange={setField('civilStatus')} />
-              <div className="form-group">
-                <label>RELIGION</label>
-                <input className="form-input" placeholder="e.g. Roman Catholic" value={form.religion || ''} onChange={(e) => setField('religion')(e.target.value)} />
-              </div>
+              <SelectField label="RELIGION" value={form.religion} options={RELIGIONS} onChange={setField('religion')} />
+              {form.religion === 'Other' && (
+                <div className="form-group">
+                  <label>SPECIFY RELIGION</label>
+                  <input
+                    className="form-input"
+                    placeholder="Enter your religion"
+                    maxLength={50}
+                    value={form.religionOther || ''}
+                    onChange={(e) => setField('religionOther')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                  />
+                </div>
+              )}
               <div className="form-group">
                 <label>NATIONALITY</label>
-                <input className="form-input" placeholder="e.g. Filipino" value={form.nationality || 'Filipino'} onChange={(e) => setField('nationality')(e.target.value)} />
+                <input
+                  className="form-input"
+                  placeholder="e.g. Filipino"
+                  maxLength={50}
+                  value={form.nationality || 'Filipino'}
+                  onChange={(e) => setField('nationality')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                />
               </div>
               <SelectField label="BLOOD TYPE" value={form.bloodType} options={BLOOD_TYPES} onChange={setField('bloodType')} />
             </div>
@@ -310,9 +391,10 @@ function SelectField({ label, value, options, onChange }) {
     <div className="form-group">
       <label>{label}</label>
       <select className="form-select" value={value || ''} onChange={(e) => onChange(e.target.value)}>
-        <option value="" disabled>
-          -- Select --
-        </option>
+        {/* Not `disabled` — deliberately re-selectable so a field that's
+            already been set can be picked back to blank/"-- Select --"
+            instead of being stuck with whatever was last chosen. */}
+        <option value="">-- Select --</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}

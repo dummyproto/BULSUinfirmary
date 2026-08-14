@@ -1,4 +1,15 @@
-export const COURSES = ['BS Computer Science', 'BS Information Technology', 'BS Nursing', 'BS Education', 'BS Business Administration', 'BS Accountancy', 'BS Engineering', 'BS Architecture', 'BS Medicine', 'BS Psychology', 'AB Communication', 'AB Political Science']
+export const COURSES = [
+  'Bachelor of Science in Hospitality Management',
+  'Bachelor of Industrial Technology – Computer Technology',
+  'Bachelor of Industrial Technology – Major in Culinary and Food Processing Technology',
+  'Bachelor of Science in Information Technology',
+  'Bachelor of Science in Business Administration',
+  'Bachelor of Secondary Education – Major in English',
+  'Bachelor of Secondary Education – Major in Science',
+  'Bachelor of Secondary Education – Major in Filipino',
+  'Bachelor of Secondary Education – Major in Mathematics',
+  'Bachelor of Physical Education',
+]
 export const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
 export const GENDERS = ['Male', 'Female', 'Prefer not to say']
 export const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Separated', 'Annulled']
@@ -11,6 +22,22 @@ export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 // to the dropdown's blank "-- Select --" state.
 export const EXTENSIONS = ['Jr', 'Sr', 'II', 'III', 'IV', 'V']
 export const RELATIONS = ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Uncle', 'Aunt', 'Sibling', 'Guardian', 'Other']
+// Common religions among BulSU's student/staff population, plus a catch-all
+// — kept as a fixed list (like GENDERS/CIVIL_STATUSES above) so Religion is
+// a dropdown instead of free text.
+export const RELIGIONS = [
+  'Roman Catholic',
+  'Iglesia ni Cristo',
+  'Islam',
+  'Evangelical',
+  'Protestant',
+  'Seventh-day Adventist',
+  "Jehovah's Witness",
+  'Baptist',
+  'Born Again Christian',
+  'Buddhist',
+  'Other',
+]
 
 export const ROLE_LABELS = { admin: 'System Administrator', staff: 'Clinic Personnel', patient: 'Patient' }
 export const ROLE_GRADIENTS = {

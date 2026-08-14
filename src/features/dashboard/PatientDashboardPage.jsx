@@ -7,8 +7,9 @@ import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
-import { listEmergencyAlerts } from '@services/emergencyAlertsService'
-import { DocumentIcon, ClockIcon, CheckCircleIcon, ConsultationIcon, ChatbotIcon } from '@components/ui/icons'
+import { listEmergencyAlerts, getAlertById } from '@services/emergencyAlertsService'
+import { supabase } from '@services/supabaseClient'
+import { DocumentIcon, ClockIcon, CheckCircleIcon, ConsultationIcon, ChatbotIcon, AlertOctagonIcon, MapPinIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
 
 export default function PatientDashboardPage() {
   const navigate = useNavigate()
@@ -43,6 +44,47 @@ export default function PatientDashboardPage() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myId])
+
+  // Keeps "Emergency Alert Status" live: a NEW alert involving this patient
+  // (as subject or reporter) appears the moment it's created, and an
+  // existing one updates in place the moment staff acknowledge/resolve it —
+  // without the patient needing to refresh the dashboard. RLS
+  // (emergency_alerts_select) already scopes which rows this subscription
+  // actually receives to ones where this patient is subject_id or
+  // reported_by, so no extra client-side filtering by user is needed here,
+  // only by which alert_id is affected.
+  useEffect(() => {
+    if (!myId) return undefined
+    let cancelled = false
+    const channel = supabase
+      .channel(`patient-emergency-alerts-${myId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergency_alerts' }, async (payload) => {
+        try {
+          const fullAlert = await getAlertById(payload.new.emergency_alert_id)
+          if (!cancelled && fullAlert) setMyAlerts((list) => [fullAlert, ...list])
+        } catch {
+          // Joined fetch failed — fall back to the raw payload rather than
+          // silently missing the new alert entirely.
+          if (!cancelled) setMyAlerts((list) => [payload.new, ...list])
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'emergency_alerts' }, async (payload) => {
+        try {
+          const fullAlert = await getAlertById(payload.new.emergency_alert_id)
+          if (!cancelled && fullAlert) {
+            setMyAlerts((list) => list.map((a) => (a.emergency_alert_id === fullAlert.emergency_alert_id ? fullAlert : a)))
+          }
+        } catch {
+          // Non-critical — the next full page load will show the current
+          // status regardless.
+        }
+      })
+      .subscribe()
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
   }, [myId])
 
   const pending = docs.filter((d) => d.status === 'Pending').length
@@ -174,7 +216,7 @@ export default function PatientDashboardPage() {
           <div className="card">
             <div className="card-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                Emergency Alert Status
+                <AlertOctagonIcon width={15} height={15} /> Emergency Alert Status
               </h3>
             </div>
             {latestAlert ? (
@@ -186,9 +228,46 @@ export default function PatientDashboardPage() {
                   </span>
                 </div>
                 <div className="detail-row">
+                  <span className="detail-label">Reported For</span>
+                  <span className="detail-value">{latestAlert.subject_name || '—'}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Type</span>
+                  <span className="detail-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    {latestAlert.emergency_type === 'myself' ? <UserIcon width={12} height={12} /> : <PeopleIcon width={12} height={12} />}
+                    {latestAlert.emergency_type === 'myself' ? 'For Myself' : 'For Another Person'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Location</span>
+                  <span className="detail-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <MapPinIcon width={12} height={12} /> {latestAlert.location}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Description</span>
+                  <span className="detail-value">{latestAlert.description}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Reported By</span>
+                  <span className="detail-value">{latestAlert.reporter_name}</span>
+                </div>
+                <div className="detail-row">
                   <span className="detail-label">Reported</span>
                   <span className="detail-value">{formatDate(latestAlert.created_at)}</span>
                 </div>
+                {latestAlert.acknowledged_by_name && (
+                  <div className="detail-row">
+                    <span className="detail-label">Acknowledged By</span>
+                    <span className="detail-value">{latestAlert.acknowledged_by_name}</span>
+                  </div>
+                )}
+                {latestAlert.resolved_at && (
+                  <div className="detail-row">
+                    <span className="detail-label">Resolved</span>
+                    <span className="detail-value">{formatDate(latestAlert.resolved_at)}</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="empty-state">

@@ -8,31 +8,12 @@ import { notify } from '@services/notificationsService'
 import PasswordInput from '@components/ui/PasswordInput'
 import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icons'
 
+import { formatUserNumber } from '@lib/format'
+
 // Lazy — same reasoning as QrLoginScan's lazy import in LoginPage.jsx:
 // jsQR is a sizable library most people opening the register modal (the
 // "fill in manually" path, still the default) never need.
 const RegisterQrScan = lazy(() => import('./RegisterQrScan'))
-
-// Display-only formatting for the User Number field — the underlying
-// form.userId state stays plain alphanumeric characters (no dashes); this
-// only formats what's rendered in the input. Two shapes are supported:
-//  - Student numbers: digits only, formatted 4-3-3 (e.g. 2023-400-878),
-//    matching the field's "e.g. 2023-000-000" placeholder.
-//  - Instructor / campus personnel numbers: a short letter prefix followed
-//    by digits, formatted LETTERS-DIGITS (e.g. CMP-123456).
-// Kept separate from state deliberately: validation, the duplicate-number
-// check, and the final registerPatient() payload all work off the plain
-// alphanumeric string — formatting only touches the input's rendered value.
-function formatUserNumber(raw) {
-  const clean = String(raw || '').toUpperCase()
-  const letters = clean.match(/^[A-Z]+/)?.[0] || ''
-  if (letters) {
-    const digits = clean.slice(letters.length)
-    return digits ? `${letters}-${digits}` : letters
-  }
-  const parts = [clean.slice(0, 4), clean.slice(4, 7), clean.slice(7, 10)].filter(Boolean)
-  return parts.join('-')
-}
 
 /**
  * Best-effort match of a scanned QR value against a fixed dropdown option

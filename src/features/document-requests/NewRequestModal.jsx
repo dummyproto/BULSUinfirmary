@@ -122,7 +122,7 @@ export default function NewRequestModal({
         </div>
       </div>
       <div className="alert alert-info" style={{ marginTop: 12 }}>
-        ⏱️ Processing takes 2–3 working days. Bring your school ID for pickup.
+        ⏱️ Processing may take 2–3 working days, depending on the clinic’s workload.
       </div>
     </Modal>
   )

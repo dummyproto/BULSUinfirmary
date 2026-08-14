@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircleIcon, PhoneIcon } from '@components/ui/icons'
 import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
+import { stopEmergencySiren } from '@lib/emergencySound'
 
 const EXIT_DURATION = 160
 
@@ -13,8 +14,19 @@ export default function EmergencySuccessOverlay({ result, onClose }) {
   const [shown, setShown] = useState(result)
   if (result && result !== shown) setShown(result)
   if (!shouldRender) return null
+
+  // The sender's own siren (started by playEmergencySiren() the moment
+  // their alert was submitted — see EmergencyReportModal) keeps sounding
+  // for up to ~60s otherwise. Acknowledging "Alert Sent!" is the sender's
+  // own confirmation that they're done here, same as a staff member
+  // acknowledging/dismissing an incoming alert already cuts it short.
+  function handleClose() {
+    stopEmergencySiren()
+    onClose()
+  }
+
   return createPortal(
-    <div className={`emg-overlay open${closing ? ' closing' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`emg-overlay open${closing ? ' closing' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && handleClose()}>
       <div className="emg-success-box">
         <div className="emg-success-icon"><CheckCircleIcon width={28} height={28} /></div>
         <h3>Alert Sent!</h3>
@@ -25,7 +37,7 @@ export default function EmergencySuccessOverlay({ result, onClose }) {
         <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <PhoneIcon width={12} height={12} /> You can also call the clinic directly: <strong style={{ color: 'var(--text-2)' }}>0907-684-2769</strong>
         </p>
-        <button type="button" className="login-btn" style={{ marginTop: 18, maxWidth: 200 }} onClick={onClose}>
+        <button type="button" className="login-btn" style={{ marginTop: 18, maxWidth: 200 }} onClick={handleClose}>
           OK
         </button>
       </div>
