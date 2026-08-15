@@ -482,7 +482,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="User number"
+                      placeholder="2023-000-000 or PID-0498"
                       autoComplete="off"
                       maxLength={13}
                       value={formatUserNumber(form.userId)}

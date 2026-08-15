@@ -3,6 +3,7 @@ import Modal from '@components/ui/Modal'
 import EmergencyPatientPicker from './EmergencyPatientPicker'
 import { createEmergencyAlert, hasActiveEmergencyAlert } from '@services/emergencyAlertsService'
 import { searchPatientsPublic } from '@services/usersService'
+import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 import { notify } from '@services/notificationsService'
 import { addAuditLog } from '@services/auditLogsService'
 import { playEmergencySiren } from '@lib/emergencySound'
@@ -50,11 +51,21 @@ function markSubmitted(reporterId) {
  * conversation. The person can still edit/clear it before submitting;
  * this never auto-submits anything.
  */
+// A User Number is only ever "complete" in one of these two shapes — the
+// same rule RegisterModal's Step 1 User Number field validates against.
+// Verification is deliberately gated on this: an incomplete/partial number
+// must never be sent to search_patients_public at all, since that RPC's
+// own ILIKE '%query%' matching would otherwise return (and let someone
+// browse) OTHER registered patients' names/numbers off a partial digit
+// sequence — exactly the "no dropdown of other people" requirement below.
+function isCompleteUserNumber(raw) {
+  return /^\d{10}$/.test(raw) || isPersonnelNumber(raw)
+}
+
 export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess, initialDescription = '' }) {
   const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
-  const [reporterQuery, setReporterQuery] = useState('') // free text: name OR user number — pre-login self-identify input
-  const [reporterSuggestions, setReporterSuggestions] = useState([])
-  const [reporterLookup, setReporterLookup] = useState('idle') // idle | checking | suggestions | notfound
+  const [reporterNumber, setReporterNumber] = useState('') // raw alphanumeric User Number — pre-login self-identify input
+  const [reporterLookup, setReporterLookup] = useState('idle') // idle | checking | notfound
   const [emgType, setEmgType] = useState('myself')
   const [affected, setAffected] = useState(null)
   const [location, setLocation] = useState('')
@@ -115,61 +126,60 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, reporterUser?.user_id])
 
-  // Pre-login self-identify: as the person types their name or User
-  // Number, search_patients_public() (matches name OR student_number)
-  // returns candidates, shown as a short suggestion list to click —
-  // never a full browsable list of every patient, and never
-  // auto-selected off a name match alone (names aren't unique, so the
-  // person confirms which result is actually them). Debounced so it
-  // doesn't fire an RPC call on every keystroke.
+  // Pre-login self-identify: waits for a COMPLETE User Number (see
+  // isCompleteUserNumber above) before calling search_patients_public at
+  // all — never fires on a partial/in-progress number. Once complete, the
+  // result is filtered down to an EXACT (case-insensitive) match against
+  // what was actually typed, ignoring anything the RPC's own partial ILIKE
+  // matching might otherwise have surfaced. This means the only two
+  // outcomes are "recognized as exactly this one registered patient" or
+  // "not found" — there's never a list of other people's names/numbers to
+  // browse, and a partial number can never resolve to (or expose) someone
+  // else's record.
+  //
+  // All setReporterLookup() calls below happen inside the setTimeout
+  // callback (an async boundary), never synchronously in the effect body
+  // itself — required by react-hooks/set-state-in-effect. Whether the
+  // "Verifying…"/"not found" messages are actually shown is instead
+  // derived at render time from isCompleteUserNumber(reporterNumber), so
+  // backspacing out of a complete number instantly clears a stale
+  // "not found" message with no extra state/effect needed for that.
   useEffect(() => {
     if (profile) return undefined // logged-in case never uses this field
-    const raw = reporterQuery.trim()
-    const clearLookup = () => {
-      setReporterSuggestions([])
-      setReporterLookup('idle')
-    }
-    if (!raw) {
-      clearLookup()
-      return undefined
-    }
-    const startChecking = () => setReporterLookup('checking')
-    startChecking()
+    const raw = reporterNumber.trim().toUpperCase()
+    if (!isCompleteUserNumber(raw)) return undefined
+    let cancelled = false
     const timer = setTimeout(async () => {
+      setReporterLookup('checking')
       try {
         const results = await searchPatientsPublic(raw)
-        if (results.length > 0) {
-          setReporterSuggestions(results.slice(0, 6))
-          setReporterLookup('suggestions')
+        if (cancelled) return
+        const exact = results.find((p) => String(p.student_number || '').trim().toUpperCase() === raw)
+        if (exact) {
+          setReporter({ user_id: exact.user_id, name: exact.name, student_number: exact.student_number })
+          setReporterLookup('idle')
         } else {
-          setReporterSuggestions([])
           setReporterLookup('notfound')
         }
       } catch {
-        setReporterSuggestions([])
-        setReporterLookup('notfound')
+        if (!cancelled) setReporterLookup('notfound')
       }
     }, 350)
-    return () => clearTimeout(timer)
-  }, [reporterQuery, profile])
-
-  function selectReporter(match) {
-    setReporter({ user_id: match.user_id, name: match.name, student_number: match.student_number })
-    setReporterSuggestions([])
-    setReporterLookup('idle')
-  }
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [reporterNumber, profile])
 
   function changeReporter() {
     setReporter(null)
-    setReporterQuery('')
-    setReporterSuggestions([])
+    setReporterNumber('')
     setReporterLookup('idle')
   }
 
   function reset() {
     setReporter(null)
-    setReporterQuery('')
-    setReporterSuggestions([])
+    setReporterNumber('')
     setReporterLookup('idle')
     setHasActiveAlert(false)
     setCheckingActiveAlert(false)
@@ -331,58 +341,27 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
               </button>
             </div>
           ) : (
-            <div style={{ position: 'relative' }}>
+            <div>
               <input
                 type="text"
                 className="emg-input"
-                placeholder="Enter your name or Student/Personnel Number…"
+                placeholder="Enter your complete User Number…"
                 autoComplete="off"
-                value={reporterQuery}
-                onChange={(e) => setReporterQuery(e.target.value)}
+                inputMode="text"
+                maxLength={13}
+                value={formatUserNumber(reporterNumber)}
+                onChange={(e) => setReporterNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
               />
-              {reporterLookup === 'checking' && (
-                <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>Searching…</span>
+              <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
+                Your 10-digit student number (e.g. 2023-400-000) or personnel ID (e.g. PID-0468). The full number must be entered before you&apos;re recognized.
+              </span>
+              {isCompleteUserNumber(reporterNumber.trim().toUpperCase()) && reporterLookup === 'checking' && (
+                <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>Verifying…</span>
               )}
-              {reporterLookup === 'notfound' && (
+              {isCompleteUserNumber(reporterNumber.trim().toUpperCase()) && reporterLookup === 'notfound' && (
                 <span style={{ fontSize: 11, color: '#EF4444', marginTop: 4, display: 'block' }}>
-                  No registered patient matches that. Check your spelling or number and try again.
+                  No registered patient matches that User Number. Please check and try again.
                 </span>
-              )}
-              {reporterLookup === 'suggestions' && reporterSuggestions.length > 0 && (
-                <div
-                  style={{
-                    marginTop: 4,
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    background: 'var(--surface)',
-                  }}
-                >
-                  {reporterSuggestions.map((p, i) => (
-                    <button
-                      key={p.user_id}
-                      type="button"
-                      onClick={() => selectReporter(p)}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        width: '100%',
-                        padding: '8px 10px',
-                        background: 'none',
-                        border: 'none',
-                        borderTop: i === 0 ? 'none' : '1px solid var(--border)',
-                        cursor: 'pointer',
-                        fontSize: 12.5,
-                        textAlign: 'left',
-                        color: 'inherit',
-                      }}
-                    >
-                      <span>{p.name}</span>
-                      <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{formatUserNumber(p.student_number)}</span>
-                    </button>
-                  ))}
-                </div>
               )}
             </div>
           )}
