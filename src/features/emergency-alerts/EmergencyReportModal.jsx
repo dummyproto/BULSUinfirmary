@@ -64,7 +64,13 @@ function isCompleteUserNumber(raw) {
 
 export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess, initialDescription = '' }) {
   const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
-  const [reporterNumber, setReporterNumber] = useState('') // raw alphanumeric User Number — pre-login self-identify input
+  // Digits only now (see the input's onChange below) — this field is
+  // scoped to a patient's 10-digit student number. A personnel ID like
+  // "PID-0468" can no longer be typed here at all, since its letters get
+  // stripped before they ever reach state; isCompleteUserNumber()'s
+  // isPersonnelNumber() branch is left in place (still used/correct
+  // elsewhere) but is effectively unreachable from this particular input.
+  const [reporterNumber, setReporterNumber] = useState('') // raw digits — pre-login self-identify input
   const [reporterLookup, setReporterLookup] = useState('idle') // idle | checking | notfound
   const [emgType, setEmgType] = useState('myself')
   const [affected, setAffected] = useState(null)
@@ -345,15 +351,15 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
               <input
                 type="text"
                 className="emg-input"
-                placeholder="Enter your complete User Number…"
+                placeholder="Enter your 10-digit Student Number…"
                 autoComplete="off"
-                inputMode="text"
-                maxLength={13}
+                inputMode="numeric"
+                maxLength={10}
                 value={formatUserNumber(reporterNumber)}
-                onChange={(e) => setReporterNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                onChange={(e) => setReporterNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
               />
               <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
-                Your 10-digit student number (e.g. 2023-400-000) or personnel ID (e.g. PID-0468). The full number must be entered before you&apos;re recognized.
+                Your 10-digit student number (e.g. 2023-400-000). The full number must be entered before you&apos;re recognized.
               </span>
               {isCompleteUserNumber(reporterNumber.trim().toUpperCase()) && reporterLookup === 'checking' && (
                 <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>Verifying…</span>
