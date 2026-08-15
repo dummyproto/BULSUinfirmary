@@ -10,7 +10,6 @@ import { formatDate } from '@lib/format'
 import { useAuth } from '@context/AuthContext'
 import { listDocumentRequests, updateDocumentRequestStatus, deleteDocumentRequests } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
-import { addAuditLog } from '@services/auditLogsService'
 import DocDetailModal from './DocDetailModal'
 import DocActionModal from './DocActionModal'
 import { EyeIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@components/ui/icons'
@@ -122,9 +121,6 @@ export default function DocumentRequestsPage() {
       await deleteDocumentRequests(selected)
       setRequests((list) => list.filter((r) => !selected.includes(r.doc_request_id)))
       show(selected.length === 1 ? 'Document request deleted' : `${selected.length} document requests deleted`, 'success')
-      addAuditLog({ userId: profile?.user_id ?? null, action: 'DELETE_LOGS', details: `Deleted ${selected.length} document request${selected.length === 1 ? '' : 's'}` }).catch((err) =>
-        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
-      )
       setSelected([])
       setSelectionMode(false)
     } catch (err) {

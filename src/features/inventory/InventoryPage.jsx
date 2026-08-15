@@ -27,7 +27,6 @@ import ReleasePickerModal from './ReleasePickerModal'
 import RestoreEquipmentModal from './RestoreEquipmentModal'
 import ScanVerifyModal, { parseQRPayload } from './ScanVerifyModal'
 import { getInventoryStatus, mergeDisplayExpirationDate, findInventoryItemMatch, itemKey, isPastISODate, batchKey } from './lib/inventoryHelpers'
-import { addAuditLog } from '@services/auditLogsService'
 import {
   listInventory,
   createInventoryItem,
@@ -272,9 +271,6 @@ export default function InventoryPage() {
       await deleteInventoryLogs(ids)
       setLogs((list) => list.filter((l) => !ids.includes(l.inventory_log_id)))
       show(ids.length === 1 ? 'Log entry deleted' : `${ids.length} log entries deleted`, 'success')
-      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} inventory log entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
-        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
-      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }
@@ -291,9 +287,6 @@ export default function InventoryPage() {
       await deleteScanHistory(ids)
       setScanHistory((list) => list.filter((s) => !ids.includes(s.scan_id)))
       show(ids.length === 1 ? 'Scan history entry deleted' : `${ids.length} scan history entries deleted`, 'success')
-      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} scan history entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
-        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
-      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }

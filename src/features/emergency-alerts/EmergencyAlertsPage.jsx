@@ -22,7 +22,6 @@ import {
 } from '@services/emergencyAlertsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
-import { addAuditLog } from '@services/auditLogsService'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 /**
@@ -214,9 +213,6 @@ export default function EmergencyAlertsPage() {
       await deleteEmergencyAlerts(ids)
       setAlerts((list) => list.filter((a) => !ids.includes(a.emergency_alert_id)))
       show(ids.length === 1 ? 'Alert log entry deleted' : `${ids.length} alert log entries deleted`, 'success')
-      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} emergency alert log entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
-        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
-      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }
@@ -234,9 +230,6 @@ export default function EmergencyAlertsPage() {
       await deleteSmsLogs(ids)
       setSmsLog((list) => list.filter((s) => !ids.includes(s.sms_log_id)))
       show(ids.length === 1 ? 'SMS log entry deleted' : `${ids.length} SMS log entries deleted`, 'success')
-      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} SMS log entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
-        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
-      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }

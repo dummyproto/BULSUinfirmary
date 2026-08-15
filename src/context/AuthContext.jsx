@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase } from '@services/supabaseClient'
 import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
-import { addAuditLog } from '@services/auditLogsService'
 
 export const AuthContext = createContext(undefined)
 
@@ -17,7 +16,7 @@ export function AuthProvider({ children }) {
   const loadProfile = useCallback(async (authUser) => {
     if (!authUser) {
       setProfile(null)
-      return null
+      return
     }
     try {
       let row = await getUserByAuthId(authUser.id)
@@ -40,11 +39,9 @@ export function AuthProvider({ children }) {
         row = await finalizeSelfRegistration(authUser)
       }
       setProfile(row)
-      return row
     } catch (err) {
       console.error('Failed to load user profile:', err.message)
       setProfile(null)
-      return null
     }
   }, [])
 
@@ -132,43 +129,14 @@ export function AuthProvider({ children }) {
     // showed up as a blank flash between "logged in" and "dashboard
     // actually visible" instead of landing on it directly. Awaiting it
     // here means role is already set by the time the caller proceeds.
-    const row = await loadProfile(data.user)
-
-    // One audit-log call here covers every account type (staff and
-    // patient alike both come through this same signIn()) rather than
-    // needing a separate LOGIN entry wired into each role's own
-    // login/dashboard code. Fire-and-forget with its own .catch — a
-    // logging failure should never block someone from actually signing
-    // in.
-    if (row) {
-      addAuditLog({ userId: row.user_id, action: 'LOGIN', details: `${row.name || row.email || 'User'} logged in (${row.role})` }).catch((err) =>
-        console.error('Failed to log LOGIN audit entry:', err.message)
-      )
-    }
+    await loadProfile(data.user)
 
     return data
   }, [loadProfile])
 
   const signOut = useCallback(async () => {
-    // Logged BEFORE signOut() clears the session, not after — this used
-    // to call supabase.auth.signOut() first, which destroys the session
-    // (and its auth token) immediately. The addAuditLog() insert that
-    // followed then had no valid session to authenticate with at all,
-    // so PostgREST rejected it outright as anonymous (401, before RLS's
-    // own WITH CHECK policy even got evaluated) — that's why LOGOUT
-    // entries never made it in even for staff/admin, who are otherwise
-    // fully allowed to insert. Awaited here (not fire-and-forget) so the
-    // request is guaranteed to go out on the still-valid session before
-    // signOut() runs.
-    if (profile) {
-      try {
-        await addAuditLog({ userId: profile.user_id, action: 'LOGOUT', details: `${profile.name || profile.email || 'User'} logged out (${profile.role})` })
-      } catch (err) {
-        console.error('Failed to log LOGOUT audit entry:', err.message)
-      }
-    }
     await supabase.auth.signOut()
-  }, [profile])
+  }, [])
 
   // Re-authenticates with the current password first (Supabase Auth has no
   // separate "verify current password" endpoint), then updates to the new
@@ -181,17 +149,8 @@ export function AuthProvider({ children }) {
       if (reauthError) throw new Error('Current password is incorrect')
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
-      // Distinct from the RESET_PASSWORD action MaintenancePage.jsx logs
-      // (an admin resetting someone ELSE's password) — this is the
-      // account owner changing their own, from either the staff or
-      // patient side of Account Settings.
-      if (profile) {
-        addAuditLog({ userId: profile.user_id, action: 'CHANGE_PASSWORD', details: `${profile.name || profile.email || 'User'} changed their own password (${profile.role})` }).catch((err) =>
-          console.error('Failed to log CHANGE_PASSWORD audit entry:', err.message)
-        )
-      }
     },
-    [session, profile]
+    [session]
   )
 
   // Sends the recovery email; Supabase's own rate-limiting/enumeration

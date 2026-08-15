@@ -8,7 +8,7 @@ import { getInventoryStatus, daysUntil } from '@features/inventory/lib/inventory
 import { listInventory, listInventoryLogsInRange } from '@services/inventoryService'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
-import { listAuditLogs, addAuditLog } from '@services/auditLogsService'
+import { listAuditLogs } from '@services/auditLogsService'
 import { listMedicinesAsInventoryItems, listReceivingRecordsInRange, listSuppliers, getMonthlyMovement } from '@services/medicineService'
 import { exportToPDF, exportToExcel, exportToCSV } from './lib/exportReport'
 import PrintPreviewModal from './PrintPreviewModal'
@@ -373,9 +373,6 @@ export default function ReportsPage() {
     setDateFrom(firstOfMonthStr())
     setDateTo(todayStr())
     setReport(null)
-    addAuditLog({ userId: profile?.user_id ?? null, action: 'RESET_REPORTS', details: `${profile?.name || 'Staff'} reset the Reports page filters` }).catch((err) =>
-      console.error('Failed to log RESET_REPORTS audit entry:', err.message)
-    )
   }
 
   async function handleExport(format, fn) {
