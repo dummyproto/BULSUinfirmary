@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useDelayedUnmount } from '@hooks/useDelayedUnmount'
 
 const EXIT_DURATION = 120
@@ -49,6 +50,35 @@ export default function SearchableSelect({
   const [query, setQuery] = useState('')
   const wrapRef = useRef(null)
   const { shouldRender: showDropdown, closing: dropdownClosing } = useDelayedUnmount(open, EXIT_DURATION)
+
+  // The dropdown used to be a plain absolutely-positioned child of
+  // .patient-search-wrap, which meant any scrollable ancestor with
+  // overflow set (e.g. Modal.jsx's own .modal — see its own comment)
+  // clipped it the moment it grew past that ancestor's edge, cutting the
+  // list short with no way to scroll to the rest ("Bioflu … 0 Tablets
+  // available" cut off mid-list, Cancel bleeding through underneath).
+  // Rendering it in a portal straight to document.body, positioned from
+  // the input's own on-screen rect, sidesteps that entirely — nothing
+  // between it and the page can clip it anymore. Recomputed on open and
+  // on any scroll/resize (capture:true so it also fires for the modal's
+  // own internal scroll, which doesn't bubble) so it tracks the input.
+  const [coords, setCoords] = useState(null)
+  const updateCoords = useCallback(() => {
+    if (!wrapRef.current) return
+    const r = wrapRef.current.getBoundingClientRect()
+    setCoords({ top: r.bottom + 4, left: r.left, width: r.width })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!open) return undefined
+    updateCoords()
+    window.addEventListener('scroll', updateCoords, true)
+    window.addEventListener('resize', updateCoords)
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true)
+      window.removeEventListener('resize', updateCoords)
+    }
+  }, [open, updateCoords])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -111,8 +141,11 @@ export default function SearchableSelect({
           </span>
         )}
       </div>
-      {showDropdown && (
-        <div className={`patient-dropdown${dropdownClosing ? ' closing' : ''}`} style={{ display: 'block' }}>
+      {showDropdown && coords && createPortal(
+        <div
+          className={`patient-dropdown${dropdownClosing ? ' closing' : ''}`}
+          style={{ display: 'block', position: 'fixed', top: coords.top, left: coords.left, width: coords.width }}
+        >
           <div>
             {filtered.length === 0 && (
               <div style={{ padding: '12px 14px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>
@@ -138,7 +171,8 @@ export default function SearchableSelect({
               </div>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

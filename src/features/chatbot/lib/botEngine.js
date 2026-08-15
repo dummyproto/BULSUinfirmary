@@ -3,6 +3,15 @@ import { MENTAL_HEALTH_RESPONSES, MENTAL_HEALTH_FOLLOW_UPS, MENTAL_HEALTH_INTENT
 
 const DISCLAIMER = '<div class="chat-disclaimer">⚠️ <em>This is for informational purposes only and is not a substitute for professional medical advice. Always consult a healthcare provider for proper diagnosis and treatment.</em></div>'
 
+// Shown on any emergency-level rule-based reply so the person always sees
+// the fastest way to actually alert the clinic, not just read guidance
+// text. Mirrors the wording already used on the AI-model path (see
+// EMERGENCY_REPLY / SYSTEM_PROMPT in supabase/functions/chat-completion)
+// and the two real triggers that already exist in the app: typing "sos"
+// in this chatbox (see isSosTrigger in ChatbotPage.jsx) and the SOS
+// button in the Topbar.
+const SOS_CALLOUT = '<div class="chat-emergency-box">🆘 You can type <strong>SOS</strong> here to open the Emergency Alert form directly, or tap the <strong>SOS</strong> button at the top of the screen.</div>'
+
 // Lightweight "pattern recognition" for the rule-based fallback (Phase 2)
 // — reuses SYMPTOM_MAP's own keys as the canonical symptom vocabulary
 // rather than a second, separately-maintained keyword list. Genuinely
@@ -231,6 +240,7 @@ export function runSymptomAnalysis(msg) {
   <div class="chat-warning-box">
     ⚠️ This is a <strong>general assessment only</strong> and NOT a medical diagnosis. Always consult a licensed healthcare professional for accurate diagnosis and treatment.
   </div>
+  ${overallRisk === 'high' ? `<br>${SOS_CALLOUT}` : ''}
   ${DISCLAIMER}`
 }
 
@@ -446,6 +456,7 @@ function buildBotResponse(intent, msg, ctx) {
       <div class="chat-info-box">
         ${KB.emergency.contacts.map((c) => `<div class="info-row"><span>${c.label}</span><span><strong>${c.value}</strong></span></div>`).join('')}
       </div>
+      <br>${SOS_CALLOUT}
       <br>${KB.emergency.disclaimer}`
 
     case 'headache':

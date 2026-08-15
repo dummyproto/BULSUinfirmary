@@ -22,6 +22,8 @@ import {
 } from '@services/emergencyAlertsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
+import { addAuditLog } from '@services/auditLogsService'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 /**
  * Emergency Alerts — Active Alerts / Alert Log / Notify Parent / SMS Log
@@ -85,6 +87,20 @@ export default function EmergencyAlertsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function refreshAlertsAndLog() {
+    const [a, s, users] = await Promise.all([listEmergencyAlerts(), listSmsLog(), listUsers()])
+    setAlerts(a)
+    setSmsLog(s)
+    setPatients(users.filter((u) => u.role === 'patient'))
+  }
+
+  // A new SOS coming in from a patient, another staff member
+  // acknowledging/resolving an alert on a different device, or an SMS
+  // being sent from elsewhere — all need to show up here immediately,
+  // since this page is what staff actively watch to respond to
+  // emergencies.
+  useRealtimeRefresh(['emergency_alerts', 'sms_log', 'users', 'staff_profiles', 'staff_permissions', 'patient_profiles'], refreshAlertsAndLog)
 
   // Prefilling a student (from Active Alerts' "Notify Parent" shortcut —
   // see handleGoToSMS below) should feel like the person just picked
@@ -198,6 +214,9 @@ export default function EmergencyAlertsPage() {
       await deleteEmergencyAlerts(ids)
       setAlerts((list) => list.filter((a) => !ids.includes(a.emergency_alert_id)))
       show(ids.length === 1 ? 'Alert log entry deleted' : `${ids.length} alert log entries deleted`, 'success')
+      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} emergency alert log entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
+        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
+      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }
@@ -215,6 +234,9 @@ export default function EmergencyAlertsPage() {
       await deleteSmsLogs(ids)
       setSmsLog((list) => list.filter((s) => !ids.includes(s.sms_log_id)))
       show(ids.length === 1 ? 'SMS log entry deleted' : `${ids.length} SMS log entries deleted`, 'success')
+      addAuditLog({ userId: currentUserId, action: 'DELETE_LOGS', details: `Deleted ${ids.length} SMS log entr${ids.length === 1 ? 'y' : 'ies'}` }).catch((err) =>
+        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
+      )
     } catch (err) {
       show(`Failed to delete: ${err.message}`, 'error')
     }

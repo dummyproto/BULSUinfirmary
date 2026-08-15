@@ -345,7 +345,7 @@ real, in-person help and to the SOS option over anything else.
 // as every other reply (see SYSTEM_PROMPT's 2-5 sentence rule above) —
 // an emergency reply isn't an excuse to get long-winded.
 export const EMERGENCY_PATTERN =
-  /(chest pain|can'?t breathe|difficulty breathing|severe bleeding|seizure|unconscious|loss of consciousness|suicid|overdose|stroke|slurred speech|facial droop|can'?t stop bleeding|severe allergic reaction|anaphyla)/i
+  /(chest pain|can'?t breathe|can\s?not breathe|cannot breathe|hard(?:ly)? (?:to )?breathe|trouble breathing|struggling to breathe|not breathing|difficulty breathing|severe bleeding|seizure|unconscious|loss of consciousness|suicid|overdose|stroke|slurred speech|facial droop|can'?t stop bleeding|severe allergic reaction|anaphyla)/i
 
 export const EMERGENCY_REPLY =
   "This may be an emergency. Stay calm, don't leave the person alone, and get help immediately — go straight to the school clinic or the nearest hospital. You can type \"SOS\" here to open the Emergency Alert form directly, or tap the SOS button at the top of the screen."

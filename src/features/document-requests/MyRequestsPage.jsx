@@ -15,6 +15,7 @@ import logo from '@/assets/logo.png'
 import NewRequestModal from './NewRequestModal'
 import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon, CheckCircleIcon, SettingsIcon, ClipboardIcon, XCircleIcon, EyeIcon, ChevronDownIcon, ChevronUpIcon, PhoneIcon, MessageSquareIcon, EditIcon, PrinterIcon, ImageIcon, DownloadIcon } from '@components/ui/icons'
 import { useDefaultShowMore } from '@hooks/useDefaultShowMore'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined', 'Cancelled']
 
@@ -120,6 +121,16 @@ export default function MyRequestsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myPatientId])
+
+  async function refreshMyRequests() {
+    if (!myPatientId) return
+    setRequests(await listDocumentRequests({ patientId: myPatientId }))
+  }
+
+  // Staff approving/declining/processing a request should show up here —
+  // and update the status/notes/red print reminder — the instant it
+  // happens, not only after the patient manually refreshes.
+  useRealtimeRefresh('document_requests', refreshMyRequests, !!myPatientId)
 
   const filtered = tab === 'All' ? requests : requests.filter((r) => r.status === tab)
 

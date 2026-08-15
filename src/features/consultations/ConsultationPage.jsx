@@ -17,6 +17,7 @@ import { listInventory, deductForConsultation, listLogsForConsultation } from '@
 import { listMedicinesAsInventoryItems, deductMedicinesForConsultation } from '@services/medicineService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 import { PlusIcon, FolderIcon, PeopleIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
 
@@ -104,6 +105,36 @@ const [unregSearch, setUnregSearch] = useState('')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function refreshConsultationData() {
+    const [cons, inv, users, medicines, diagnoses] = await Promise.all([
+      listConsultations(),
+      listInventory(),
+      listUsers(),
+      listMedicinesAsInventoryItems(),
+      listDiagnoses(),
+    ])
+    setConsultations(cons)
+    setInventory([...inv.filter((i) => i.category !== 'Medicine'), ...medicines])
+    setPatients(users.filter((u) => u.role === 'patient'))
+    setStaff(users.filter((u) => u.role === 'staff'))
+    const { list, categories } = groupDiagnoses(diagnoses)
+    setDiagnosisList(list)
+    setDiagCategories(categories)
+  }
+
+  // A consultation logged by another staff member, a new diagnosis added
+  // to the shared reference list, or stock levels changing from another
+  // deduction/receiving elsewhere — all need to be live here. Safe to
+  // refresh mid-form: the New Consultation tab's own in-progress
+  // selections (medRows) are separate local state keyed by their own
+  // row id, not derived from this `inventory` array by index, so a
+  // background refetch only updates displayed stock counts/options —
+  // it never resets what staff have already picked.
+  useRealtimeRefresh(
+    ['consultations', 'inventory', 'medicines', 'medicine_batches', 'users', 'staff_profiles', 'staff_permissions', 'patient_profiles', 'diagnoses'],
+    refreshConsultationData,
+  )
 
   // Rebuilds the tab's label with a live count. Previously did this via a
   // template literal (`${t.label} (${count})`), which silently calls

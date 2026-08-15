@@ -12,6 +12,7 @@ import { listUsers } from '@services/usersService'
 import { listEmergencyAlerts } from '@services/emergencyAlertsService'
 import { listInventoryNotifications } from '@services/inventoryNotificationsService'
 import HealthDetailModal from '@features/consultations/HealthDetailModal'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 import {
   DocumentIcon,
   InventoryIcon,
@@ -68,6 +69,30 @@ export default function AdminDashboardPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function refreshDashboard() {
+    const [d, i, c, u, ea, invn] = await Promise.all([
+      listDocumentRequests(),
+      listInventory(),
+      listConsultations(),
+      listUsers(),
+      listEmergencyAlerts(),
+      listInventoryNotifications({ unreadOnly: true }),
+    ])
+    setDocs(d)
+    setInventory(i)
+    setConsultations(c)
+    setUsers(u)
+    setEmergencyAlerts(ea)
+    setInvNotifications(invn)
+  }
+
+  // Every widget on this dashboard is a live count/preview of another
+  // page's data, so it should update the moment ANY staff/admin/patient
+  // changes any of it — a new document request coming in, a consultation
+  // being logged, low stock crossing the threshold, a new emergency alert
+  // — none of that should require reloading this page to see.
+  useRealtimeRefresh(['document_requests', 'inventory', 'consultations', 'users', 'staff_profiles', 'staff_permissions', 'patient_profiles', 'emergency_alerts', 'inventory_notifications'], refreshDashboard)
 
   const pendingDocs = docs.filter((d) => d.status === 'Pending').length
   const processingDocs = docs.filter((d) => d.status === 'Processing').length

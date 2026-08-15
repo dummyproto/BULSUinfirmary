@@ -8,12 +8,13 @@ import { getInventoryStatus, daysUntil } from '@features/inventory/lib/inventory
 import { listInventory, listInventoryLogsInRange } from '@services/inventoryService'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
-import { listAuditLogs } from '@services/auditLogsService'
+import { listAuditLogs, addAuditLog } from '@services/auditLogsService'
 import { listMedicinesAsInventoryItems, listReceivingRecordsInRange, listSuppliers, getMonthlyMovement } from '@services/medicineService'
 import { exportToPDF, exportToExcel, exportToCSV } from './lib/exportReport'
 import PrintPreviewModal from './PrintPreviewModal'
 import ReportsAccessRestricted from './ReportsAccessRestricted'
 import { BarChartIcon, RefreshCwIcon, PrinterIcon, FileTextIcon, FileSpreadsheetIcon, DownloadIcon } from '@components/ui/icons'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 /**
  * Clinic report types, filtered per-type by the signed-in staff account's
@@ -175,6 +176,17 @@ export default function ReportsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function refreshSource() {
+    const [docs, consultations, auditLogs] = await Promise.all([listDocumentRequests(), listConsultations(), listAuditLogs()])
+    setSource({ docs, consultations, auditLogs })
+  }
+
+  // Keeps the underlying data any clinic report is generated FROM
+  // current, so clicking Generate always builds off today's actual
+  // requests/consultations/audit logs rather than whatever happened to
+  // be loaded when this page was first opened.
+  useRealtimeRefresh(['document_requests', 'consultations', 'audit_logs'], refreshSource)
 
  
 
@@ -361,6 +373,9 @@ export default function ReportsPage() {
     setDateFrom(firstOfMonthStr())
     setDateTo(todayStr())
     setReport(null)
+    addAuditLog({ userId: profile?.user_id ?? null, action: 'RESET_REPORTS', details: `${profile?.name || 'Staff'} reset the Reports page filters` }).catch((err) =>
+      console.error('Failed to log RESET_REPORTS audit entry:', err.message)
+    )
   }
 
   async function handleExport(format, fn) {

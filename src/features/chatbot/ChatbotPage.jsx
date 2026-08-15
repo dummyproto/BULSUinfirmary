@@ -329,6 +329,14 @@ export default function ChatbotPage() {
         await new Promise((resolve) => setTimeout(resolve, 500 + Math.min(msg.length * 8, 800)))
         const currentMessages = messages.filter((m) => m.type === 'user').map((m) => ({ text: m.text, ts: m.ts }))
         reply = getBotReply(msg, { firstName, docRequests: myDocRequests, awaitingSymptoms, setAwaitingSymptoms, pastMessages, currentMessages })
+        // The rule-based engine has no separate emergency flag of its own
+        // (unlike the AI path's `ai.emergency`) — its two emergency-level
+        // replies (the 'emergency' intent, and a HIGH-risk symptom report)
+        // both include the SOS callout added in botEngine.js, so detect
+        // those specifically off that shared marker text rather than
+        // leaving `emergency` stuck at its `false` default for this
+        // entire fallback path.
+        emergency = reply.includes('Emergency Alert form directly')
       }
 
       setMessages((list) => [...list, { type: 'bot', text: reply, ts: new Date().toISOString(), emergency }])

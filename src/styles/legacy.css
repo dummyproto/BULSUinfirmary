@@ -1765,9 +1765,15 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .item-photo-preview:hover{border-color:var(--primary);color:var(--primary)}
 .item-photo-preview img{width:100%;height:100%;object-fit:cover}
 .inv-action-group-icons .inv-action-btn{
-  width:52px;min-height:44px;padding:4px 2px;flex-shrink:0;
+  /* min-width (not a fixed width) plus white-space:normal — the fixed
+     52px + nowrap this used to be clipped/overflowed labels wider than
+     that ("Add Stock", "Release") since there was nowhere for the text
+     to go. Auto width now lets the button grow to fit its label instead
+     of cutting it off, and white-space:normal lets a still-tight label
+     wrap onto a second line rather than spilling outside the button. */
+  width:auto;min-width:52px;min-height:44px;padding:4px 6px;flex-shrink:0;
   display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  white-space:nowrap;
+  white-space:normal;text-align:center;
 }
 .inv-action-group-icons .inv-action-btn span{font-size:9px;font-weight:700;letter-spacing:.02em;line-height:1}
 /* Edit button styling — neutral gray variant */
@@ -5981,7 +5987,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 999;
+  /* Was 999 — fine when this only ever sat inside page content, but
+     SearchableSelect.jsx now portals it to document.body so it can
+     escape a scrollable modal's clipping (see that file's own comment),
+     which means it needs to out-rank .modal-overlay's z-index:9000 too,
+     or it would render behind the modal it's meant to float above. */
+  z-index: 9500;
   background: var(--surface);
   border: 1.5px solid var(--primary);
   border-radius: var(--radius);

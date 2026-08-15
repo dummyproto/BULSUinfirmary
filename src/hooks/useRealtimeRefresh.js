@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { supabase } from '@services/supabaseClient'
 
 // Migration 037 added every app table to Supabase's `supabase_realtime`
@@ -27,8 +27,12 @@ export function useRealtimeRefresh(tables, onChange, enabled = true) {
   // Stashed in a ref so a caller passing a fresh inline function every
   // render doesn't tear down and resubscribe the channel on every
   // render — only the table list and `enabled` should ever do that.
+  // Updated via useLayoutEffect (not assigned directly during render) —
+  // mutating a ref while rendering is a React rules-of-hooks violation.
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange
+  })
 
   const tableList = Array.isArray(tables) ? tables : [tables]
   // Table lists are static per call site in practice, but arrays are a

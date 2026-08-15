@@ -9,6 +9,7 @@ import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
 import { listEmergencyAlerts, getAlertById } from '@services/emergencyAlertsService'
 import { supabase } from '@services/supabaseClient'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 import { DocumentIcon, ClockIcon, CheckCircleIcon, ConsultationIcon, ChatbotIcon, AlertOctagonIcon, MapPinIcon, UserIcon, PeopleIcon } from '@components/ui/icons'
 
 export default function PatientDashboardPage() {
@@ -45,6 +46,22 @@ export default function PatientDashboardPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId])
+
+  async function refreshRequestsAndConsultations() {
+    if (!myId) return
+    const [d, c] = await Promise.all([listDocumentRequests({ patientId: myId }), listConsultations({ patientId: myId })])
+    setDocs(d)
+    setConsultations(c)
+  }
+
+  // Staff approving/rejecting a document request, or logging a new
+  // consultation, should show up here the moment it happens — this is
+  // the patient's own "what's going on with me" summary, so it should
+  // never look stale just because they haven't reloaded the page.
+  // Emergency alerts have their own dedicated realtime handling just
+  // below (patched in place, not a full refetch), so they're
+  // deliberately not included in this table list.
+  useRealtimeRefresh(['document_requests', 'consultations'], refreshRequestsAndConsultations, !!myId)
 
   // Keeps "Emergency Alert Status" live: a NEW alert involving this patient
   // (as subject or reporter) appears the moment it's created, and an

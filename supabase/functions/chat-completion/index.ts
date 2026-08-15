@@ -252,7 +252,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sorry, I didn't get a usable answer that time. Could you rephrase your question and try again?" }, 502)
     }
 
-    return jsonResponse({ reply, emergency: false })
+    // The model was instructed (SYSTEM_PROMPT) to open emergency replies
+    // with this exact phrase — check for it instead of hardcoding false,
+    // so an emergency the instant EMERGENCY_PATTERN check above didn't
+    // catch (e.g. an unlisted phrasing) still gets flagged for the red
+    // "emergency" bubble styling and, on the client, the SOS mention.
+    const emergency = /this may be an emergency/i.test(reply)
+    return jsonResponse({ reply, emergency })
   } catch (err) {
     console.error('[CHAT_COMPLETION_UNEXPECTED_ERROR]', err)
     return jsonResponse({ error: 'Sorry, something went wrong while contacting the assistant. Please try again in a moment.' }, 500)

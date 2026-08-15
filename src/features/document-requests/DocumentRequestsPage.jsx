@@ -10,10 +10,12 @@ import { formatDate } from '@lib/format'
 import { useAuth } from '@context/AuthContext'
 import { listDocumentRequests, updateDocumentRequestStatus, deleteDocumentRequests } from '@services/documentRequestsService'
 import { notify } from '@services/notificationsService'
+import { addAuditLog } from '@services/auditLogsService'
 import DocDetailModal from './DocDetailModal'
 import DocActionModal from './DocActionModal'
 import { EyeIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
+import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Declined']
 
@@ -52,6 +54,15 @@ export default function DocumentRequestsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function refreshRequests() {
+    setRequests(await listDocumentRequests())
+  }
+
+  // A patient submitting a new request, or another staff member on a
+  // different device approving/declining one, should appear here live —
+  // this is a shared work queue, not a personal list.
+  useRealtimeRefresh('document_requests', refreshRequests)
 
   // patient_id is SET NULL when the requesting account is deleted
   // (migration 019) — those rows still exist for audit/history purposes
@@ -111,6 +122,9 @@ export default function DocumentRequestsPage() {
       await deleteDocumentRequests(selected)
       setRequests((list) => list.filter((r) => !selected.includes(r.doc_request_id)))
       show(selected.length === 1 ? 'Document request deleted' : `${selected.length} document requests deleted`, 'success')
+      addAuditLog({ userId: profile?.user_id ?? null, action: 'DELETE_LOGS', details: `Deleted ${selected.length} document request${selected.length === 1 ? '' : 's'}` }).catch((err) =>
+        console.error('Failed to log DELETE_LOGS audit entry:', err.message)
+      )
       setSelected([])
       setSelectionMode(false)
     } catch (err) {
@@ -186,16 +200,6 @@ export default function DocumentRequestsPage() {
             </span>
           </div>
           <SearchInput value={search} onChange={setSearch} placeholder="Search by patient name…" />
-          {canDeleteRequests && selectionMode && selected.length > 0 && (
-            <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected}>
-              <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
-            </button>
-          )}
-          {canDeleteRequests && (
-            <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode}>
-              {selectionMode ? 'Cancel' : (<><TrashIcon width={13} height={13} /> Delete</>)}
-            </button>
-          )}
           <button
             type="button"
             className="btn btn-sm btn-outline inv-view-more-btn"
@@ -206,6 +210,16 @@ export default function DocumentRequestsPage() {
             {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
             <span>{showMore ? 'View Less' : 'View More'}</span>
           </button>
+          {canDeleteRequests && selectionMode && selected.length > 0 && (
+            <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected}>
+              <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
+            </button>
+          )}
+          {canDeleteRequests && (
+            <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode}>
+              {selectionMode ? 'Cancel' : (<><TrashIcon width={13} height={13} /> Delete</>)}
+            </button>
+          )}
         </div>
 
         {canDeleteRequests && selectionMode && filtered.length > 0 && (
