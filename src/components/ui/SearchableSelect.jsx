@@ -45,6 +45,15 @@ export default function SearchableSelect({
   getIconClassName, // optional (opt) => extra class name, same purpose as getIconStyle but via a CSS class — prefer this over getIconStyle when the color needs to respect [data-theme="dark"], since an inline style always overrides a class regardless of theme
   emptyLabel = 'No results found',
   disabled = false,
+  // Extra class(es) applied to the portaled dropdown itself, on top of
+  // .patient-dropdown. Needed because the dropdown now renders via
+  // createPortal(document.body) (see the comment on `coords` below) —
+  // a caller like RegisterModal.jsx that used to theme it with a plain
+  // descendant selector (`.reg-box .patient-dropdown`) stopped working
+  // the moment the portal moved the dropdown out from under .reg-box in
+  // the actual DOM tree. A caller-supplied class here still reaches it
+  // regardless of where in the DOM it ends up rendering.
+  dropdownClassName = '',
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -143,7 +152,7 @@ export default function SearchableSelect({
       </div>
       {showDropdown && coords && createPortal(
         <div
-          className={`patient-dropdown${dropdownClosing ? ' closing' : ''}`}
+          className={`patient-dropdown${dropdownClosing ? ' closing' : ''}${dropdownClassName ? ` ${dropdownClassName}` : ''}`}
           style={{ display: 'block', position: 'fixed', top: coords.top, left: coords.left, width: coords.width }}
         >
           <div>

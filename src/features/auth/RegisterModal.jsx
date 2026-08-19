@@ -488,7 +488,22 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                       value={formatUserNumber(form.userId)}
                       onChange={(e) => {
                         setDuplicateBlocked(false)
-                        setField('userId')(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))
+                        const raw = e.target.value.toUpperCase()
+                        // Mode is read fresh from the first character typed,
+                        // not stored anywhere — a digit start means a
+                        // student number attempt (digits only, matching
+                        // stepNext()'s own 10-digit check below), a letter
+                        // start means a personnel ID attempt (letters +
+                        // digits, matching the CMP-123456 pattern) — same
+                        // two formats stepNext() already validates against.
+                        // Recomputing from e.target.value on every keystroke
+                        // (instead of caching which mode was picked) means
+                        // clearing the field back to empty and starting over
+                        // with the other kind of ID just works, with no
+                        // extra state to keep in sync.
+                        const isDigitStart = /^[0-9]/.test(raw)
+                        const cleaned = isDigitStart ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
+                        setField('userId')(cleaned.slice(0, 10))
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
@@ -550,6 +565,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     placeholder="Type to search your course…"
                     emptyLabel="No matching course"
                     disabled={isPersonnel}
+                    dropdownClassName="reg-dropdown-dark"
                   />
                 </div>
                 <div className="reg-field">

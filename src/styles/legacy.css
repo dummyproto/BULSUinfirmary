@@ -3610,11 +3610,25 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    (not var(--text)/var(--text-3), which are theme-conditional and would
    be unreadable if the visitor's actual theme is light while this stays
    forced dark).
+
+   Targets .reg-dropdown-dark (a class SearchableSelect.jsx applies
+   directly to the dropdown itself, via its dropdownClassName prop) —
+   NOT a `.reg-box .patient-dropdown` descendant selector like this used
+   to be. The dropdown now renders through a React portal straight to
+   document.body (see SearchableSelect.jsx's own comment on `coords`),
+   so it's no longer a DOM descendant of .reg-box at all; a descendant
+   selector silently stopped matching anything the moment that shipped,
+   which is why the course list looked like it "didn't appear" — it was
+   rendering, just transparent/uncolored and also stuck behind
+   .reg-overlay's backdrop (see .patient-dropdown's z-index comment).
+   The dropdown's OWN children (.patient-item-name etc.) are still
+   nested inside it either way, since the portal moves the whole
+   dropdown+contents together — only its relationship to .reg-box broke.
 */
-.reg-box .patient-dropdown{background:rgba(22,18,14,.98)!important;border-color:var(--primary)!important;max-height:380px!important}
-.reg-box .patient-item-name{color:#F1F5F9!important}
-.reg-box .patient-item-sub{color:#A0988E!important}
-.reg-box .patient-dropdown-item:hover{background:var(--primary-light)!important}
+.reg-dropdown-dark{background:rgba(22,18,14,.98)!important;border-color:var(--primary)!important;max-height:380px!important}
+.reg-dropdown-dark .patient-item-name{color:#F1F5F9!important}
+.reg-dropdown-dark .patient-item-sub{color:#A0988E!important}
+.reg-dropdown-dark .patient-dropdown-item:hover{background:var(--primary-light)!important}
 /* The hover rule above lightens the row's background to a pale mint
    (var(--primary-light)) — but .patient-item-name/-sub just above force
    near-white text UNCONDITIONALLY, matching the item's normal dark-
@@ -3622,8 +3636,8 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
    a pale mint background — nearly invisible, exactly the bug reported.
    Needs its own explicit dark-text override for the hovered state
    specifically, since the background actually flips light there. */
-.reg-box .patient-dropdown-item:hover .patient-item-name{color:#1A1310!important}
-.reg-box .patient-dropdown-item:hover .patient-item-sub{color:#2E2420!important}
+.reg-dropdown-dark .patient-dropdown-item:hover .patient-item-name{color:#1A1310!important}
+.reg-dropdown-dark .patient-dropdown-item:hover .patient-item-sub{color:#2E2420!important}
 .reg-box .search-input{background:rgba(255,255,255,.06)!important;color:#F1F5F9!important;border-color:rgba(255,255,255,.1)!important}
 
 /* Password wrap */
@@ -5991,8 +6005,15 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
      SearchableSelect.jsx now portals it to document.body so it can
      escape a scrollable modal's clipping (see that file's own comment),
      which means it needs to out-rank .modal-overlay's z-index:9000 too,
-     or it would render behind the modal it's meant to float above. */
-  z-index: 9500;
+     or it would render behind the modal it's meant to float above.
+     Bumped again to 9850: .reg-overlay (the registration modal) is
+     9800, higher than the 9500 this originally became — a course
+     dropdown opened during registration was rendering, just invisibly,
+     UNDER that overlay's dark backdrop, which looked identical to the
+     list simply "not appearing" at all. 9850 clears every overlay in
+     the app (.reg-overlay's 9800 is the highest short of the emergency
+     popup / toast layer, which this never needs to sit above). */
+  z-index: 9850;
   background: var(--surface);
   border: 1.5px solid var(--primary);
   border-radius: var(--radius);
