@@ -135,8 +135,15 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [entryMode, setEntryMode] = useState(() => loadDraft()?.entryMode || 'manual') // 'manual' | 'scan' — Step 1 only
-  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [duplicateBlocked, setDuplicateBlocked] = useState(false)
+  // Step 3's "Create Account" no longer submits immediately — it first
+  // flips this on to show a read-only summary of everything typed across
+  // all 3 steps, so the person can catch a typo (wrong email, mistyped
+  // User Number, etc.) before the account actually gets created. Cancel
+  // just flips it back off (nothing is discarded); Confirm calls the
+  // actual submission.
+  const [reviewing, setReviewing] = useState(false)
 
   // Keep the saved draft in sync with whatever's currently typed, so if
   // this component unmounts (X button, backdrop, navigating away, a
@@ -164,12 +171,13 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   // actually succeeded (see handleSubmit) — at that point there's
   // nothing left worth preserving, and the next time someone opens
   // Register they should get a blank form, not the just-submitted data.
-  function resetForm() {
+    function resetForm() {
     setStep(1)
     setForm(EMPTY)
     setErr('')
     setEntryMode('manual')
     setDuplicateBlocked(false)
+    setReviewing(false)
     clearDraft()
   }
 
@@ -265,7 +273,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     setStep(3)
   }
 
-  async function handleSubmit() {
+    // Runs Step 3's field validation (same checks as before) and, if
+  // everything's valid, shows the review summary instead of submitting
+  // right away. Nothing is sent to the server here.
+  function handleReviewClick() {
     setErr('')
     const email = form.email.trim().toLowerCase()
     if (!email) return setErr('Email address is required.')
@@ -277,6 +288,16 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     const pwCheck = validatePassword(form.password)
     if (!pwCheck.ok) return setErr(pwCheck.msg)
     if (form.password !== form.confirm) return setErr('Passwords do not match.')
+    setReviewing(true)
+  }
+
+  // Actually creates the account — only ever called from the review
+  // screen's "Confirm" button, once the person has looked over their own
+  // summary and chosen to proceed.
+  async function doRegister() {
+    setErr('')
+    const email = form.email.trim().toLowerCase()
+    const username = form.username.trim().toLowerCase()
 
     setSubmitting(true)
     try {
@@ -333,11 +354,16 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
           // sending someone to sign in with an account that isn't theirs.
           setErr('That username is already taken. Please choose another.')
         } else {
-          setErr('An account with this email already exists. Please sign in.')
+                    setErr('An account with this email already exists. Please sign in.')
         }
       } else {
         setErr(error.message)
       }
+      // Back to the editable fields — the review screen has no inputs to
+      // fix the problem the server just reported (duplicate email/username,
+      // etc.), so staying on it would leave the error message with nothing
+      // the person can act on.
+      setReviewing(false)
     } finally {
       setSubmitting(false)
     }
@@ -592,7 +618,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
               </div>
             )}
 
-            {step === 3 && (
+                        {step === 3 && !reviewing && (
               <div className="reg-step-content">
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
@@ -658,15 +684,52 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     value={form.confirm}
                     onChange={(e) => setField('confirm')(e.target.value)}
                   />
-                  {form.confirm && form.confirm !== form.password && (
+                                    {form.confirm && form.confirm !== form.password && (
                     <span className="reg-hint-text" style={{ color: '#EF4444' }}>Passwords do not match.</span>
                   )}
                 </div>
               </div>
             )}
 
-            <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 3 ? ' reg-nav-final' : ''}`}>
-              {step > 1 && !duplicateBlocked && (
+            {step === 3 && reviewing && (
+              <div className="reg-step-content">
+                <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
+                  Please review your details below. Click "Confirm & Create Account" if everything is correct, or "Cancel" to go back and fix anything.
+                </div>
+                <div className="reg-review-list" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {[
+                    ['First Name', form.firstName],
+                    ['Last Name', form.lastName],
+                    ['User Number', formatUserNumber(form.userId)],
+                    ['Phone Number', form.phone || '—'],
+                    ...(isPersonnel ? [] : [
+                      ['Course / Program', form.course || '—'],
+                      ['Year Level', form.year || '—'],
+                    ]),
+                    ['Email Address', form.email.trim()],
+                    ['Username', form.username.trim()],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '9px 0',
+                        borderBottom: '1px solid var(--border)',
+                        fontSize: 13,
+                      }}
+                    >
+                    <span style={{ color: 'rgba(255,255,255,0.65)' }}>{label}</span>
+                      <span style={{ fontWeight: 600, textAlign: 'right', wordBreak: 'break-word', color: '#FFFFFF' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+                        <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 3 ? ' reg-nav-final' : ''}`}>
+              {step > 1 && !duplicateBlocked && !reviewing && (
                 <button type="button" className="btn btn-outline" onClick={stepBack}>
                   ← Back
                 </button>
@@ -691,14 +754,28 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   : 'Next →'}
                 </button>
               )}
-              {step === 3 && (
-                <button type="button" className="reg-submit-btn" onClick={handleSubmit} disabled={submitting}>
+              {step === 3 && !reviewing && (
+                <button type="button" className="reg-submit-btn" onClick={handleReviewClick} disabled={submitting}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                     <circle cx="12" cy="7" r="4" />
                   </svg>
-                  {submitting ? 'Creating…' : 'Create Account'}
+                  Create Account
                 </button>
+              )}
+              {step === 3 && reviewing && (
+                <>
+                  <button type="button" className="btn btn-outline" onClick={() => setReviewing(false)} disabled={submitting}>
+                    Cancel
+                  </button>
+                  <button type="button" className="reg-submit-btn" onClick={doRegister} disabled={submitting}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    {submitting ? 'Creating…' : 'Confirm & Create Account'}
+                  </button>
+                </>
               )}
             </div>
           </>

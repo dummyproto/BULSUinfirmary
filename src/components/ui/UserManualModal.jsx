@@ -352,37 +352,84 @@ const SECTIONS = [
     roles: ['patient'],
     content: (
       <>
-        <p>MediBot answers questions about clinic hours, documents, services, using this app, and general health tips 24/7.</p>
+        <p>
+          MediBot is the clinic's virtual assistant, available 24/7 — including outside clinic hours. It replies in
+          whichever language you write in (English, Filipino/Tagalog, Bisaya, or a mix), and keeps every answer short and
+          in plain language.
+        </p>
+        <h4>Getting started</h4>
         <ul>
-          <li>Tap a topic tile, or just type your question naturally — MediBot replies in whichever language you write in.</li>
+          <li>
+            Tap one of the topic tiles — <strong>Clinic Hours</strong>, <strong>Location</strong>, <strong>Services</strong>,{' '}
+            <strong>Documents</strong>, <strong>Symptom Check</strong>, <strong>Health Tips</strong>,{' '}
+            <strong>Emergency</strong>, and <strong>Pre-Clinic</strong> (what to bring/prepare before a visit) — or just
+            type your question naturally instead.
+          </li>
           <li>
             <strong>Voice Mode</strong> (the switch at the top of the chat) has MediBot read its replies out loud
-            automatically as they arrive. Tap the speaker icon on any individual message to replay it, or to stop it early.
+            automatically as they arrive. Tap the speaker icon on any individual message to replay it, or to stop it
+            early.
           </li>
           <li>
-            On mobile, tap <strong>Info</strong> in the chat header to open Topic Categories, Clinic Contacts, and the Medical
-            Disclaimer in a slide-out panel — it closes automatically once you pick a topic.
+            On mobile, tap <strong>Info</strong> in the chat header to open Topic Categories, Clinic Contacts, and the
+            Medical Disclaimer in a slide-out panel — it closes automatically once you pick a topic.
           </li>
           <li>
-            Typing <strong>"sos"</strong> anywhere opens the Emergency Alert form immediately.
+            <strong>Logs</strong> shows your past conversations, and <strong>Clear</strong> lets you start a fresh one.
           </li>
-          <li>
-            MediBot can also tell you the status of your own document requests directly, and answer questions about how to
-            use this app — but it won't discuss staff-only screens, or anyone's personal staff information.
-          </li>
-          <li>
-            Describing symptoms (e.g. "I have fever, headache, and body pain") gets you a <strong>Symptom Analysis</strong> —
-            commonly-associated conditions and a general risk level (Low/Medium/High) with a suggested next step. This is a
-            summary of what you typed, <strong>not a diagnosis</strong> — only a healthcare provider can properly evaluate
-            symptoms.
-          </li>
-          <li>
-            If you write about feeling sad, anxious, lonely, or overwhelmed, MediBot responds supportively rather than just
-            factually — and if a message suggests you may be thinking about harming yourself, it immediately shows crisis
-            resources (the clinic, campus security, a national crisis hotline, and emergency services) alongside its reply.
-          </li>
-          <li>MediBot provides general information only — it is not a medical diagnosis. For emergencies, use SOS or call 911.</li>
         </ul>
+        <h4>Everything MediBot can help with</h4>
+        <ul>
+          <li>Clinic hours, exact location (with directions), staff availability, and the clinic's contact number/Facebook page.</li>
+          <li>
+            What documents you can request (medical certificate, excuse letter, consultation record, incident report), what
+            each one requires, and the step-by-step process to get one.
+          </li>
+          <li>
+            The status of your <strong>own</strong> document requests, checked live from your account — MediBot can tell
+            you directly, no need to switch to My Requests to check.
+          </li>
+          <li>Available clinic services — consultations, check-ups, first aid, minor-ailment medication, referrals, and health education.</li>
+          <li>
+            <strong>Symptom Check</strong> — describe what you're feeling (e.g. "I have fever, headache, and body pain")
+            for a Symptom Analysis: commonly-associated conditions and a general risk level (Low/Medium/High), plus a
+            suggested next step. This is a summary of what you typed, <strong>not a diagnosis</strong> — only a
+            healthcare provider can properly evaluate symptoms.
+          </li>
+          <li>Basic first aid steps for minor cuts, scrapes, burns, and sprains.</li>
+          <li>General wellness and preventive health tips, and a pre-visit checklist of what to prepare before coming in.</li>
+          <li>Guidance on what to do in an urgent or emergency situation.</li>
+          <li>
+            How to use this app itself — registering, logging in, resetting a password, submitting/tracking document
+            requests, sending an emergency alert, viewing/editing your profile, notifications, and similar questions.
+          </li>
+        </ul>
+        <h4>Emergencies &amp; sensitive topics</h4>
+        <ul>
+          <li>
+            Typing <strong>"sos"</strong> anywhere in the chat opens the Emergency Alert form immediately. If you trigger
+            SOS after describing a symptom or how you're feeling, that message carries over into the alert description
+            automatically — you can still edit it before sending. You can also just tap the red <strong>SOS</strong>{' '}
+            button in the top bar at any time instead.
+          </li>
+          <li>
+            If a symptom you describe sounds urgent, MediBot tells you right away to go to the clinic or seek emergency
+            care, instead of continuing with general self-care tips.
+          </li>
+          <li>
+            If you write about feeling sad, anxious, lonely, or overwhelmed, MediBot responds supportively rather than
+            just factually — and if a message suggests you may be thinking about harming yourself, it immediately shows
+            crisis resources (the clinic, campus security, a national crisis hotline, and emergency services) alongside
+            its reply.
+          </li>
+        </ul>
+        <h4>What MediBot won't do</h4>
+        <p>
+          It never gives a confirmed diagnosis, prescribes medicine or dosages, or replaces an actual doctor, nurse, or
+          psychologist — it always points you to the clinic for a real assessment. It also won't discuss staff-only
+          screens, or anyone's personal staff information, regardless of who's asking. MediBot provides general
+          information only — for emergencies, use SOS or call 911.
+        </p>
       </>
     ),
   },

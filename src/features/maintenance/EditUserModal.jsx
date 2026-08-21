@@ -32,12 +32,20 @@ function buildForm(user) {
     givenName: user.givenName || '',
     email: user.email || '',
     phone: user.phone || '',
-    // Sanitized to plain digits even on load — existing data entered
-    // before this restriction existed could contain letters/dashes;
-    // this keeps the field's internal state consistent with
-    // registration's own plain-digits convention regardless of what's
-    // actually stored for a given legacy account.
-    studentNumber: String(user.student_number || '').replace(/\D/g, '').slice(0, 10),
+    // Sanitized on load — kept as either plain digits (student) or
+    // letters+digits (personnel-type patient), same dual-format rule
+    // registration and Add User use, rather than always stripping to
+    // digits-only. That older digits-only sanitization silently deleted
+    // the letter prefix off any personnel-type patient's real ID the
+    // moment their Edit User modal was opened, even without saving —
+    // any dashes from formatUserNumber's own display formatting are
+    // still stripped either way, since the raw form state stores the
+    // unformatted ID.
+    studentNumber: (() => {
+      const raw = String(user.student_number || '').toUpperCase()
+      const isDigitStart = /^[0-9]/.test(raw)
+      return (isDigitStart ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')).slice(0, 10)
+    })(),
     course: user.course || '',
     yearLevel: user.year_level || '',
     department: user.department || '',
@@ -183,9 +191,16 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }) {
               <input
                 className="form-input"
                 value={formatUserNumber(form.studentNumber)}
-                inputMode="numeric"
-                placeholder="2030-000-000"
-                onChange={(e) => setField('studentNumber')(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="2030-000-000 or CMP-123456"
+                onChange={(e) => {
+                  const raw = e.target.value.toUpperCase()
+                  // Same dual-format rule as Add User / RegisterModal.jsx
+                  // — see this file's own initial-state comment above for
+                  // why this can't stay digits-only.
+                  const isDigitStart = /^[0-9]/.test(raw)
+                  const cleaned = isDigitStart ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
+                  setField('studentNumber')(cleaned.slice(0, 10))
+                }}
               />
               <span style={{ fontSize: 11, color: form.studentNumber.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.studentNumber.length}/10</span>
             </div>

@@ -179,9 +179,26 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
               <input
                 className="form-input"
                 value={formatUserNumber(form.studentNumber)}
-                inputMode="numeric"
-                placeholder="2023-000-000"
-                onChange={(e) => setField('studentNumber')(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="2023-000-000 or CMP-123456"
+                onChange={(e) => {
+                  const raw = e.target.value.toUpperCase()
+                  // Same dual-format rule RegisterModal.jsx's own User
+                  // Number field uses — a patient here can be either an
+                  // actual student (numeric ID, e.g. 2023-000-000) or
+                  // campus personnel registered as a patient (letters +
+                  // digits, e.g. CMP-123456), same as at registration.
+                  // This field used to force digits-only unconditionally
+                  // (inputMode="numeric" + a raw .replace(/\D/g, '')),
+                  // which meant Maintenance couldn't create or edit a
+                  // personnel-type patient account with its real ID at
+                  // all — any letters typed were silently stripped.
+                  // Read fresh from the first character on every
+                  // keystroke rather than a stored mode, so clearing the
+                  // field and switching to the other format just works.
+                  const isDigitStart = /^[0-9]/.test(raw)
+                  const cleaned = isDigitStart ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
+                  setField('studentNumber')(cleaned.slice(0, 10))
+                }}
               />
               <span style={{ fontSize: 11, color: form.studentNumber.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.studentNumber.length}/10</span>
             </div>
