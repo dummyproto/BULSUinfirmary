@@ -447,7 +447,7 @@ export default function LoginPage() {
 
       {forgotOpen && (
         <Suspense fallback={null}>
-          <ForgotPasswordModal isOpen={forgotOpen} onClose={() => setForgotOpen(false)} />
+          <ForgotPasswordModal isOpen={forgotOpen} onClose={() => setForgotOpen(false)} initialEmail={email} />
         </Suspense>
       )}
 

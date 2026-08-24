@@ -1,42 +1,3 @@
-import { supabase } from './supabaseClient'
-
-/**
- * Wrapper around supabase.functions.invoke() that surfaces the REAL
- * failure reason instead of a generic one.
- *
- * ── Why this exists ──
- * Every Edge Function in supabase/functions/ ends with the same
- * catch-all shape:
- *
- *   catch (err) { return jsonResponse({ error: err.message }, 400) }
- *
- * So EVERY server-side failure — a missing Authorization header, a
- * non-admin caller, a missing/invalid body field, an unset secret, an
- * expired session, or the actual Supabase Auth admin call failing —
- * comes back as one indistinguishable `400 (Bad Request)`, with the
- * only thing that tells them apart sitting in the response BODY.
- *
- * supabase-js does not read that body. On a non-2xx it hands back a
- * FunctionsHttpError whose `.message` is always the same generic
- * string ("Edge Function returned a non-2xx status code"), and stashes
- * the raw Response object on `.context`. Code that throws `error`
- * directly therefore shows the person a message that identifies
- * nothing, which is why a failed delete looked like an unexplained 400
- * in the console with no usable reason in the UI toast.
- *
- * This reads `.context` and pulls out the function's own `error` text,
- * falling back to the generic message only if the body genuinely can't
- * be read or parsed — so the reason is never silently lost either way.
- *
- * (emergencyAlertsService.sendSms() already did exactly this inline for
- * the send-sms function; this is that same logic factored out so every
- * other Edge Function call gets it too, rather than each call site
- * re-implementing it or — as was the case — going without.)
- *
- * @param {string} name  Edge Function name, e.g. 'delete-user'
- * @param {object} body  JSON payload for the function
- * @returns {Promise<any>} the function's parsed success payload
- */
 export async function invokeEdgeFunction(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body })
 
@@ -64,7 +25,15 @@ export async function invokeEdgeFunction(name, body) {
         `and that the Supabase project URL in your environment is correct and the project is active.`
     }
 
-    throw new Error(detailedMessage)
+    const err = new Error(detailedMessage)
+    // The real HTTP status (e.g. 429 from chat-completion forwarding
+    // Groq's own rate limit) — callers that need to react differently to
+    // "rate limited" vs. "genuinely broken" (see chatService.getAiReply /
+    // ChatbotPage's cooldown) would otherwise have to guess by matching
+    // on message text, which breaks the moment the wording changes.
+    // undefined for a network-level failure, which never got a Response.
+    err.status = error.context?.status
+    throw err
   }
 
   // Some functions return 200 with an { error } payload rather than a

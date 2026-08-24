@@ -406,6 +406,19 @@ export async function getUserByEmail(email) {
   return flattenUser(data)
 }
 
+// Used by ForgotPasswordModal.jsx, called from an anon (not-yet-signed-in)
+// session — getUserByEmail above can't be reused there since users_select
+// is `TO authenticated` only, so RLS would silently return zero rows for
+// EVERY email, registered or not, useless for telling them apart. This
+// calls a SECURITY DEFINER RPC (email_is_registered, see
+// 044_email_is_registered_rpc.sql) that bypasses RLS internally but only
+// ever returns a plain boolean — never any other column.
+export async function checkEmailRegistered(email) {
+  const { data, error } = await supabase.rpc('email_is_registered', { p_email: email })
+  if (error) throw error
+  return !!data
+}
+
 export async function getUserByAuthId(authUserId) {
   const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('auth_user_id', authUserId).maybeSingle()
   if (error) throw error

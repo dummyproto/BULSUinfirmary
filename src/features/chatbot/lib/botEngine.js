@@ -3,6 +3,15 @@ import { MENTAL_HEALTH_RESPONSES, MENTAL_HEALTH_FOLLOW_UPS, MENTAL_HEALTH_INTENT
 
 const DISCLAIMER = '<div class="chat-disclaimer">⚠️ <em>This is for informational purposes only and is not a substitute for professional medical advice. Always consult a healthcare provider for proper diagnosis and treatment.</em></div>'
 
+// Tap-to-call link for the clinic's number — used everywhere this file
+// mentions it, instead of a plain <strong> string, so it's consistently
+// a real link in every reply rather than only some of them. +639076842769
+// is the E.164 form of 0907-684-2769 (leading 0 replaced with the
+// Philippines country code +63) — tel: links work more reliably across
+// devices/OSes in that normalized form than a locally-formatted number
+// with dashes.
+const PHONE_LINK = '<a href="tel:+639076842769"><strong>0907-684-2769</strong></a>'
+
 // Shown on any emergency-level rule-based reply so the person always sees
 // the fastest way to actually alert the clinic, not just read guidance
 // text. Mirrors the wording already used on the AI-model path (see
@@ -251,7 +260,7 @@ function buildMentalHealthResourcesResponse() {
   </div><br>
   <strong>📍 On-Campus Support:</strong>
   <div class="chat-info-box">
-    <div class="info-row"><span>🏥 Clinic / Guidance Office</span><span>Visit the clinic or call <strong>0907-684-2769</strong></span></div>
+    <div class="info-row"><span>🏥 Clinic / Guidance Office</span><span>Visit the clinic or call ${PHONE_LINK}</span></div>
     <div class="info-row"><span>🕐 Hours</span><span>Mon–Fri, 8:00 AM–5:00 PM</span></div>
     <div class="info-row"><span>🚨 After Hours</span><span>Go to the nearest hospital, or call a national hotline below</span></div>
   </div>
@@ -345,7 +354,7 @@ function buildBotResponse(intent, msg, ctx) {
     }
 
     case 'farewell':
-      return `👋 Take care and stay healthy! Remember, the clinic is always here for you during operating hours.<br><br>🕐 Mon–Fri: <strong>8:00 AM – 5:00 PM</strong><br>📞 Clinic: <strong>0907-684-2769</strong>`
+      return `👋 Take care and stay healthy! Remember, the clinic is always here for you during operating hours.<br><br>🕐 Mon–Fri: <strong>8:00 AM – 5:00 PM</strong><br>📞 Clinic: ${PHONE_LINK}`
 
     case 'thanks':
       return `😊 You're welcome! Is there anything else I can help you with? Don't hesitate to ask about clinic services, health tips, or document requests.`
@@ -364,7 +373,7 @@ function buildBotResponse(intent, msg, ctx) {
         <div class="info-row"><span>📅 Saturday & Sunday</span><span><strong>Closed</strong></span></div>
       </div>
       Status right now: ${status}<br><br>
-      Walk-ins are welcome during clinic hours. For appointments or after-hours concerns, call <strong>0907-684-2769</strong>.`
+      Walk-ins are welcome during clinic hours. For appointments or after-hours concerns, call ${PHONE_LINK}.`
     }
 
     case 'location':
@@ -373,7 +382,7 @@ function buildBotResponse(intent, msg, ctx) {
         <div class="info-row"><span>📍 Campus</span><span><strong>Bulsu Meneses Campus (Near Gate 1)</strong></span></div>
         <div class="info-row"><span>🏢 Building</span><span><strong>Main Building</strong></span></div>
         <div class="info-row"><span>🪜 Floor</span><span><strong>Ground Floor</strong></span></div>
-        <div class="info-row"><span>📞 Phone</span><span><strong>0907-684-2769</strong></span></div>
+        <div class="info-row"><span>📞 Phone</span><span>${PHONE_LINK}</span></div>
         <div class="info-row"><span>📧 Email</span><span><strong>infirmary.meneses@bulsu.edu.ph</strong></span></div>
         <div class="info-row"><span>📘 Facebook</span><span><strong>Bulsu Health Services Unit-Meneses Campus</strong></span></div>
       </div>
@@ -392,13 +401,12 @@ function buildBotResponse(intent, msg, ctx) {
       ${KB.services.map((s) => `<div class="chat-service-item">
         <span class="service-icon">${s.icon}</span>
         <div><strong>${s.name}</strong><br><span style="color:var(--text-2);font-size:12px">${s.desc}</span></div>
-      </div>`).join('')}
-      <br>💡 All basic services are <strong>free</strong> for enrolled students and employees.`
+      </div>`).join('')}`
 
     case 'documents':
       return `📄 <strong>Document Request Guide</strong><br><br>
-      <strong>Available Document Types:</strong><br>
-      ${KB.documents.types.map((d) => `• ${d}`).join('<br>')}<br><br>
+      <strong>Available Document Types:</strong>
+      <ul>${KB.documents.types.map((d) => `<li>${d}</li>`).join('')}</ul>
       <strong>📝 How to Request:</strong><br>
       ${KB.documents.steps.map((s, i) => `<div class="chat-step"><span class="step-num">${i + 1}</span><span>${s}</span></div>`).join('')}
       <br>🔍 Need to know requirements for a specific document? Ask me: <em>"What are the requirements for [document name]?"</em>`
@@ -533,7 +541,7 @@ function buildBotResponse(intent, msg, ctx) {
       <div class="chat-info-box">
         <div class="info-row"><span>📋 Schedule</span><span>Check clinic bulletin board for dates</span></div>
         <div class="info-row"><span>🪪 Requirement</span><span>Valid ID and vaccination record</span></div>
-        <div class="info-row"><span>📞 Inquire</span><span>Call <strong>0907-684-2769</strong> for next vaccine schedule</span></div>
+        <div class="info-row"><span>📞 Inquire</span><span>Call ${PHONE_LINK} for next vaccine schedule</span></div>
       </div>
       💡 Bring your previous vaccination card to update your immunization records.`
 
@@ -563,12 +571,14 @@ function buildBotResponse(intent, msg, ctx) {
       <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 1:</strong> Document request received and logged into the system</span></div>
       <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 2:</strong> Staff processes and prepares your document</span></div>
       <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 3:</strong> Quality check completed, ready for pickup</span></div>
-      <br>💡 <strong>Tips:</strong><br>
-      • Processing time is calculated from <strong>business days</strong> (Mon–Fri only)<br>
-      • Weekend submissions are processed starting the next Monday<br>
-      • You will be <strong>notified</strong> when your document is ready<br>
-      • Check your <strong>My Requests</strong> tab or notifications for updates<br>
-      • Pickup is available at the clinic window during <strong>8:00 AM – 5:00 PM</strong> (Mon–Fri)<br><br>
+      <br>💡 <strong>Tips:</strong>
+      <ul>
+        <li>Processing time is calculated from <strong>business days</strong> (Mon–Fri only)</li>
+        <li>Weekend submissions are processed starting the next Monday</li>
+        <li>You will be <strong>notified</strong> when your document is ready</li>
+        <li>Check your <strong>My Requests</strong> tab or notifications for updates</li>
+        <li>Pickup is available at the clinic window during <strong>8:00 AM – 5:00 PM</strong> (Mon–Fri)</li>
+      </ul>
       🚀 <strong>Fast-track tip:</strong> Submit your request early in the week to get it ready faster!`
 
     default:

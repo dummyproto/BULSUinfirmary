@@ -4011,6 +4011,29 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
   border-radius:0 6px 6px 0;font-size:12.5px;margin-bottom:6px;color:#166534;
 }
 
+/* Plain <ul>/<li> bullet lists inside a bot reply — mainly for the
+   Groq-backed AI path (chat-completion/knowledge.ts), which formats its
+   own freeform lists rather than using the structured .chat-step/
+   .chat-tip-item templates above (those are specific to this app's own
+   rule-engine replies in botEngine.js). Needed proper spacing/indent of
+   its own: a bare <ul> has no margin-top by default, so it sat jammed
+   right against a preceding heading with no breathing room, and browser
+   default bullets sit far enough left they can crowd the message bubble's
+   edge at this font size. */
+.msg-bubble.bot ul,.msg-bubble.bot ol{margin:6px 0 4px;padding-left:20px}
+.msg-bubble.bot li{margin-bottom:4px;line-height:1.5}
+.msg-bubble.bot li:last-child{margin-bottom:0}
+
+/* Tap-to-call phone links (tel: hrefs) inside a bot reply — see
+   PHONE_LINK in botEngine.js and the equivalent instruction in
+   chat-completion/knowledge.ts's SYSTEM_PROMPT. Colored/underlined so it
+   reads as a tappable link rather than blending into the surrounding
+   <strong> text (which is the same bold weight/color otherwise). Uses
+   var(--primary) rather than a hardcoded color — that variable is
+   already theme-aware (a lighter sage green in dark mode, see
+   [data-theme="dark"]'s own --primary above) so this adapts on its own. */
+.msg-bubble.bot a{color:var(--primary);text-decoration:underline;font-weight:600}
+
 .chat-warning-box{
   background:var(--warning-light);border:1px solid #FCD34D;border-radius:10px;
   padding:10px 12px;font-size:12px;color:#92400E;margin:8px 0;

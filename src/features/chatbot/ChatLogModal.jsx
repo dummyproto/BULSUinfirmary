@@ -1,7 +1,7 @@
 import Modal from '@components/ui/Modal'
 import { formatDateTime } from '@lib/format'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
-import { BarChartIcon, DownloadIcon, TrashIcon, UserIcon, ConsultationIcon } from '@components/ui/icons'
+import { BarChartIcon, TrashIcon, UserIcon, ConsultationIcon } from '@components/ui/icons'
 
 // Shows every past conversation (Phase 2 — "the Log view shows every
 // past session, not just the current one"), not a single derived list.
@@ -9,7 +9,7 @@ import { BarChartIcon, DownloadIcon, TrashIcon, UserIcon, ConsultationIcon } fro
 // anywhere in the chatbot UI now — Clear (on the main chat screen) no
 // longer deletes anything, it just starts a fresh session; this button
 // is what actually removes rows from Supabase, and only this button.
-export default function ChatLogModal({ isOpen, onClose, history, loading, onExport, onDeleteAll }) {
+export default function ChatLogModal({ isOpen, onClose, history, loading, onDeleteAll }) {
   const totalMessages = history.reduce((sum, c) => sum + c.messages.length, 0)
 
   return (
@@ -20,9 +20,6 @@ export default function ChatLogModal({ isOpen, onClose, history, loading, onExpo
       icon={<BarChartIcon width={16} height={16} />}
       actions={
         <>
-          <button type="button" className="btn btn-sm btn-outline" onClick={onExport}>
-            <DownloadIcon width={13} height={13} /> Export Log
-          </button>
           <button type="button" className="btn btn-sm btn-red" onClick={onDeleteAll} title="Permanently deletes every past conversation">
             <TrashIcon width={13} height={13} /> Delete All History
           </button>

@@ -5,7 +5,7 @@ import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { getOrCreateActiveConversation, addMessage, createConversation, getAiReply, listConversationsForUser, listRecentUserMessages, deleteAllConversationsForUser } from '@services/chatService'
-import { classifyIntent, getBotReply, isHealthConcernMessage } from './lib/botEngine'
+import { getBotReply, isHealthConcernMessage } from './lib/botEngine'
 import { useSpeechSynthesis } from '@hooks/useSpeechSynthesis'
 import Toggle from '@components/ui/Toggle'
 import ChatMessage, { toSpeechText } from './ChatMessage'
@@ -202,7 +202,17 @@ export default function ChatbotPage() {
   // showing a stale list that doesn't include the just-started session.
   const [fullHistory, setFullHistory] = useState(null)
 
-  const messagesRef = useRef(null)
+    const messagesRef = useRef(null)
+  // Groq's free-tier rate limit is low enough that one busy period makes
+  // EVERY following message hit chat-completion, get a 429 back, and only
+  // then fall back to the rule-based engine — a wasted round trip (and a
+  // console error) per message for as long as the limit stays exceeded.
+  // Set once by a real 429 (see the `catch` around getAiReply below):
+  // while `Date.now()` is before this, handleSend skips the AI call
+  // entirely and goes straight to the rule-based fallback. Cleared back
+  // to 0 automatically once the cooldown window passes, so the AI path
+  // resumes being tried again on its own without needing a page refresh.
+  const aiCooldownUntilRef = useRef(0)
 
   // Load (or start) this user's conversation on mount — "previous
   // conversations load automatically after login". Every user only ever
@@ -311,16 +321,28 @@ export default function ChatbotPage() {
       show(`Message may not have saved: ${err.message}`, 'warning')
     )
 
-    let reply
+        let reply
     let emergency = false
     try {
       try {
+        // Skip straight to the rule-based fallback while a recent Groq
+        // 429 is still in its cooldown window — avoids re-sending a call
+        // that's essentially certain to be rejected again right now.
+        if (Date.now() < aiCooldownUntilRef.current) throw new Error('AI cooldown active')
+
         // Real AI reply (Groq, via the chat-completion Edge Function) when
         // it's deployed and configured.
         const ai = await getAiReply(conversationId, msg)
         reply = ai.reply
         emergency = ai.emergency
-      } catch {
+      } catch (aiErr) {
+        // Groq's own rate limit, forwarded as a real 429 by the
+        // chat-completion function (see edgeFunctions.js's `err.status`) —
+        // starts/refreshes a 60s cooldown so the next several messages
+        // don't each pay for their own doomed round trip to Groq while
+        // the limit is still exceeded.
+        if (aiErr.status === 429) aiCooldownUntilRef.current = Date.now() + 60_000
+
         // Not deployed, no GROQ_API_KEY yet, rate-limited, or genuinely
         // down — fall back to the built-in rule-based engine so the chat
         // still works, just less capably. Keeps the original simulated
@@ -444,34 +466,6 @@ export default function ChatbotPage() {
     } catch (err) {
       show(`Failed to delete history: ${err.message}`, 'error')
     }
-  }
-
-  function handleExportLog() {
-    const rows = (fullHistory || []).flatMap((conv) => {
-      const log = []
-      for (let i = 0; i < conv.messages.length; i++) {
-        const m = conv.messages[i]
-        if (m.type !== 'user') continue
-        const reply = conv.messages[i + 1]?.type === 'bot' ? conv.messages[i + 1] : null
-        log.push({
-          timestamp: m.ts,
-          detectedIntent: classifyIntent(m.text) || 'unknown',
-          userMessage: m.text,
-          botResponse: (reply?.text || '').replace(/<[^>]*>/g, '').substring(0, 200),
-        })
-      }
-      return log
-    })
-    if (!rows.length) return show('No logs to export', 'warning')
-    const csv = ['Timestamp,Intent,User Message,Bot Response']
-      .concat(rows.map((l) => `"${l.timestamp}","${l.detectedIntent}","${l.userMessage.replace(/"/g, "'")}","${l.botResponse.replace(/"/g, "'")}"`))
-      .join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `chatlog_${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    show('Log exported as CSV', 'success')
   }
 
   // ── Mobile drawer swipe gesture ──
@@ -624,7 +618,13 @@ export default function ChatbotPage() {
                   <ContactIcon width={12} height={12} /> {l}
                 </span>
                 <span className="detail-value" style={{ fontSize: 12 }}>
-                  {v}
+                  {l === 'Phone' ? (
+                    <a href="tel:+639076842769" style={{ color: 'inherit', textDecoration: 'underline' }}>
+                      {v}
+                    </a>
+                  ) : (
+                    v
+                  )}
                 </span>
               </div>
             ))}
@@ -650,7 +650,6 @@ export default function ChatbotPage() {
         onClose={() => setLogOpen(false)}
         history={fullHistory || []}
         loading={fullHistory === null}
-        onExport={handleExportLog}
         onDeleteAll={handleDeleteAllHistory}
       />
 

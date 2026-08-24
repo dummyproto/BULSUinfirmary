@@ -371,7 +371,15 @@ export default function MyRequestsPage() {
                 <Icon width={22} height={22} />
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>{title}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{desc}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
+                {title === 'Contact' ? (
+                  <a href="tel:+639076842769" style={{ color: 'inherit', textDecoration: 'underline' }}>
+                    {desc}
+                  </a>
+                ) : (
+                  desc
+                )}
+              </div>
             </div>
           ))}
         </div>

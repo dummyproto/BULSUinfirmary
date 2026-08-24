@@ -35,7 +35,10 @@ export default function EmergencySuccessOverlay({ result, onClose }) {
         </p>
         <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Stay calm. Help is on the way.</p>
         <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <PhoneIcon width={12} height={12} /> You can also call the clinic directly: <strong style={{ color: 'var(--text-2)' }}>0907-684-2769</strong>
+          <PhoneIcon width={12} height={12} /> You can also call the clinic directly:{' '}
+          <a href="tel:+639076842769" style={{ color: 'var(--text-2)', fontWeight: 700, textDecoration: 'underline' }}>
+            0907-684-2769
+          </a>
         </p>
         <button type="button" className="login-btn" style={{ marginTop: 18, maxWidth: 200 }} onClick={handleClose}>
           OK
