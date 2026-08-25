@@ -2,6 +2,7 @@ import DOMPurify from 'dompurify'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
 import { AlertOctagonIcon, Volume2Icon, VolumeXIcon } from '@components/ui/icons'
 import BotFace from './BotFace'
+import { toSpeechText } from './chatText'
 
 // Bot messages can come from two places: our own trusted rule-engine
 // template strings (botEngine.js — deliberately use <strong>/<br> for
@@ -23,21 +24,36 @@ import BotFace from './BotFace'
 // only a plain link.
 const ALLOWED_TAGS = ['strong', 'b', 'em', 'i', 'br', 'div', 'span', 'ul', 'ol', 'li', 'a']
 
-function sanitizeBotHtml(text) {
-  return DOMPurify.sanitize(text, { ALLOWED_TAGS, ALLOWED_ATTR: ['class', 'href'] })
+// The AI path (Groq) is told in SYSTEM_PROMPT to use <strong>/<br> instead
+// of markdown, and to break a longer answer into separate paragraphs —
+// but LLMs don't always follow formatting instructions consistently (e.g.
+// a long free-form answer slipping back into **bold**/*italic* markdown,
+// or running everything into one dense block with no paragraph breaks).
+// Cleans that up before sanitizing, so spacing/readability stays
+// consistent no matter what the model actually returned. Runs before
+// sanitizeBotHtml, so any tags this introduces still pass through the
+// same allowlist. A no-op for the rule-engine's own template strings
+// (botEngine.js), which never contain markdown syntax or raw newlines.
+function normalizeBotHtml(text) {
+  return String(text)
+    // **bold** / __bold__ -> <strong>. Non-greedy so multiple bolded
+    // spans in one message don't collapse into a single overlong match.
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Leftover single *italic*/_italic_ (checked after the bold pass
+    // above, so it doesn't eat the single asterisks bold already used).
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>')
+    // Blank-line-separated paragraphs (model wrote real newlines) become
+    // a visible paragraph gap; single newlines become a normal line break.
+    .replace(/\n\s*\n/g, '<br><br>')
+    .replace(/\n/g, '<br>')
 }
 
-// Plain-text version of a bot reply, for the "tap to listen" button
-// (useSpeechSynthesis.js) — speaking the raw HTML string directly would
-// read the tags themselves aloud (literally saying "strong", "br", the
-// angle brackets, etc.). <br>/</div>/</li> become ". " first so a line
-// break or list item still reads as a natural pause instead of running
-// straight into the next one with no gap at all once the tags are gone.
-export function toSpeechText(html) {
-  const withPauses = (html || '').replace(/<br\s*\/?>/gi, '. ').replace(/<\/(div|li)>/gi, '. ')
-  const plain = DOMPurify.sanitize(withPauses, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-  return plain.replace(/\s+/g, ' ').trim()
+export function sanitizeBotHtml(text) {
+  return DOMPurify.sanitize(normalizeBotHtml(text), { ALLOWED_TAGS, ALLOWED_ATTR: ['class', 'href'] })
 }
+
 
 export default function ChatMessage({ message, userInitials, userAvatarUrl, speakId, speakingId, onToggleSpeak, speechSupported }) {
   const time = <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{timeAgo(message.ts)}</div>

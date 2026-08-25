@@ -5,6 +5,7 @@ import SearchableSelect from '@components/ui/SearchableSelect'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
 import { registerPatient, checkStudentNumberRegistered } from '@services/usersService'
 import { notify } from '@services/notificationsService'
+import { supabase } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
 import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icons'
 
@@ -45,6 +46,7 @@ function matchOption(value, options) {
 const EMPTY = {
   firstName: '',
   lastName: '',
+  fullName: '',
   userId: '',
   phone: '',
   course: '',
@@ -144,6 +146,13 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   // just flips it back off (nothing is discarded); Confirm calls the
   // actual submission.
   const [reviewing, setReviewing] = useState(false)
+  // Deliberately its own local state, NOT part of `form` — `form` gets
+  // persisted to a localStorage draft on every change (see the effect
+  // just below), and a PIN has no business sitting in plaintext in
+  // localStorage even briefly. Only ever used in-memory, for the one
+  // best-effort sign-in-and-set attempt in doRegister() below.
+  const [pin, setPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
 
   // Keep the saved draft in sync with whatever's currently typed, so if
   // this component unmounts (X button, backdrop, navigating away, a
@@ -178,6 +187,8 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     setEntryMode('manual')
     setDuplicateBlocked(false)
     setReviewing(false)
+    setPin('')
+    setConfirmPin('')
     clearDraft()
   }
 
@@ -191,19 +202,28 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   }
 
   function handleScanned({ studentNumber, fullName, course, yearLevel, rawCode }) {
-    // Split "Juan dela Cruz" -> lastName "Cruz", firstName "Juan dela" —
-    // same last-token convention `createUserProfile()` already uses
-    // elsewhere in this file's sibling service (usersService.js). Sanitize
-    // through the exact same character/length rules Step 1's own inputs
-    // use, so a prefilled value can never violate validation silently.
-    const nameParts = String(fullName || '').trim().split(/\s+/).filter(Boolean)
+    // "Full Name" from the ID is kept as ONE field for QR-scanned
+    // registrants (see Step 1's JSX below, gated on prefilledFromQr) —
+    // splitting a multi-part Filipino name into just two boxes is
+    // error-prone and not what the ID itself shows. firstName/lastName
+    // are still derived and kept in sync alongside it purely because
+    // registerPatient() / patient_profiles still store surname and
+    // given_name as separate columns — same last-token convention
+    // `createUserProfile()` already uses elsewhere in this file's
+    // sibling service (usersService.js). Sanitize through the exact
+    // same character/length rules Step 1's own inputs use, so a
+    // prefilled value can never violate validation silently.
+    const sanitizeName = (s) => s.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20)
+    const sanitizeFullName = (s) => s.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 60)
+    const sanitizeId = (s) => String(s || '').replace(/\D/g, '').slice(0, 10)
+    const cleanFullName = sanitizeFullName(String(fullName || '').trim())
+    const nameParts = cleanFullName.split(/\s+/).filter(Boolean)
     const lastName = nameParts.length > 1 ? nameParts.pop() : ''
     const firstName = nameParts.join(' ')
-    const sanitizeName = (s) => s.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20)
-    const sanitizeId = (s) => String(s || '').replace(/\D/g, '').slice(0, 10)
 
     setForm((f) => ({
       ...f,
+      fullName: cleanFullName,
       firstName: sanitizeName(firstName),
       lastName: sanitizeName(lastName),
       userId: sanitizeId(studentNumber),
@@ -220,8 +240,14 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   async function stepNext() {
     setErr('')
     if (step === 1) {
-      if (!form.firstName.trim()) return setErr('First name is required.')
-      if (!form.lastName.trim()) return setErr('Last name is required.')
+      if (form.prefilledFromQr) {
+        if (!form.fullName.trim()) return setErr('Full name is required.')
+      } else {
+        if (!form.firstName.trim()) return setErr('First name is required.')
+        if (!form.lastName.trim()) return setErr('Last name is required.')
+        if (form.firstName.trim().length < 2) return setErr('First name must be at least 2 letters.')
+        if (form.lastName.trim().length < 2) return setErr('Last name must be at least 2 letters.')
+      }
       if (!form.userId.trim()) return setErr('User Number is required.')
       const rawUserId = form.userId.trim().toUpperCase()
       const isStudentNumber = /^\d{10}$/.test(rawUserId)
@@ -288,6 +314,19 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     const pwCheck = validatePassword(form.password)
     if (!pwCheck.ok) return setErr(pwCheck.msg)
     if (form.password !== form.confirm) return setErr('Passwords do not match.')
+    // Quick-login PIN is entirely optional — only validated at all if the
+    // person actually started filling it in. Only offered for QR-scan
+    // registrants (see the Step 3 form below and doRegister()'s own
+    // comment on why manual registrants don't get this prompt). Gated on
+    // form.prefilledFromQr, NOT entryMode — entryMode flips back to
+    // 'manual' right after a successful scan (handleScanned() above) so
+    // Step 1 shows the normal editable fields instead of the camera, but
+    // prefilledFromQr keeps remembering that this registration actually
+    // started from a QR scan all the way through Step 3.
+    if (form.prefilledFromQr && (pin || confirmPin)) {
+      if (!/^[0-9]{4}$/.test(pin)) return setErr('Quick-login PIN must be exactly 4 digits, or leave both PIN fields blank to skip it.')
+      if (pin !== confirmPin) return setErr('PINs do not match.')
+    }
     setReviewing(true)
   }
 
@@ -327,8 +366,38 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
         // Non-critical — registration itself already succeeded.
       }
       const message = needsEmailConfirmation
-        ? 'Account created! Check your email to confirm your address, then sign in.'
+        ? "Almost done! We've sent a confirmation link to your email — your account is created but not active yet. Click that link to activate it, then come back and sign in."
         : 'Account created successfully! You can now sign in with your email and password.'
+
+      // Best-effort quick-login PIN setup — only attempted for QR-scan
+      // registrants who actually filled in a PIN (see the Step 3 form and
+      // the validation above doRegister()). Registration itself has
+      // already fully succeeded by this point regardless of what happens
+      // here, so any failure below is swallowed rather than surfaced —
+      // worst case, they just set the PIN later in Account Settings
+      // instead, exactly like the fallback message already says.
+      //
+      // set_own_pin() is scoped to the CALLING session's own account
+      // (auth.uid()), and there's no session yet this early in
+      // registration — signInWithPassword() with the credentials just
+      // chosen establishes one just long enough to call it, then signs
+      // back out immediately so the rest of this flow (redirect to the
+      // login screen) behaves exactly as it did before this feature
+      // existed. Skipped entirely when email confirmation is required —
+      // signing in would just fail anyway until that's done.
+      if (form.prefilledFromQr && pin && !needsEmailConfirmation) {
+        try {
+          const { error: pinSignInError } = await supabase.auth.signInWithPassword({ email, password: form.password })
+          if (!pinSignInError) {
+            await supabase.rpc('set_own_pin', { p_pin: pin })
+          }
+        } catch {
+          // Swallowed — see comment above.
+        } finally {
+          await supabase.auth.signOut().catch(() => {})
+        }
+      }
+
       resetForm()
       if (onRegistered) {
         // Straight back to the login screen — no extra click needed.
@@ -466,6 +535,43 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                         Pulled from your ID — please double-check before continuing.
                       </div>
                     )}
+                    {form.prefilledFromQr ? (
+                      <div className="reg-field">
+                        <label>
+                          Full Name <span className="reg-req">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          className="reg-input"
+                          placeholder="Full Name"
+                          maxLength={60}
+                          value={form.fullName}
+                          onChange={(e) => {
+                            // Kept in sync with firstName/lastName on every
+                            // keystroke (same last-token split
+                            // handleScanned() uses) — those two are what
+                            // actually get sent to registerPatient() at
+                            // submit time, since patient_profiles still
+                            // stores surname/given_name as separate
+                            // columns; this field is just the single-box
+                            // editing experience on top of that.
+                            const cleaned = e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 60)
+                            const parts = cleaned.trim().split(/\s+/).filter(Boolean)
+                            const last = parts.length > 1 ? parts.pop() : ''
+                            const first = parts.join(' ')
+                            setForm((f) => ({
+                              ...f,
+                              fullName: cleaned,
+                              firstName: first.slice(0, 20),
+                              lastName: last.slice(0, 20),
+                            }))
+                          }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
+                          <span style={{ fontSize: 11, color: form.fullName.length >= 60 ? '#EF4444' : 'var(--text-3)' }}>{form.fullName.length}/60</span>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="reg-form-row">
                   <div className="reg-field">
                     <label>
@@ -500,6 +606,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     </div>
                   </div>
                 </div>
+                    )}
                 <div className="reg-form-row">
                   <div className="reg-field">
                     <label>
@@ -688,6 +795,47 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     <span className="reg-hint-text" style={{ color: '#EF4444' }}>Passwords do not match.</span>
                   )}
                 </div>
+
+                {form.prefilledFromQr && (
+                  <div className="reg-field" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                    <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
+                      Since you're signing up with QR scan, you can set a 4-digit PIN now for instant sign-in next
+                      time you scan your ID — or skip this and set it up later in Account Settings.
+                    </div>
+                    <label>Quick-Login PIN (optional)</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={4}
+                      className="reg-input"
+                      placeholder="••••"
+                      style={{ letterSpacing: 8, fontSize: 18, textAlign: 'center' }}
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    />
+                    <span className="reg-hint-text">Leave blank to skip — you can always set this up later in Account Settings.</span>
+                  </div>
+                )}
+                {form.prefilledFromQr && pin && (
+                  <div className="reg-field" style={{ marginTop: 14 }}>
+                    <label>Confirm PIN</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={4}
+                      className="reg-input"
+                      placeholder="••••"
+                      style={{ letterSpacing: 8, fontSize: 18, textAlign: 'center' }}
+                      value={confirmPin}
+                      onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    />
+                    {confirmPin && confirmPin !== pin && (
+                      <span className="reg-hint-text" style={{ color: '#EF4444' }}>PINs do not match.</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -698,8 +846,9 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                 </div>
                 <div className="reg-review-list" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {[
-                    ['First Name', form.firstName],
-                    ['Last Name', form.lastName],
+                    ...(form.prefilledFromQr
+                      ? [['Full Name', form.fullName]]
+                      : [['First Name', form.firstName], ['Last Name', form.lastName]]),
                     ['User Number', formatUserNumber(form.userId)],
                     ['Phone Number', form.phone || '—'],
                     ...(isPersonnel ? [] : [
@@ -708,6 +857,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     ]),
                     ['Email Address', form.email.trim()],
                     ['Username', form.username.trim()],
+                    ...(form.prefilledFromQr ? [['Quick-Login PIN', pin ? 'Will be set up' : 'Skipped — set up later in Account Settings']] : []),
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -731,7 +881,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                         <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 3 ? ' reg-nav-final' : ''}`}>
               {step > 1 && !duplicateBlocked && !reviewing && (
                 <button type="button" className="btn btn-outline" onClick={stepBack}>
-                  ← Back
+                  Back
                 </button>
               )}
               {step < 3 && !(step === 1 && entryMode === 'scan') && !duplicateBlocked && (
@@ -749,9 +899,9 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   ? 'Checking…'
                   : step === 2
                   ? isPersonnel
-                    ? 'Skip →'
-                    : 'Next →'
-                  : 'Next →'}
+                    ? 'Skip'
+                    : 'Next'
+                  : 'Next'}
                 </button>
               )}
               {step === 3 && !reviewing && (

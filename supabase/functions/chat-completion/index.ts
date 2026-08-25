@@ -54,7 +54,7 @@
 //    already tested.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SYSTEM_PROMPT, EMERGENCY_PATTERN, EMERGENCY_REPLY } from './knowledge.ts'
+import { SYSTEM_PROMPT, EMERGENCY_PATTERN, EMERGENCY_REPLY, OFF_TOPIC_PATTERN, OFF_TOPIC_REPLY } from './knowledge.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*', // tighten to your actual domain in production
@@ -125,6 +125,15 @@ Deno.serve(async (req) => {
     // ── 4. Instant local emergency check — no API call needed ──
     if (EMERGENCY_PATTERN.test(message)) {
       return jsonResponse({ reply: EMERGENCY_REPLY, emergency: true })
+    }
+
+    // ── 4b. Instant local off-topic check — same idea as the emergency
+    // check above: guarantees a consistent refusal for the most common
+    // off-topic request shapes (e.g. "write me a song") without relying
+    // solely on the model to follow SYSTEM_PROMPT's scope rule, and saves
+    // a Groq call on a request that was never going to get a real answer.
+    if (OFF_TOPIC_PATTERN.test(message)) {
+      return jsonResponse({ reply: OFF_TOPIC_REPLY, emergency: false })
     }
 
     if (!GROQ_API_KEY) {
@@ -220,8 +229,11 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ model: GROQ_MODEL, messages, ...GENERATION_CONFIG }),
         signal: controller.signal,
       })
-    } catch (fetchErr) {
-      if (fetchErr.name === 'AbortError') {
+        } catch (fetchErr) {
+      // `catch` bindings are typed `unknown` — narrow before touching
+      // `.name` so this is type-safe under strict checking, not just
+      // working by luck the way plain JS would let it.
+      if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
         return jsonResponse({ error: 'The assistant is taking too long to respond. Please try again in a moment.' }, 504)
       }
       return jsonResponse({ error: "Sorry, I couldn't reach the assistant service right now. Please check your connection and try again." }, 503)
@@ -242,7 +254,18 @@ Deno.serve(async (req) => {
 
       const bodyText = await groqRes.text().catch(() => '')
       console.error('[GROQ_API_ERROR]', { status, body: bodyText })
-      return jsonResponse({ error: reply }, status === 429 ? 429 : 502)
+      // Forward the real status instead of flattening every non-429
+      // failure to a generic 502 — that made a bad/expired GROQ_API_KEY
+      // (401), a renamed/retired model (404), and a genuine Groq outage
+      // (500+) all look identical in devtools/logs, with no way to tell
+      // which one was actually happening. Only true 5xx-class upstream
+      // failures still surface as 502 ("bad gateway" is accurate there);
+      // 401/403/404 are forwarded as-is so the real cause is visible
+      // immediately, and any other unexpected 4xx maps to 500 since
+      // that's this function's own request being malformed, not Groq's.
+      const forwardedStatus =
+        status === 429 ? 429 : [401, 403, 404].includes(status) ? status : status >= 500 ? 502 : 500
+      return jsonResponse({ error: reply }, forwardedStatus)
     }
 
     const completion = await groqRes.json()

@@ -2,6 +2,7 @@ import Modal from '@components/ui/Modal'
 import { formatDateTime } from '@lib/format'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
 import { BarChartIcon, TrashIcon, UserIcon, ConsultationIcon } from '@components/ui/icons'
+import { sanitizeBotHtml } from './ChatMessage'
 
 // Shows every past conversation (Phase 2 — "the Log view shows every
 // past session, not just the current one"), not a single derived list.
@@ -29,7 +30,7 @@ export default function ChatLogModal({ isOpen, onClose, history, loading, onDele
         </>
       }
     >
-      <div style={{ maxHeight: 450, overflowY: 'auto' }}>
+      <div className="chat-log-readonly" style={{ maxHeight: 450, overflowY: 'auto' }}>
         {loading ? (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)' }}>Loading your conversation history…</div>
         ) : history.length === 0 ? (
@@ -41,13 +42,13 @@ export default function ChatLogModal({ isOpen, onClose, history, loading, onDele
               const m = conv.messages[i]
               if (m.type !== 'user') continue
               const reply = conv.messages[i + 1]?.type === 'bot' ? conv.messages[i + 1] : null
-              pairs.push({ id: m.id, ts: m.ts, userMessage: m.text, botResponse: (reply?.text || '').replace(/<[^>]*>/g, '') })
+              pairs.push({ id: m.id, ts: m.ts, userMessage: m.text, botResponse: reply?.text || '' })
             }
             return (
-              <div key={conv.conversation_id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <div key={conv.conversation_id} style={{ borderBottom: '1px solid var(--border)', marginTop: 8 }}>
                 <div
                   style={{
-                    padding: '8px 14px',
+                    padding: '10px 16px',
                     background: 'var(--surface2)',
                     fontSize: 11,
                     fontWeight: 700,
@@ -56,23 +57,36 @@ export default function ChatLogModal({ isOpen, onClose, history, loading, onDele
                     textTransform: 'uppercase',
                     position: 'sticky',
                     top: 0,
+                    borderRadius: 8,
                   }}
                 >
                   Session started {formatDateTime(conv.created_at)} · {conv.messages.length} message{conv.messages.length === 1 ? '' : 's'}
                 </div>
                 {pairs.length === 0 ? (
-                  <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-3)' }}>No user messages in this session.</div>
+                  <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--text-3)' }}>No user messages in this session.</div>
                 ) : (
                   pairs.map((l) => (
-                    <div key={l.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-                        <span style={{ color: 'var(--text-3)' }}>{timeAgo(l.ts)}</span>
+                    <div key={l.id} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                        <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{timeAgo(l.ts)}</span>
                       </div>
-                      <div style={{ color: 'var(--text)', marginBottom: 2 }}>
-                        <UserIcon width={12} height={12} style={{ verticalAlign: -1 }} /> <strong>{l.userMessage}</strong>
+                      <div style={{ color: 'var(--text)', marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                        <UserIcon width={13} height={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                        <strong style={{ lineHeight: 1.5 }}>{l.userMessage}</strong>
                       </div>
-                      <div style={{ color: 'var(--text-2)', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
-                        <ConsultationIcon width={12} height={12} style={{ flexShrink: 0, marginTop: 2 }} /> <span>{l.botResponse.substring(0, 160)}{l.botResponse.length > 160 ? '…' : ''}</span>
+                      <div
+                        style={{
+                          color: 'var(--text-2)',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          background: 'var(--surface2)',
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                        }}
+                      >
+                        <ConsultationIcon width={13} height={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span style={{ lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: sanitizeBotHtml(l.botResponse) }} />
                       </div>
                     </div>
                   ))

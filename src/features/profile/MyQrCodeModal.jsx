@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode'
 import Modal from '@components/ui/Modal'
-import { QrCodeIcon } from '@components/ui/icons'
+import { QrCodeIcon, DownloadIcon } from '@components/ui/icons'
 import { buildUserQrPayload } from '@lib/schoolId'
 
 export default function MyQrCodeModal({ isOpen, onClose, profile }) {
@@ -29,6 +29,18 @@ export default function MyQrCodeModal({ isOpen, onClose, profile }) {
 
   const idLabel = profile.school_id_barcode || profile.student_number || null
 
+  // Slugifies the name/ID into a safe filename — falls back to the raw
+  // user_id if somehow both name and idLabel are missing, so this never
+  // produces an empty/invalid download name.
+  function handleDownload() {
+    if (!dataUrl) return
+    const namePart = (profile.name || idLabel || profile.user_id || 'qr-code').trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `${namePart}-qr-code.png`
+    a.click()
+  }
+
   return (
     <>
       <Modal
@@ -37,9 +49,14 @@ export default function MyQrCodeModal({ isOpen, onClose, profile }) {
         title="My QR Code"
         icon={<QrCodeIcon width={16} height={16} />}
         actions={
-          <button type="button" className="btn btn-outline" onClick={onClose}>
-            Close
-          </button>
+          <>
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Close
+            </button>
+            <button type="button" className="btn btn-teal" onClick={handleDownload} disabled={!dataUrl} style={{ opacity: dataUrl ? 1 : 0.5 }}>
+              <DownloadIcon width={13} height={13} /> Download PNG
+            </button>
+          </>
         }
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -93,6 +110,22 @@ export default function MyQrCodeModal({ isOpen, onClose, profile }) {
               <strong style={{ fontSize: 16 }}>{profile.name}</strong>
               {idLabel && <div style={{ marginTop: 4, fontSize: 13, color: '#555' }}>{idLabel}</div>}
             </div>
+            {dataUrl && (
+              <button
+                type="button"
+                className="btn btn-teal"
+                // Fullscreen closes on any click within it (see the
+                // outer div's onClick) — without stopping propagation
+                // here, tapping Download would immediately close the
+                // overlay instead of triggering the download.
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDownload()
+                }}
+              >
+                <DownloadIcon width={13} height={13} /> Download PNG
+              </button>
+            )}
             <span style={{ fontSize: 12, color: '#888' }}>Tap anywhere to close</span>
           </div>,
           document.body

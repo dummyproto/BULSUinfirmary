@@ -3988,6 +3988,16 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 .chip:hover{background:var(--primary);color:white}
 
+/* Chat History modal replays the same bot-reply HTML used in live chat
+   (including these same chips), but nothing there re-sends a message —
+   ChatLogModal.jsx has no click handler at all, unlike the live chat
+   panel. Without this, the chips still look tappable (pointer cursor +
+   hover swap) even though tapping them silently does nothing. */
+.chat-log-readonly .chip,
+.chat-log-readonly .topic-chip{cursor:default;pointer-events:none}
+.chat-log-readonly .chip:hover{background:var(--primary-light);color:var(--primary)}
+[data-theme="dark"] .chat-log-readonly .chip:hover{background:rgba(61,191,150,.14);color:var(--primary)}
+
 .chat-step{
   display:flex;align-items:flex-start;gap:10px;padding:7px 0;
   border-bottom:1px solid var(--border);font-size:12.5px;
@@ -4005,6 +4015,35 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 }
 .chat-service-item:last-child{border-bottom:none}
 .service-icon{font-size:20px;flex-shrink:0;margin-top:2px}
+
+/* ── UNIFIED TOPIC CARD ── */
+/* Every topic-category reply (Clinic Hours, Location, Services,
+   Documents, Emergency, health tips, etc.) shares this one look: the
+   whole thing lives inside .chat-info-box's existing bordered/rounded
+   container, with an icon+title header as the FIRST row (divided from
+   whatever list follows it below), instead of a bare <strong> title
+   sitting outside/above the box like before. See topicCard()/cardItem()
+   in botEngine.js — this is the CSS half of that pair. */
+.chat-info-box-header{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text);
+}
+.topic-card-icon{font-size:16px;flex-shrink:0}
+
+.chat-topic-card-item{
+  display:flex;align-items:flex-start;gap:12px;padding:10px 12px;
+  border-bottom:1px solid var(--border);font-size:12.5px;
+}
+.chat-topic-card-item:last-child{border-bottom:none}
+.topic-item-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.topic-item-title{font-weight:600;color:var(--text)}
+.topic-item-desc{display:block;margin-top:2px;color:var(--text-2);font-size:12px}
+
+/* Same divided-row look as .chat-topic-card-item, but for a single
+   inline title+description pair with no separate icon column — used
+   where a topic card item's icon is a numbered/step badge instead of
+   an emoji (e.g. the Document Request steps list). */
+.chat-topic-card-item.no-icon{gap:10px}
 
 .chat-tip-item{
   padding:6px 10px;background:var(--success-light);border-left:3px solid var(--success);
@@ -6747,6 +6786,33 @@ td {
        silently reintroduce the same input-row-hidden-behind-nav bug. */
     height: calc(100vh - var(--topbar-h) - 20px - 72px) !important;
     height: calc(100dvh - var(--topbar-h) - 20px - 72px) !important;
+  }
+}
+
+/* Consolidated bottom-nav clearance for .chatbot-layout, superseding
+   the two pixel-width-specific blocks just above (@media max-width:768px
+   and @media max-width:900px+max-height:520px) — both only fire at
+   specific narrow breakpoints, which misses a TOUCH TABLET IN LANDSCAPE:
+   the bottom nav still shows there (see .mobile-bottom-nav's own touch
+   condition near the top of this file — (hover:none) and
+   (pointer:coarse)), but the tablet is often wider than 768px, so
+   neither rule above ever applied and the chat input row sat flush
+   against — or under — the nav bar with no room to breathe.
+   This one rule instead keys off the SAME device-size-independent touch
+   condition the rest of the app's mobile/tablet layout already uses, so
+   it applies consistently across every touch device this app treats as
+   "mobile/tablet" — narrow phone, landscape phone, portrait tablet,
+   landscape tablet — regardless of its exact pixel width. Comes AFTER
+   both blocks above in the file, so its !important wins the cascade
+   tie-break over them on any device where more than one of these three
+   rules would otherwise match. 84px = the same 76px .page-content's own
+   bottom-nav padding reservation uses elsewhere in this file, plus 8px
+   extra specifically so the chat input has a small visible gap above
+   the nav bar rather than sitting flush against it. */
+@media(max-width:768px), (hover:none) and (pointer:coarse){
+  .chatbot-layout{
+    height:calc(100vh - var(--topbar-h) - 84px)!important;
+    height:calc(100dvh - var(--topbar-h) - 84px)!important;
   }
 }
 

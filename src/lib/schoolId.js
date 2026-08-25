@@ -4,11 +4,19 @@
  * it directly off a phone screen instead of the person typing their
  * number. Deliberately compatible with extractSchoolIdCode() below, which
  * already knows how to pull an identifier out of data.schoolIdBarcode /
- * data.userId / data.studentId — so scanning this QR through this app's
- * own existing QR-login/registration scanner correctly recognizes this
- * user, preferring their physical school ID's saved barcode value (if
- * they've scanned and saved one in Account Settings) over their raw
- * student/personnel number.
+ * data.staffIdNumber / data.userId / data.studentId — so scanning this QR
+ * through this app's own existing QR-login/registration scanner correctly
+ * recognizes this user, preferring their physical school ID's saved
+ * barcode value (if they've scanned and saved one in Account Settings)
+ * over their raw student/personnel number.
+ *
+ * staffIdNumber (staff_profiles.staff_id_number — see migration 036) is
+ * the staff/admin equivalent of a patient's student_number: null for
+ * patients, always set for staff/admin. Without it here, a staff/admin
+ * account's own QR code had nothing lookup_email_by_school_id (migration
+ * 045/047) could actually match on — scanning it at login silently
+ * failed to identify the account at all, which meant the quick-login PIN
+ * (migration 045) had no working scan step to attach to for those roles.
  */
 export function buildUserQrPayload(profile) {
   return JSON.stringify({
@@ -16,6 +24,7 @@ export function buildUserQrPayload(profile) {
     userId: profile.user_id,
     name: profile.name || `${profile.givenName || ''} ${profile.surname || ''}`.trim(),
     studentNumber: profile.student_number || null,
+    staffIdNumber: profile.staff_id_number || null,
     schoolIdBarcode: profile.school_id_barcode || null,
   })
 }
@@ -39,16 +48,16 @@ export function extractSchoolIdCode(raw) {
   try {
     const data = JSON.parse(text)
     if (data && typeof data === 'object') {
-      return data.schoolIdBarcode || data.barcode || data.userId || data.studentId || data.id || text
+      return data.schoolIdBarcode || data.barcode || data.staffIdNumber || data.userId || data.studentId || data.id || text
     }
   } catch {
     // Not JSON — fall through to the other extraction strategies.
   }
 
-  const paramMatch = text.match(/[?&](?:schoolIdBarcode|barcode|userId|studentId|id)=([^&]+)/i)
+  const paramMatch = text.match(/[?&](?:schoolIdBarcode|barcode|staffIdNumber|userId|studentId|id)=([^&]+)/i)
   if (paramMatch) return decodeURIComponent(paramMatch[1])
 
-  const labelMatch = text.match(/(?:SCHOOL[-_\s]*ID|STUDENT[-_\s]*(?:NO|NUMBER|ID)|BARCODE)\s*[:=]\s*([A-Za-z0-9\-_.]+)/i)
+  const labelMatch = text.match(/(?:SCHOOL[-_\s]*ID|STUDENT[-_\s]*(?:NO\.?|NUMBER|ID)|BARCODE)\s*[:=]\s*([A-Za-z0-9\-_.]+)/i)
   // Capped at 50 to match users.school_id_barcode's VARCHAR(50) column —
   // without this, a QR code that doesn't match any of the patterns
   // above falls through to returning the ENTIRE raw scanned text
@@ -119,7 +128,13 @@ export function extractRegistrationPayload(raw) {
     return match ? match[1].trim() : ''
   }
   return {
-    studentNumber: line(/(?:STUDENT[-_\s]*(?:NO|NUMBER|ID)|SCHOOL[-_\s]*ID)\s*[:=]\s*([A-Za-z0-9\-_.]+)/i),
+    // "NO\.?" (not just "NO") — this specific ID format prints "Student
+    // No.: 2023400869" with a period right after "No", which the
+    // original pattern's `\s*[:=]\s*` immediately after NO/NUMBER/ID
+    // didn't account for and so never matched at all on a real scanned
+    // ID card. Same fix as extractSchoolIdCode's own labelMatch above,
+    // which has the identical pattern for the same reason.
+    studentNumber: line(/(?:STUDENT[-_\s]*(?:NO\.?|NUMBER|ID)|SCHOOL[-_\s]*ID)\s*[:=]\s*([A-Za-z0-9\-_.]+)/i),
     fullName: line(/(?:NAME|FULL[-_\s]*NAME)\s*[:=]\s*([^\n\r]+)/i),
     course: line(/(?:COURSE|PROGRAM)\s*[:=]\s*([^\n\r]+)/i),
     yearLevel: line(/(?:YEAR[-_\s]*LEVEL|YEAR)\s*[:=]\s*([^\n\r]+)/i),

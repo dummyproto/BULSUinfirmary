@@ -8,7 +8,8 @@ import { getOrCreateActiveConversation, addMessage, createConversation, getAiRep
 import { getBotReply, isHealthConcernMessage } from './lib/botEngine'
 import { useSpeechSynthesis } from '@hooks/useSpeechSynthesis'
 import Toggle from '@components/ui/Toggle'
-import ChatMessage, { toSpeechText } from './ChatMessage'
+import ChatMessage from './ChatMessage'
+import { toSpeechText } from './chatText'
 import ChatLogModal from './ChatLogModal'
 import BotFace from './BotFace'
 import {
@@ -269,7 +270,7 @@ export default function ChatbotPage() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, typing])
 
-  async function handleSend(text) {
+    async function handleSend(text, { skipAi = false } = {}) {
     const msg = text.trim()
     // typing is true from the moment a non-SOS message is sent until its
     // reply (AI or fallback) arrives — reusing it here as the rate limit
@@ -325,10 +326,18 @@ export default function ChatbotPage() {
     let emergency = false
     try {
       try {
-        // Skip straight to the rule-based fallback while a recent Groq
+                // Skip straight to the rule-based fallback while a recent Groq
         // 429 is still in its cooldown window — avoids re-sending a call
         // that's essentially certain to be rejected again right now.
         if (Date.now() < aiCooldownUntilRef.current) throw new Error('AI cooldown active')
+        // Quick-reply chips (topic tiles, inline "Fever + Headache"-style
+        // chips) map to one specific, pre-formatted canned reply in
+        // botEngine.js. Always route these straight to the rule-based
+        // engine instead of letting the AI free-write its own version —
+        // otherwise the exact same button can render two differently
+        // formatted replies depending on whether Groq happened to answer
+        // it or the fallback did (see KNOWN_ISSUES.md).
+        if (skipAi) throw new Error('Canned quick reply — skipping AI')
 
         // Real AI reply (Groq, via the chat-completion Edge Function) when
         // it's deployed and configured.
@@ -391,9 +400,9 @@ export default function ChatbotPage() {
   // via dangerouslySetInnerHTML — replaces the legacy inline
   // onclick="sendQuickReply(...)" attributes, which can't work as React
   // event handlers inside injected HTML strings.
-  function handleMessagesClick(e) {
+    function handleMessagesClick(e) {
     const target = e.target.closest('[data-reply]')
-    if (target) handleSend(target.dataset.reply)
+    if (target) handleSend(target.dataset.reply, { skipAi: true })
   }
 
   // Same as handleMessagesClick, but for the Topic Categories grid

@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
-import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail } from '@services/usersService'
+import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail, checkEmailHasPin, resendConfirmationEmail } from '@services/usersService'
 import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
+import PinInput from '@components/ui/PinInput'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
 import logo from '@/assets/logo.png'
@@ -102,10 +103,10 @@ const ForgotPasswordModal = lazy(() => import('./ForgotPasswordModal'))
 const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
 export default function LoginPage() {
-  const { isAuthenticated, role, signIn } = useAuth()
+  const { isAuthenticated, role, signIn, signInWithPin } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [mode, setMode] = useState('password') // 'password' | 'scan'
+  const [mode, setMode] = useState('password') // 'password' | 'scan' | 'pin'
   // Seeded directly from router state (not via an Effect) when arriving
   // here right after a successful sign-up on the separate /register route
   // — see RegisterPage's onRegistered, which navigates here with
@@ -115,9 +116,17 @@ export default function LoginPage() {
   // avoids needing a setState call inside an Effect at all.
   const [email, setEmail] = useState(() => location.state?.registeredEmail || '')
   const [password, setPassword] = useState('')
+  const [pin, setPin] = useState('')
+  const [pinSubmitting, setPinSubmitting] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
+  // Set only when a sign-in attempt fails specifically because the
+  // account's email hasn't been confirmed yet — drives showing the
+  // "Resend confirmation email" button instead of the normal wrong-
+  // password error text. Cleared on any new submit attempt.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState('')
+  const [resending, setResending] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
@@ -165,16 +174,57 @@ export default function LoginPage() {
     setMode(next)
   }
 
-  function handleIdentified(foundEmail) {
+  // Scanning an ID only ever identifies WHICH account it is (see
+  // QrLoginScan.jsx's own onIdentified) — it was never itself a login
+  // step. This decides what happens next: if that account has a
+  // quick-login PIN set (Account Settings), skip straight to a 4-digit
+  // PIN pad instead of a full password field, which is the actual
+  // "automatic login" shortcut this exists for. Falls back to the
+  // ordinary password field for any account without a PIN set, or if
+  // the has-a-PIN check itself fails for some reason (network hiccup,
+  // etc.) — never silently blocks someone from signing in at all just
+  // because this one lookup didn't work.
+  async function handleIdentified(foundEmail) {
     setEmail(foundEmail)
+    setPin('')
     setError('')
-    setInfo(`Identified account for ${foundEmail} — enter your password to continue.`)
-    setMode('password')
+    let pinEnabled
+    try {
+      pinEnabled = await checkEmailHasPin(foundEmail)
+    } catch {
+      pinEnabled = false
+    }
+    if (pinEnabled) {
+      setInfo(`Identified account for ${foundEmail} — enter your 4-digit PIN to continue.`)
+      setMode('pin')
+    } else {
+      setInfo(`Identified account for ${foundEmail} — enter your password to continue.`)
+      setMode('password')
+    }
+  }
+
+  async function handlePinSubmit(e) {
+    e.preventDefault()
+    setError('')
+    if (!/^[0-9]{4}$/.test(pin)) {
+      setError('Enter your 4-digit PIN.')
+      return
+    }
+    setPinSubmitting(true)
+    try {
+      await signInWithPin(email, pin)
+    } catch (err) {
+      setError(err.message || 'Incorrect PIN.')
+      setPin('')
+    } finally {
+      setPinSubmitting(false)
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setUnconfirmedEmail('')
 
     // Checked first, before anything else. An already-disabled account
     // must show this same message every time, no matter what password
@@ -226,6 +276,19 @@ export default function LoginPage() {
         clearAttempts(email)
         setLockUntil(0)
         setError('Invalid email or password. Your account is disabled — contact admin.')
+      } else if (/email not confirmed/i.test(err.message || '')) {
+        // A genuinely registered account, correct password, but the
+        // person hasn't clicked their confirmation link yet — this is
+        // Supabase Auth's own account, not this app's `is_active`, so it
+        // surfaces as this specific, distinguishable error message
+        // rather than a generic auth failure. Handled first, before the
+        // role-lookup/lockout escalation below, and deliberately doesn't
+        // count as a failed attempt — a correct password against an
+        // account that just isn't confirmed yet isn't a guessing attack.
+        clearAttempts(email)
+        setLockUntil(0)
+        setUnconfirmedEmail(email)
+        setError('Please confirm your email before signing in — check your inbox for the confirmation link.')
       } else {
         // Admin accounts are exempt from the entire lockout/disable
         // escalation below — see getRoleByEmail's doc comment in
@@ -346,7 +409,7 @@ export default function LoginPage() {
         <button type="button" className={`btn btn-sm ${mode === 'password' ? 'btn-blue' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => switchMode('password')}>
           <MailIcon width={13} height={13} /> Email &amp; Password
         </button>
-        <button type="button" className={`btn btn-sm ${mode === 'scan' ? 'btn-blue' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => switchMode('scan')}>
+        <button type="button" className={`btn btn-sm ${mode === 'scan' || mode === 'pin' ? 'btn-blue' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => switchMode('scan')}>
           <CreditCardIcon width={13} height={13} /> Scan ID
         </button>
       </div>
@@ -356,6 +419,31 @@ export default function LoginPage() {
     <AlertTriangleIcon width={13} height={13} style={{ flexShrink: 0 }} /> {error}
   </div>
 )}
+      {unconfirmedEmail && (
+        <div style={{ marginBottom: 14, marginTop: -4 }}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            style={{ width: '100%' }}
+            disabled={resending}
+            onClick={async () => {
+              setResending(true)
+              try {
+                await resendConfirmationEmail(unconfirmedEmail)
+                setError('')
+                setUnconfirmedEmail('')
+                setInfo('Confirmation email resent — check your inbox.')
+              } catch (err) {
+                setError(err.message || 'Could not resend the confirmation email.')
+              } finally {
+                setResending(false)
+              }
+            }}
+          >
+            {resending ? 'Resending…' : 'Resend Confirmation Email'}
+          </button>
+        </div>
+      )}
       {info && !error && (
         <div className="alert alert-success" style={{ marginBottom: 14, fontSize: 12.5 }}>
           <CheckCircleIcon width={13} height={13} /> {info}
@@ -430,7 +518,42 @@ export default function LoginPage() {
             </div>
           </div>
           <button type="submit" className="login-btn" disabled={submitting || isLocked}>
-            {submitting ? 'Signing in…' : isLocked ? `Locked — ${secondsLeft}s` : 'Sign In →'}
+            {submitting ? 'Signing in…' : isLocked ? `Locked — ${secondsLeft}s` : 'Sign In'}
+          </button>
+        </form>
+      ) : mode === 'pin' ? (
+        <form onSubmit={handlePinSubmit}>
+                    <div className="login-field">
+            <label htmlFor="l-pin">4-Digit PIN</label>
+            <PinInput
+              id="l-pin"
+              value={pin}
+              onChange={(digits) => {
+                setPin(digits)
+                if (error) setError('')
+              }}
+              inputClassName="login-input"
+              textColor="#EDE8E0"
+              fontSize={20}
+              hasError={!!error}
+              autoFocus
+              required
+            />
+          </div>
+          <button type="submit" className="login-btn" disabled={pinSubmitting || pin.length !== 4}>
+            {pinSubmitting ? 'Verifying…' : 'Continue →'}
+          </button>
+          <button
+            type="button"
+            className="login-forgot-link"
+            style={{ width: '100%', textAlign: 'center', marginTop: 12, fontSize: 12.5, cursor: 'pointer' }}
+            onClick={() => {
+              setError('')
+              setInfo(`Identified account for ${email} — enter your password to continue.`)
+              setMode('password')
+            }}
+          >
+            Use password instead
           </button>
         </form>
       ) : (

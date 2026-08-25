@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import Spinner from '@components/ui/Spinner'
-import { ROLE_LABELS, ROLE_GRADIENTS, calcAge, isPersonnelNumber } from './lib/profileHelpers'
+import { ROLE_LABELS, ROLE_GRADIENTS, calcAge, isPersonnelNumber, buildFullName } from './lib/profileHelpers'
 import { compressImageFile } from '@lib/imageCompression'
 import EditProfileModal from './EditProfileModal'
 import EditFamilyModal from './EditFamilyModal'
 import ChangePasswordModal from './ChangePasswordModal'
+import SetPinModal from './SetPinModal'
 import AvatarMenu from './AvatarMenu'
-import { getUserByEmail, updateUser, updatePatientProfile, updateStaffProfile } from '@services/usersService'
+import { getUserByEmail, updateUser, updatePatientProfile, updateStaffProfile, hasOwnPin } from '@services/usersService'
 import {
   UserIcon,
   PeopleIcon,
@@ -123,7 +124,30 @@ export default function ProfilePage() {
   }
   const [editOpen, setEditOpen] = useState(false)
   const [familyEdit, setFamilyEdit] = useState(null) // { section, initial }
-  const [pwOpen, setPwOpen] = useState(false)
+    const [pwOpen, setPwOpen] = useState(false)
+  // Quick-login PIN — available to every role now (patient, staff, and
+  // admin), same as the QR-scan login flow it supports (see
+  // LoginPage.jsx/QrLoginScan.jsx), which was never itself role-
+  // restricted — only this "Set/Change PIN" UI and the hasPin lookup
+  // below used to be. null = still loading/unknown, so the button
+  // doesn't briefly flash "Set PIN" before flipping to "Change PIN" for
+  // someone who already has one.
+  const [pinOpen, setPinOpen] = useState(false)
+  const [hasPin, setHasPin] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    hasOwnPin()
+      .then((result) => {
+        if (!cancelled) setHasPin(result)
+      })
+      .catch(() => {
+        if (!cancelled) setHasPin(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [role])
 
   useEffect(() => {
     if (!authProfile?.email) return undefined
@@ -369,6 +393,7 @@ export default function ProfilePage() {
                         </button>
                       </div>
                       <div style={{ padding: '14px 18px' }}>
+                        <DetailRow label="Full Name" value={buildFullName(user, user.name)} />
                         <DetailRow label="Surname" value={user.surname} />
                         <DetailRow label="First Name" value={user.givenName} />
                         <DetailRow label="M.I." value={user.mi} />
@@ -579,6 +604,23 @@ export default function ProfilePage() {
                       Change Password
                     </button>
                   </div>
+
+                                    <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <KeyIcon width={13} height={13} /> Quick-Login PIN
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {hasPin
+                          ? 'A 4-digit PIN is set — scanning your ID at login signs you in directly.'
+                          : "Optional — set a 4-digit PIN to sign in instantly after scanning your ID's QR code."}
+                      </div>
+                    </div>
+                    <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap', flexShrink: 0 }} disabled={hasPin === null} onClick={() => setPinOpen(true)}>
+                      {hasPin ? 'Change PIN' : 'Set PIN'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -632,6 +674,20 @@ export default function ProfilePage() {
         isOpen={pwOpen}
         onClose={() => setPwOpen(false)}
         onSuccess={() => show('Password updated successfully!', 'success')}
+        onError={(msg) => show(msg, 'error')}
+      />
+
+      <SetPinModal
+        key={pinOpen ? 'set-pin-open' : 'set-pin-closed'}
+        isOpen={pinOpen}
+        hasPin={!!hasPin}
+        onClose={() => setPinOpen(false)}
+        onSuccess={(msg) => {
+          show(msg, 'success')
+          hasOwnPin()
+            .then(setHasPin)
+            .catch(() => {})
+        }}
         onError={(msg) => show(msg, 'error')}
       />
     </>

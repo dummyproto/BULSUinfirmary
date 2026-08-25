@@ -178,6 +178,17 @@ export async function registerPatient({ email, password, username, name, surname
     email,
     password,
     options: {
+      // Without this, Supabase falls back to the project's default Site
+      // URL (Dashboard → Authentication → URL Configuration) for where
+      // the confirmation link sends people — which may not be set, or
+      // may point at a different deployment than the one they actually
+      // registered from. Pinning it to wherever THIS app is currently
+      // running means the link always lands back on the right site.
+      // (That URL still has to be added to the project's Redirect URLs
+      // allow-list in the Dashboard, or Supabase rejects it outright —
+      // see this function's own module-level comment for the full
+      // email-confirmation setup this depends on.)
+      emailRedirectTo: `${window.location.origin}/login`,
       data: {
         username,
         name,
@@ -207,6 +218,18 @@ export async function registerPatient({ email, password, username, name, surname
     throw new Error('An account with this email already exists. Please sign in instead.')
   }
 
+  // `data.session` being set here means Supabase decided this account
+  // needed no confirmation at all and signed it straight in — which only
+  // happens when the project's "Confirm email" setting (Dashboard →
+  // Authentication → Sign In / Providers → Email) is turned OFF. With it
+  // ON (required for the "verify email before the account exists"
+  // behavior this whole function is built around), `data.session` is
+  // always null here instead, and this branch never runs — the account
+  // only gets finalized into public.users/patient_profiles later, from
+  // AuthContext.jsx's loadProfile(), once they've actually clicked the
+  // confirmation link and a real session exists. This branch is kept
+  // only so registration still works (just without the email-gate) if
+  // that project setting is ever off — not the intended path.
   if (data.session) {
     const user = await finalizeSelfRegistration(data.user)
     // Registering shouldn't silently log the person in — sign this
@@ -218,6 +241,19 @@ export async function registerPatient({ email, password, username, name, surname
     return { needsEmailConfirmation: false, user }
   }
   return { needsEmailConfirmation: true, user: null }
+}
+
+// Re-sends the confirmation email for an account that hasn't clicked its
+// link yet — used by LoginPage.jsx when a sign-in attempt fails with
+// Supabase's "Email not confirmed" error, so someone who lost the
+// original email (or let it expire) isn't stuck.
+export async function resendConfirmationEmail(email) {
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
+    options: { emailRedirectTo: `${window.location.origin}/login` },
+  })
+  if (error) throw error
 }
 
 /**
@@ -419,6 +455,32 @@ export async function checkEmailRegistered(email) {
   return !!data
 }
 
+// ── Quick-login PIN (see 045_pin_login.sql) ──
+// setOwnPin/clearOwnPin/hasOwnPin all act on the CURRENTLY signed-in
+// user's own account (auth.uid()-scoped, enforced inside each RPC) —
+// used from Account Settings, where the person is already logged in.
+export async function setOwnPin(pin) {
+  const { error } = await supabase.rpc('set_own_pin', { p_pin: pin })
+  if (error) throw error
+}
+export async function clearOwnPin() {
+  const { error } = await supabase.rpc('clear_own_pin')
+  if (error) throw error
+}
+export async function hasOwnPin() {
+  const { data, error } = await supabase.rpc('has_own_pin')
+  if (error) throw error
+  return !!data
+}
+// Pre-login — checked by LoginPage.jsx right after a successful QR scan
+// to decide whether to show a PIN pad or fall back to the normal
+// password field, for whichever email the scan just identified.
+export async function checkEmailHasPin(email) {
+  const { data, error } = await supabase.rpc('email_has_pin', { p_email: email })
+  if (error) throw error
+  return !!data
+}
+
 export async function getUserByAuthId(authUserId) {
   const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('auth_user_id', authUserId).maybeSingle()
   if (error) throw error
@@ -565,5 +627,5 @@ export async function resetUserPassword(userId, newPassword) {
   if (lookupError) throw lookupError
   if (!user?.auth_user_id) throw new Error('This user has no linked login account.')
 
-  const data = await invokeEdgeFunction('reset-user-password', { authUserId: user.auth_user_id, newPassword })
+    await invokeEdgeFunction('reset-user-password', { authUserId: user.auth_user_id, newPassword })
 }

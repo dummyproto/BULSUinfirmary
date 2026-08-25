@@ -354,3 +354,29 @@ export const EMERGENCY_PATTERN =
 
 export const EMERGENCY_REPLY =
   "This may be an emergency. Stay calm, don't leave the person alone, and get help immediately — go straight to the school clinic or the nearest hospital. You can type \"SOS\" here to open the Emergency Alert form directly, or tap the SOS button at the top of the screen."
+
+// Instant local check for clearly non-clinic requests (e.g. "write me a
+// song", "solve this equation", "write me some code") — same reasoning
+// as EMERGENCY_PATTERN above: guarantees a consistent refusal for the
+// most common off-topic request shapes without waiting on (or paying
+// for) a model call, and without relying solely on the model to follow
+// SYSTEM_PROMPT's scope rule. Deliberately conservative/narrow — this is
+// only a fast-path for the obvious cases; anything less clear-cut is
+// left for the model itself to judge using SYSTEM_PROMPT.
+export const OFF_TOPIC_PATTERN = new RegExp(
+  [
+    'write (me )?(a |some )?(poem|song|lyric|story|essay|joke)',
+    'tell me a joke',
+    'solve (this|the|my) (equation|math|problem)',
+    'do my (homework|assignment)',
+    'write (me )?(some )?code',
+    'debug (this|my) code',
+    'translate this (sentence|paragraph|text)',
+    "what'?s the capital of",
+    'who (is|was) the (president|prime minister)',
+  ].join('|'),
+  'i'
+)
+
+export const OFF_TOPIC_REPLY =
+  "I'm MediBot, the clinic's assistant, so I can only help with clinic hours, services, documents, symptoms, health tips, and emergencies. For anything outside that, a general assistant would be a better fit — happy to help with anything clinic-related though!"

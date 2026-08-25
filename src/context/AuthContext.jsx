@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase } from '@services/supabaseClient'
 import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext(undefined)
 
 export function AuthProvider({ children }) {
@@ -18,30 +19,51 @@ export function AuthProvider({ children }) {
       setProfile(null)
       return
     }
-    try {
-      let row = await getUserByAuthId(authUser.id)
-      if (!row && authUser.email) {
-        row = await getUserByEmail(authUser.email)
-        // linkAuthUserIfNeeded(row, authUserId) — its FIRST parameter is
-        // the whole row object (it reads row.auth_user_id and
-        // row.user_id internally), not the bare user_id. Passing
-        // row.user_id here (just the integer) meant the function's own
-        // `row.user_id` access was reading .user_id off a number, i.e.
-        // undefined — which the update's .eq('user_id', undefined) then
-        // sent to Postgres as the literal string "undefined" against an
-        // integer column, exactly the "invalid input syntax for type
-        // integer" 400 in the console. Hit on the "found by email, not
-        // yet linked by auth_user_id" bridge path — most commonly a
-        // patient's first sign-in right after self-registration.
-        if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
+    // Retries specifically on Supabase's "JWT issued at future" error — a
+    // known Supabase-infra quirk where a JUST-issued token (right after
+    // signUp()/signInWithPassword()) gets validated by a REST API pod
+    // whose clock is a hair behind the Auth pod that signed it, making
+    // the token's iat look like it's in the future for a moment. It's
+    // not this app's system clock (confirmed correct) and not anything
+    // wrong with the token itself — it self-resolves within a second or
+    // two as the token ages past that razor-thin skew window, so a short
+    // retry is the actual fix rather than surfacing it as a real error.
+    // Anything else throws straight through on the first attempt, same
+    // as before — this isn't a general "retry any failure" loop.
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        let row = await getUserByAuthId(authUser.id)
+        if (!row && authUser.email) {
+          row = await getUserByEmail(authUser.email)
+          // linkAuthUserIfNeeded(row, authUserId) — its FIRST parameter is
+          // the whole row object (it reads row.auth_user_id and
+          // row.user_id internally), not the bare user_id. Passing
+          // row.user_id here (just the integer) meant the function's own
+          // `row.user_id` access was reading .user_id off a number, i.e.
+          // undefined — which the update's .eq('user_id', undefined) then
+          // sent to Postgres as the literal string "undefined" against an
+          // integer column, exactly the "invalid input syntax for type
+          // integer" 400 in the console. Hit on the "found by email, not
+          // yet linked by auth_user_id" bridge path — most commonly a
+          // patient's first sign-in right after self-registration.
+          if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
+        }
+        if (!row && authUser.user_metadata?.role === 'patient') {
+          row = await finalizeSelfRegistration(authUser)
+        }
+        setProfile(row)
+        return
+      } catch (err) {
+        const isClockSkew = /jwt issued at future/i.test(err.message || '')
+        if (isClockSkew && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 800))
+          continue
+        }
+        console.error('Failed to load user profile:', err.message)
+        setProfile(null)
+        return
       }
-      if (!row && authUser.user_metadata?.role === 'patient') {
-        row = await finalizeSelfRegistration(authUser)
-      }
-      setProfile(row)
-    } catch (err) {
-      console.error('Failed to load user profile:', err.message)
-      setProfile(null)
     }
   }, [])
 
@@ -134,6 +156,44 @@ export function AuthProvider({ children }) {
     return data
   }, [loadProfile])
 
+  // Alternative to signIn() for the Login page's QR-scan flow, once the
+  // scanned ID has identified an email that has a PIN set (see
+  // LoginPage.jsx's handleIdentified and checkEmailHasPin in
+  // usersService.js). The actual PIN check and account-active/lockout
+  // enforcement all happen server-side in the verify-pin Edge Function
+  // (see that file's own comments for why this can't be a client-side
+  // check) — this just calls it, then completes the real Supabase
+  // session it hands back.
+  const signInWithPin = useCallback(
+    async (email, pin) => {
+      const { data, error } = await supabase.functions.invoke('verify-pin', { body: { email, pin } })
+      if (error) {
+        // supabase-js wraps a non-2xx Edge Function response in a generic
+        // FunctionsHttpError — the actual, useful message ("Incorrect
+        // PIN. 3 attempt(s) left.", the lockout countdown, etc.) is only
+        // available by reading the original response body back out of
+        // the error's own context.
+        let message = 'Could not verify PIN'
+        try {
+          const body = await error.context?.json()
+          if (body?.error) message = body.error
+        } catch {
+          // Response wasn't JSON, or context was unavailable — fall back
+          // to the generic message above.
+        }
+        throw new Error(message)
+      }
+      if (!data?.token_hash) throw new Error('Could not complete sign-in')
+
+      const { error: otpError } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' })
+      if (otpError) throw otpError
+      // onAuthStateChange (already wired up above) picks up the new
+      // session and calls loadProfile() from there automatically — same
+      // as it does after a normal signIn().
+    },
+    []
+  )
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
   }, [])
@@ -142,6 +202,23 @@ export function AuthProvider({ children }) {
   // separate "verify current password" endpoint), then updates to the new
   // one. Fully real — no service-role key needed since this only ever acts
   // on the signed-in user's own account.
+  // Pure re-auth check — confirms the current password is correct
+  // WITHOUT changing anything, unlike changePassword() above. Used by
+  // SetPinModal.jsx before letting someone set/change/remove their
+  // quick-login PIN: since a PIN is an alternative way into the account,
+  // requiring the real password once first (even though Account
+  // Settings already requires being signed in) guards against someone
+  // grabbing an already-unlocked device and quietly adding their own
+  // backdoor PIN.
+  const verifyCurrentPassword = useCallback(
+    async (password) => {
+      if (!session?.user?.email) throw new Error('Not signed in')
+      const { error } = await supabase.auth.signInWithPassword({ email: session.user.email, password })
+      if (error) throw new Error('Current password is incorrect')
+    },
+    [session]
+  )
+
   const changePassword = useCallback(
     async (currentPassword, newPassword) => {
       if (!session?.user?.email) throw new Error('Not signed in')
@@ -235,8 +312,10 @@ export function AuthProvider({ children }) {
     isPasswordRecovery,
     loading,
     signIn,
+    signInWithPin,
     signOut,
     changePassword,
+    verifyCurrentPassword,
     requestPasswordReset,
     verifyRecoveryOtp,
     completePasswordReset,
@@ -246,6 +325,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (ctx === undefined) throw new Error('useAuth must be used within an AuthProvider')

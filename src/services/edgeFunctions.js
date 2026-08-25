@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient'
 export async function invokeEdgeFunction(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body })
 

@@ -122,6 +122,34 @@ function topicChip(icon, label, reply) {
   return `<div class="topic-chip" data-reply="${reply.replace(/"/g, '&quot;')}"><span style="font-size:18px">${icon}</span><span>${label}</span></div>`
 }
 
+// Every topic-category reply (Clinic Hours, Location, Services,
+// Documents, Emergency, health tips, etc.) shares one look: an
+// icon+title header as the first row, then a divided list below it,
+// all inside one bordered card — see .chat-info-box-header /
+// .chat-topic-card-item in legacy.css for the other half of this pair.
+// `bodyHtml` is whatever goes below the header — usually a run of
+// cardItem()/infoRow() calls joined together, but callers that already
+// have their own list markup (e.g. .info-row pairs) can pass that
+// straight through too.
+function topicCard(icon, title, bodyHtml) {
+  return `<div class="chat-info-box">
+    <div class="chat-info-box-header"><span class="topic-card-icon">${icon}</span><strong>${title}</strong></div>
+    ${bodyHtml}
+  </div>`
+}
+
+// One icon + bold title + optional description row inside a topicCard
+// — the "Available Clinic Services" list style. Use plain <div
+// class="info-row"> rows instead (already defined in legacy.css) for
+// simple label→value pairs like Clinic Hours or Location, where there's
+// no separate description line under the label.
+function cardItem(icon, title, desc) {
+  return `<div class="chat-topic-card-item">
+    <span class="topic-item-icon">${icon}</span>
+    <div><span class="topic-item-title">${title}</span>${desc ? `<span class="topic-item-desc">${desc}</span>` : ''}</div>
+  </div>`
+}
+
 export function classifyIntent(msg) {
   const lower = msg.toLowerCase().trim()
   let bestMatch = null
@@ -181,9 +209,11 @@ export function assessRisk(symptoms) {
 }
 
 function buildHealthTipResponse(symptomName, data) {
-  return `💊 <strong>Health Tips for ${symptomName.charAt(0).toUpperCase() + symptomName.slice(1)}</strong><br><br>
-  <strong>🌿 What you can do at home:</strong><br>
-  ${data.tips.map((t) => `<div class="chat-tip-item">${t}</div>`).join('')}
+  const title = `Health Tips for ${symptomName.charAt(0).toUpperCase() + symptomName.slice(1)}`
+  return topicCard('💊', title,
+    `<div style="padding:10px 12px 4px"><strong>🌿 What you can do at home:</strong></div>
+    <div style="padding:0 12px 10px">${data.tips.map((t) => `<div class="chat-tip-item">${t}</div>`).join('')}</div>`
+  ) + `
   <br>
   <div class="chat-warning-box">
     <strong>🏥 When to visit the clinic:</strong><br>${data.when_to_visit}
@@ -367,49 +397,44 @@ function buildBotResponse(intent, msg, ctx) {
       const status = isOpen
         ? '<span style="color:#16A34A;font-weight:600">🟢 Currently OPEN</span>'
         : '<span style="color:#DC2626;font-weight:600">🔴 Currently CLOSED</span>'
-      return `🕐 <strong>Clinic Schedule</strong><br><br>
-      <div class="chat-info-box">
+      return topicCard('🕐', 'Clinic Schedule', `
         <div class="info-row"><span>📅 Monday – Friday</span><span><strong>8:00 AM – 5:00 PM</strong></span></div>
         <div class="info-row"><span>📅 Saturday & Sunday</span><span><strong>Closed</strong></span></div>
-      </div>
+      `) + `
       Status right now: ${status}<br><br>
       Walk-ins are welcome during clinic hours. For appointments or after-hours concerns, call ${PHONE_LINK}.`
     }
 
     case 'location':
-      return `📍 <strong>Clinic Location</strong><br><br>
-      <div class="chat-info-box">
+      return topicCard('📍', 'Clinic Location', `
         <div class="info-row"><span>📍 Campus</span><span><strong>Bulsu Meneses Campus (Near Gate 1)</strong></span></div>
         <div class="info-row"><span>🏢 Building</span><span><strong>Main Building</strong></span></div>
         <div class="info-row"><span>🪜 Floor</span><span><strong>Ground Floor</strong></span></div>
         <div class="info-row"><span>📞 Phone</span><span>${PHONE_LINK}</span></div>
         <div class="info-row"><span>📧 Email</span><span><strong>infirmary.meneses@bulsu.edu.ph</strong></span></div>
         <div class="info-row"><span>📘 Facebook</span><span><strong>Bulsu Health Services Unit-Meneses Campus</strong></span></div>
-      </div>
+      `) + `
       💡 <em>Tip: Look for the green clinic cross sign at the main building entrance.</em>`
 
     case 'staff':
-      return `👩‍⚕️ <strong>Clinic Staff</strong><br><br>
-      ${KB.clinic.staff.map((s) => `<div class="chat-info-box" style="margin-bottom:8px">
-        <div class="info-row"><span>🏷️ Role</span><span><strong>${s.role}</strong></span></div>
-        <div class="info-row"><span>🕐 Schedule</span><span>${s.available}</span></div>
-      </div>`).join('')}
+      return topicCard('👩\u200d⚕️', 'Clinic Staff',
+        KB.clinic.staff.map((s) => cardItem('👤', s.name, `${s.role} · Available ${s.available}`)).join('')
+      ) + `
       <em>Staff schedules may change. Check the clinic bulletin board for updates.</em>`
 
     case 'services':
-      return `🏥 <strong>Available Clinic Services</strong><br><br>
-      ${KB.services.map((s) => `<div class="chat-service-item">
-        <span class="service-icon">${s.icon}</span>
-        <div><strong>${s.name}</strong><br><span style="color:var(--text-2);font-size:12px">${s.desc}</span></div>
-      </div>`).join('')}`
+      return topicCard('🏥', 'Available Clinic Services',
+        KB.services.map((s) => cardItem(s.icon, s.name, s.desc)).join('')
+      )
 
     case 'documents':
       return `📄 <strong>Document Request Guide</strong><br><br>
       <strong>Available Document Types:</strong>
-      <ul>${KB.documents.types.map((d) => `<li>${d}</li>`).join('')}</ul>
-      <strong>📝 How to Request:</strong><br>
-      ${KB.documents.steps.map((s, i) => `<div class="chat-step"><span class="step-num">${i + 1}</span><span>${s}</span></div>`).join('')}
-      <br>🔍 Need to know requirements for a specific document? Ask me: <em>"What are the requirements for [document name]?"</em>`
+      <ul>${KB.documents.types.map((d) => `<li>${d}</li>`).join('')}</ul>` +
+      topicCard('📝', 'How to Request',
+        KB.documents.steps.map((s, i) => `<div class="chat-topic-card-item no-icon"><span class="step-num">${i + 1}</span><span>${s}</span></div>`).join('')
+      ) +
+      `<br>🔍 Need to know requirements for a specific document? Ask me: <em>"What are the requirements for [document name]?"</em>`
 
     case 'doc_requirements': {
       const docType =
@@ -417,15 +442,16 @@ function buildBotResponse(intent, msg, ctx) {
         (lower.includes('medical') ? 'Medical Certificate' : lower.includes('clearance') ? 'Health Clearance' : lower.includes('fit') ? 'Fit to Work Certificate' : lower.includes('physical') ? 'Physical Exam Form' : null)
       if (docType && KB.documents.requirements[docType]) {
         const reqs = KB.documents.requirements[docType]
-        return `📋 <strong>Requirements for ${docType}</strong><br><br>
-        ${reqs.map((r) => `<div class="chat-step"><span class="step-num">✓</span><span>${r}</span></div>`).join('')}
+        return topicCard('📋', `Requirements for ${docType}`,
+          reqs.map((r) => `<div class="chat-topic-card-item no-icon"><span class="step-num">✓</span><span>${r}</span></div>`).join('')
+        ) + `
         <br>📌 Once you have all requirements ready, go to <strong>My Requests → New Request</strong> to submit your application.<br><br>Processing time: <strong>1–3 business days</strong>.`
       }
-      return `📋 <strong>Document Requirements Overview</strong><br><br>
-      For all document requests, you will generally need:<br>
-      <div class="chat-step"><span class="step-num">✓</span><span>Valid school/employee ID</span></div>
-      <div class="chat-step"><span class="step-num">✓</span><span>Completed request form (available at the clinic)</span></div>
-      <div class="chat-step"><span class="step-num">✓</span><span>Purpose/reason for the document</span></div>
+      return topicCard('📋', 'Document Requirements Overview', `
+        <div class="chat-topic-card-item no-icon"><span class="step-num">✓</span><span>Valid school/employee ID</span></div>
+        <div class="chat-topic-card-item no-icon"><span class="step-num">✓</span><span>Completed request form (available at the clinic)</span></div>
+        <div class="chat-topic-card-item no-icon"><span class="step-num">✓</span><span>Purpose/reason for the document</span></div>
+      `) + `
       <br>Ask about a specific document:<br>
       <div class="chat-chips">
         ${KB.documents.types.map((d) => chip(d, `requirements for ${d}`)).join('')}
@@ -436,18 +462,20 @@ function buildBotResponse(intent, msg, ctx) {
 
     case 'pre_clinic':
       if (lower.includes('lab')) {
-        return `🔬 <strong>Before a Lab Test</strong><br><br>
-        ${KB.preClinit.labTest.map((t) => `<div class="chat-tip-item">• ${t}</div>`).join('')}
+        return topicCard('🔬', 'Before a Lab Test',
+          KB.preClinit.labTest.map((t) => cardItem('•', t, '')).join('')
+        ) + `
         <br>💡 If unsure, ask the clinic staff what specific preparations are needed for your test.`
       }
       if (lower.includes('physical')) {
-        return `📋 <strong>Before a Physical Exam</strong><br><br>
-        ${KB.preClinit.physical.map((t) => `<div class="chat-tip-item">• ${t}</div>`).join('')}
+        return topicCard('📋', 'Before a Physical Exam',
+          KB.preClinit.physical.map((t) => cardItem('•', t, '')).join('')
+        ) + `
         <br>💡 Bring any previous health records or lab results for a more complete assessment.`
       }
-      return `🏥 <strong>Before Your Clinic Visit</strong><br><br>
-      <strong>General Preparation:</strong><br>
-      ${KB.preClinit.general.map((tip) => `<div class="chat-step"><span class="step-num">→</span><span>${tip}</span></div>`).join('')}
+      return topicCard('🏥', 'Before Your Clinic Visit',
+        KB.preClinit.general.map((tip) => `<div class="chat-topic-card-item no-icon"><span class="step-num">→</span><span>${tip}</span></div>`).join('')
+      ) + `
       <br>For specific visit types, ask me:<br>
       <div class="chat-chips">
         ${chip('🔬 Lab Test', 'prepare for lab test')}
@@ -460,11 +488,11 @@ function buildBotResponse(intent, msg, ctx) {
       <div class="chat-emergency-box">
         ${KB.emergency.steps.map((s) => `<div class="emergency-step">${s}</div>`).join('')}
       </div>
-      <br><strong>📞 Emergency Contacts:</strong><br>
-      <div class="chat-info-box">
-        ${KB.emergency.contacts.map((c) => `<div class="info-row"><span>${c.label}</span><span><strong>${c.value}</strong></span></div>`).join('')}
-      </div>
-      <br>${SOS_CALLOUT}
+      <br>` +
+      topicCard('📞', 'Emergency Contacts',
+        KB.emergency.contacts.map((c) => `<div class="info-row"><span>${c.label}</span><span><strong>${c.value}</strong></span></div>`).join('')
+      ) +
+      `<br>${SOS_CALLOUT}
       <br>${KB.emergency.disclaimer}`
 
     case 'headache':
@@ -494,8 +522,9 @@ function buildBotResponse(intent, msg, ctx) {
       )
 
     case 'health_tips':
-      return `💚 <strong>Preventive Health Tips</strong><br><br>
-      ${KB.healthTips.general.map((tip) => `<div class="chat-tip-item">${tip}</div>`).join('')}
+      return topicCard('💚', 'Preventive Health Tips',
+        `<div style="padding:10px 12px">${KB.healthTips.general.map((tip) => `<div class="chat-tip-item">${tip}</div>`).join('')}</div>`
+      ) + `
       <br>Ask about specific symptoms:<br>
       <div class="chat-chips">
         ${chip('🤕 Headache', 'headache tips')}
@@ -528,21 +557,19 @@ function buildBotResponse(intent, msg, ctx) {
       return buildHealthSummary([...(ctx.pastMessages || []), ...(ctx.currentMessages || [])])
 
     case 'dental':
-      return `🦷 <strong>Dental Services</strong><br><br>
-      For the latest dental service posts, schedules, and updates, please visit our official Facebook page:<br><br>
-      <div class="chat-info-box">
+      return `For the latest dental service posts, schedules, and updates, please visit our official Facebook page:<br><br>` +
+      topicCard('🦷', 'Dental Services', `
         <div class="info-row"><span>📘 Facebook Page</span><span><strong>Bulsu Health Services Unit-Meneses Campus</strong></span></div>
-      </div>
+      `) + `
       💡 Announcements about dental availability are posted there regularly.`
 
     case 'vaccine':
-      return `💉 <strong>Vaccination Services</strong><br><br>
-      Vaccines are available at the clinic based on the scheduled immunization program.<br><br>
-      <div class="chat-info-box">
+      return `💉 Vaccines are available at the clinic based on the scheduled immunization program.<br><br>` +
+      topicCard('💉', 'Vaccination Services', `
         <div class="info-row"><span>📋 Schedule</span><span>Check clinic bulletin board for dates</span></div>
         <div class="info-row"><span>🪪 Requirement</span><span>Valid ID and vaccination record</span></div>
         <div class="info-row"><span>📞 Inquire</span><span>Call ${PHONE_LINK} for next vaccine schedule</span></div>
-      </div>
+      `) + `
       💡 Bring your previous vaccination card to update your immunization records.`
 
     case 'my_requests': {
@@ -551,26 +578,26 @@ function buildBotResponse(intent, msg, ctx) {
       const pending = reqs.filter((r) => r.status === 'Pending').length
       const approved = reqs.filter((r) => r.status === 'Approved').length
       const processing = reqs.filter((r) => r.status === 'Processing').length
-      return `📄 <strong>Your Document Requests</strong><br><br>
-      <div class="chat-info-box">
+      return topicCard('📄', 'Your Document Requests', `
         <div class="info-row"><span>⏳ Pending</span><span><strong style="color:#D97706">${pending}</strong></span></div>
         <div class="info-row"><span>⚙️ Processing</span><span><strong style="color:#1E7B5E">${processing}</strong></span></div>
         <div class="info-row"><span>✅ Approved</span><span><strong style="color:#16A34A">${approved}</strong></span></div>
         <div class="info-row"><span>📋 Total</span><span><strong>${reqs.length}</strong></span></div>
-      </div>
+      `) + `
       Click <strong>My Requests</strong> in the sidebar to view details and track your requests.`
     }
 
     case 'doc_processing_day':
-      return `⏱️ <strong>Document Request Processing Time</strong><br><br>
-      <div class="chat-info-box">
+      return topicCard('⏱️', 'Document Request Processing Time', `
         <div class="info-row"><span>📝 Standard Documents</span><span><strong>2–3 working days</strong></span></div>
         <div class="info-row"><span>📄 Processing includes:</span><span>Review, verification, preparation, and quality check</span></div>
-      </div>
-      <br><strong>Timeline Breakdown:</strong><br>
-      <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 1:</strong> Document request received and logged into the system</span></div>
-      <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 2:</strong> Staff processes and prepares your document</span></div>
-      <div class="chat-step"><span class="step-num">📅</span><span><strong>Day 3:</strong> Quality check completed, ready for pickup</span></div>
+      `) +
+      `<br>` +
+      topicCard('📅', 'Timeline Breakdown', `
+        <div class="chat-topic-card-item no-icon"><span class="step-num">📅</span><span><strong>Day 1:</strong> Document request received and logged into the system</span></div>
+        <div class="chat-topic-card-item no-icon"><span class="step-num">📅</span><span><strong>Day 2:</strong> Staff processes and prepares your document</span></div>
+        <div class="chat-topic-card-item no-icon"><span class="step-num">📅</span><span><strong>Day 3:</strong> Quality check completed, ready for pickup</span></div>
+      `) + `
       <br>💡 <strong>Tips:</strong>
       <ul>
         <li>Processing time is calculated from <strong>business days</strong> (Mon–Fri only)</li>
