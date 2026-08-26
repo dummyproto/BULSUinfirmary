@@ -614,7 +614,7 @@ export async function deleteUser(userId) {
     // explanation; this surfaces the function's actual reason (e.g. an
     // expired session after a connectivity drop, or "Forbidden") in the
     // toast instead.
-    await invokeEdgeFunction('delete-user', { authUserId: user.auth_user_id })
+    await invokeEdgeFunction('delete-user', { authUserId: user.auth_user_id, userId })
   }
 
   const { error } = await supabase.from('users').delete().eq('user_id', userId)

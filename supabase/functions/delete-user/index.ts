@@ -81,7 +81,11 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Validate the request body ──
-    const { authUserId } = await req.json()
+    // userId (public.users.user_id, the integer PK — distinct from
+    // authUserId's auth.users UUID) is optional; when present it's used
+    // in step 4 below to free up any registration QR code this person
+    // had claimed.
+    const { authUserId, userId } = await req.json()
     if (!authUserId) throw new Error('authUserId is required')
 
     // An admin can never delete their own account through this path —
@@ -110,6 +114,31 @@ Deno.serve(async (req) => {
     // Auth service failure) still fails loudly as before.
     const alreadyGone = error && /user not found/i.test(error.message || '')
     if (error && !alreadyGone) throw error
+
+    // ── 4. Free up this person's registration QR code, if they had one ──
+    // registration_qr_codes.is_used (migration 023) gets set true by
+    // claim_registration_qr() when someone registers, and NOTHING ever
+    // reset it back — the row's used_by_user_id FK is ON DELETE SET
+    // NULL, but that only clears who claimed it, not the is_used flag
+    // itself. So deleting a user permanently "burned" their physical QR
+    // code: re-scanning (or manually entering) the exact same code
+    // afterward always hit RegisterQrScan.jsx's "Your QR code is
+    // already registered" message, forever, even though the account it
+    // was tied to no longer existed. This resets it back to unused so
+    // the same QR code can register a new account again. `userId` is
+    // optional (only usersService.deleteUser() passes it, which already
+    // has it on hand) so this stays backward-compatible with any other
+    // caller of this function that doesn't.
+    if (userId) {
+      const { error: qrError } = await adminClient
+        .from('registration_qr_codes')
+        .update({ is_used: false, used_by_user_id: null, used_at: null })
+        .eq('used_by_user_id', userId)
+      // Non-fatal — the account is already fully deleted at this point;
+      // failing to free up the QR code shouldn't undo that or block the
+      // delete from being reported as successful.
+      if (qrError) console.error('Failed to reset registration_qr_codes for deleted user:', qrError.message)
+    }
 
     return jsonResponse({ deleted: true })
   } catch (err) {

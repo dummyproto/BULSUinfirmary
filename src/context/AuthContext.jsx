@@ -55,17 +55,28 @@ export function AuthProvider({ children }) {
           try {
             row = await finalizeSelfRegistration(authUser)
           } catch (regErr) {
-            // A duplicate-key error here (Postgres code 23505, e.g. on
-            // users_username_key or users_email_key) proves an account
-            // with this username/email already exists somewhere — the
-            // lookups above just failed to find it (a race with another
-            // tab/request finishing registration first, or some other
-            // mismatch getUserByEmail's case-insensitive match still
-            // doesn't cover). Re-fetching and linking it is strictly
-            // safer than surfacing this as a fatal "failed to load
-            // profile" error for someone who actually already has a
-            // working account.
-            if (regErr.code === '23505' && authUser.email) {
+            // Two different Postgres errors both mean the exact same
+            // thing here — "another tab/request already created this
+            // row" — just surfaced differently depending on exactly
+            // where the two finalizeSelfRegistration() calls collided:
+            //   - 23505 (duplicate key): the other tab's INSERT into
+            //     users committed first, so this one violates a unique
+            //     constraint (username/email).
+            //   - 42501 (row-level security violation, "new row
+            //     violates row-level security policy for table
+            //     users"): the classic trigger is a confirmation-email
+            //     link being opened in a NEW tab while the tab that
+            //     started registration is still open — Supabase syncs
+            //     the resulting session to that old tab too (same-origin
+            //     localStorage sync), so it independently fires this
+            //     same finalizeSelfRegistration() call at nearly the
+            //     same moment as the new tab, and loses the race.
+            // Either way, re-fetching and linking the row the OTHER
+            // attempt already created is strictly safer than surfacing
+            // this as a fatal "failed to load profile" error for an
+            // account that's actually working fine in its other tab.
+            const isRaceWithAnotherTab = (regErr.code === '23505' || regErr.code === '42501') && authUser.email
+            if (isRaceWithAnotherTab) {
               row = await getUserByEmail(authUser.email)
               if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
               if (!row) throw regErr
