@@ -738,7 +738,9 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     value={form.email}
                     onChange={(e) => setField('email')(e.target.value)}
                   />
-                  <span className="reg-hint-text">We'll send your account confirmation and reset codes here.</span>
+                  <span className="reg-hint-text">
+                  Use a real, active email address — we'll send a confirmation link and QR code here, and you must verify it before your account is activated. Your account will not be created if you enter an email you can't access.
+                </span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>

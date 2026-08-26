@@ -1,2 +1,17 @@
 [functions.chat-completion]
 verify_jwt = false
+
+[functions.send-verification-email]
+verify_jwt = false
+
+# Registers send-verification-email as the Auth "Send Email" hook for LOCAL
+# dev (`supabase start` / `supabase functions serve`) only. This block has
+# NO effect on the hosted project this app actually runs against — for
+# that, the hook must be enabled manually in the Dashboard: Authentication
+# → Hooks → "Send Email hook". See the setup comment at the top of
+# supabase/functions/send-verification-email/index.ts for the full
+# step-by-step (deploy, enable in Dashboard, set secrets).
+# [auth.hook.send_email]
+# enabled = true
+# uri = "http://127.0.0.1:54321/functions/v1/send-verification-email"
+# secrets = "env(SEND_EMAIL_HOOK_SECRET)"

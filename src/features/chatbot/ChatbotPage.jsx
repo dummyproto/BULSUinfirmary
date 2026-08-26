@@ -203,7 +203,7 @@ export default function ChatbotPage() {
   // showing a stale list that doesn't include the just-started session.
   const [fullHistory, setFullHistory] = useState(null)
 
-    const messagesRef = useRef(null)
+  const messagesRef = useRef(null)
   // Groq's free-tier rate limit is low enough that one busy period makes
   // EVERY following message hit chat-completion, get a 429 back, and only
   // then fall back to the rule-based engine — a wasted round trip (and a
@@ -270,7 +270,7 @@ export default function ChatbotPage() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, typing])
 
-    async function handleSend(text, { skipAi = false } = {}) {
+  async function handleSend(text, { skipAi = false } = {}) {
     const msg = text.trim()
     // typing is true from the moment a non-SOS message is sent until its
     // reply (AI or fallback) arrives — reusing it here as the rate limit
@@ -322,11 +322,11 @@ export default function ChatbotPage() {
       show(`Message may not have saved: ${err.message}`, 'warning')
     )
 
-        let reply
+    let reply
     let emergency = false
     try {
       try {
-                // Skip straight to the rule-based fallback while a recent Groq
+        // Skip straight to the rule-based fallback while a recent Groq
         // 429 is still in its cooldown window — avoids re-sending a call
         // that's essentially certain to be rejected again right now.
         if (Date.now() < aiCooldownUntilRef.current) throw new Error('AI cooldown active')
@@ -400,7 +400,7 @@ export default function ChatbotPage() {
   // via dangerouslySetInnerHTML — replaces the legacy inline
   // onclick="sendQuickReply(...)" attributes, which can't work as React
   // event handlers inside injected HTML strings.
-    function handleMessagesClick(e) {
+  function handleMessagesClick(e) {
     const target = e.target.closest('[data-reply]')
     if (target) handleSend(target.dataset.reply, { skipAi: true })
   }

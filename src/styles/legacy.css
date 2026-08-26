@@ -794,6 +794,7 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
   margin:8px 8px 12px;padding:9px 12px;
   border-top:1px solid rgba(255,255,255,.12);
   border-radius:8px;
+  overflow:hidden;
 }
 /* Navigation section labels (MENU, etc.) */
 .nav-section-label{font-size:10px;font-weight:700;color:#B8AFA5;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}
@@ -1936,7 +1937,6 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   box-shadow:0 14px 34px rgba(0,0,0,.26);
   filter:brightness(1.06) saturate(1.1);
 }
-.profile-header::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08)}
 .profile-avatar-lg{
   width:68px;height:68px;border-radius:50%;
   background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;

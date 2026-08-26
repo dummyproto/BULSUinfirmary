@@ -437,7 +437,23 @@ export async function listUsers() {
 }
 
 export async function getUserByEmail(email) {
-  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).eq('email', email).maybeSingle()
+  // Case-insensitive on purpose: a casing mismatch between what Supabase
+  // Auth hands back (authUser.email) and whatever case public.users.email
+  // happens to be stored in (e.g. an account created via direct SQL, or
+  // before this app consistently lowercased on insert) used to make an
+  // existing account look unregistered to this exact-match query — which
+  // then sent AuthContext.jsx's loadProfile() down the "create a new
+  // account" path for someone who already had one, producing a duplicate
+  // key error on users_username_key instead of just finding their row.
+  //
+  // ilike treats `%` and `_` as wildcards — and `_` is a completely
+  // normal, common character in real email addresses (e.g.
+  // "john_doe@gmail.com") — so both are escaped first. Without this, a
+  // lookup for "john_doe@gmail.com" could also match "johnxdoe@gmail.com"
+  // (any single character in place of the escaped `_`), silently
+  // returning the wrong person's account.
+  const escapedEmail = email.replace(/[%_]/g, (ch) => `\\${ch}`)
+  const { data, error } = await supabase.from('users').select(SELECT_WITH_PROFILES).ilike('email', escapedEmail).maybeSingle()
   if (error) throw error
   return flattenUser(data)
 }

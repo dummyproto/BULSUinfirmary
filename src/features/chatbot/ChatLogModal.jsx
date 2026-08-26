@@ -2,7 +2,7 @@ import Modal from '@components/ui/Modal'
 import { formatDateTime } from '@lib/format'
 import { timeAgo } from '@features/inventory/lib/inventoryHelpers'
 import { BarChartIcon, TrashIcon, UserIcon, ConsultationIcon } from '@components/ui/icons'
-import { sanitizeBotHtml } from './ChatMessage'
+import { sanitizeBotHtml } from './chatText'
 
 // Shows every past conversation (Phase 2 — "the Log view shows every
 // past session, not just the current one"), not a single derived list.

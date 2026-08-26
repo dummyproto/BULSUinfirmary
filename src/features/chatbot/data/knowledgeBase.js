@@ -83,21 +83,24 @@ export const KB = {
       '☀️ Get regular health check-ups and screenings',
     ],
   },
-  emergency: {
+    emergency: {
     steps: [
-      '🚨 <strong>Call for help immediately</strong> — shout for nearest person or call Ext. 0000',
-      '🏥 <strong>Go to the clinic</strong> — Main Bldg, GF, Room 101 (during clinic hours)',
-      '📞 <strong>After hours</strong> — Contact Security Office at Ext. 0000',
+      '🚨 <strong>Call for help immediately</strong> — shout for nearest person or call the campus clinic at <a href="tel:+639076842769" style="color:inherit;text-decoration:underline">0907-684-2769</a>',
+      '🏥 <strong>Go to the clinic</strong> — Bulsu Meneses Campus (Near Gate 1) (during clinic hours)',
       '🚑 <strong>For life-threatening emergencies</strong> — Call 911 or the nearest hospital',
       '🧍 <strong>Do not move</strong> an injured person unless in immediate danger',
       '💊 <strong>Do not give medicines</strong> without medical guidance in emergencies',
     ],
+    // `type` tells botEngine.js's emergency case which link scheme to
+    // render each contact as (tel:/mailto:) — see contactsHtml there.
+    // This array didn't exist before, even though botEngine.js was
+    // always written to read KB.emergency.contacts and render an
+    // "Emergency Contacts" card from it — so that card silently never
+    // appeared in any emergency reply.
     contacts: [
-      { label: 'Clinic (During Hours)', value: 'Ext. 1234' },
-      { label: 'Security (24/7)', value: 'Ext. 0000' },
-      { label: 'National Emergency', value: '911' },
-      { label: 'PRC Emergency', value: '117' },
-      { label: 'Red Cross', value: '143' },
+      { label: 'Campus Clinic', value: '0907-684-2769', type: 'phone' },
+      { label: 'Clinic Email', value: 'infirmary.meneses@bulsu.edu.ph', type: 'email' },
+      { label: 'National Emergency', value: '911', type: 'phone' },
     ],
     disclaimer: '⚠️ <em>This information is for general guidance only and is not a substitute for professional medical advice. In life-threatening situations, always call 911 immediately.</em>',
   },

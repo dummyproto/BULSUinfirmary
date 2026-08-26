@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase } from '@services/supabaseClient'
 import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
+import { useToast } from '@context/ToastContext'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext(undefined)
 
 export function AuthProvider({ children }) {
+  const { show } = useToast()
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null) // flattened row from public.users + role-specific profile table
   const [loading, setLoading] = useState(true)
@@ -50,7 +52,27 @@ export function AuthProvider({ children }) {
           if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
         }
         if (!row && authUser.user_metadata?.role === 'patient') {
-          row = await finalizeSelfRegistration(authUser)
+          try {
+            row = await finalizeSelfRegistration(authUser)
+          } catch (regErr) {
+            // A duplicate-key error here (Postgres code 23505, e.g. on
+            // users_username_key or users_email_key) proves an account
+            // with this username/email already exists somewhere — the
+            // lookups above just failed to find it (a race with another
+            // tab/request finishing registration first, or some other
+            // mismatch getUserByEmail's case-insensitive match still
+            // doesn't cover). Re-fetching and linking it is strictly
+            // safer than surfacing this as a fatal "failed to load
+            // profile" error for someone who actually already has a
+            // working account.
+            if (regErr.code === '23505' && authUser.email) {
+              row = await getUserByEmail(authUser.email)
+              if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
+              if (!row) throw regErr
+            } else {
+              throw regErr
+            }
+          }
         }
         setProfile(row)
         return
@@ -70,8 +92,33 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true
 
+    // A confirmation/recovery email link lands here as
+    // "#access_token=...&refresh_token=...&type=signup" (or
+    // "type=recovery") — Supabase's own server already verified it by
+    // this point, so the token in the URL is real, but detectSessionInUrl
+    // still has to exchange it for an actual session client-side, and
+    // that step can itself fail (most commonly: the same link got
+    // loaded/retried more than once — a page reload after a dropped
+    // connection, opening it in a second tab, etc. — and the first
+    // successful attempt already consumed it, since these tokens work
+    // like a one-time code even though they LOOK like a normal session
+    // token). Captured before the getSession() call below so it's not
+    // lost once supabase-js strips it from the URL after processing.
+    const hadUrlToken = /access_token=/.test(window.location.hash)
+
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return
+      if (hadUrlToken && !data.session) {
+        // The URL had a token to redeem, but no session came out of it —
+        // that combination only happens when the exchange itself failed
+        // (expired or already-used link), not a normal "not signed in
+        // yet" case. Clears the dead token out of the address bar so a
+        // refresh doesn't just repeat the same failed attempt, and tells
+        // the person plainly what happened instead of leaving them
+        // looking at an unexplained login page.
+        window.history.replaceState(null, '', window.location.pathname)
+        show('This confirmation or reset link has expired or was already used. Please request a new one.', 'error')
+      }
       setSession(data.session)
       // Awaited, not fire-and-forget — same reasoning as signIn() below:
       // setLoading(false) is what lets ProtectedRoute stop showing its
@@ -109,7 +156,7 @@ export function AuthProvider({ children }) {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [loadProfile])
+  }, [loadProfile, show])
 
   // Phase R — the correct password alone is no longer enough. After
   // Supabase Auth confirms the credentials, this also checks

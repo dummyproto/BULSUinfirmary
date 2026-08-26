@@ -53,7 +53,7 @@
 //    only, reusing the persistence layer that already exists and is
 //    already tested.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 import { SYSTEM_PROMPT, EMERGENCY_PATTERN, EMERGENCY_REPLY, OFF_TOPIC_PATTERN, OFF_TOPIC_REPLY } from './knowledge.ts'
 
 const corsHeaders = {
@@ -61,7 +61,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -88,7 +88,11 @@ Deno.serve(async (req) => {
   const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
   const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
 
-  try {
+    try {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return jsonResponse({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_ANON_KEY.' }, 500)
+    }
+
     // ── 1. Identify the caller ──
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) throw new Error('Missing Authorization header')
@@ -247,12 +251,27 @@ Deno.serve(async (req) => {
       // through the groq-sdk package (which threw typed error classes).
       const status = groqRes.status
       let reply = 'Sorry, something went wrong while contacting the assistant. Please try again in a moment.'
+      const bodyText = await groqRes.text().catch(() => '')
       if (status === 401) reply = "The assistant isn't configured correctly on the server (authentication issue). Please contact the site administrator."
-      else if (status === 429) reply = 'MediBot is getting a lot of requests right now. Please wait a few seconds and try again.'
-      else if (status === 404 || status === 403) reply = 'The assistant model is temporarily unavailable. Please try again shortly or contact support if this continues.'
+      else if (status === 429) {
+        // Groq returns 429 for BOTH a short-lived rate limit (too many
+        // requests in a burst — try again in a few seconds) AND for
+        // actually running out of tokens/quota entirely (daily/monthly
+        // limit exhausted — won't recover until that resets, could be
+        // hours). Same HTTP status, but the error body's own message
+        // says which one it is (Groq's wording mentions the specific
+        // limit type — "requests per minute"/RPM for the transient
+        // case, "tokens per day"/TPD or "quota" for real exhaustion), so
+        // that's checked here instead of treating every 429 the same
+        // and telling someone to "try again in a few seconds" when
+        // retrying won't actually help for hours.
+        const isQuotaExhausted = /token[s]?\s*per\s*day|\btpd\b|quota|exceeded.*token|out of tokens/i.test(bodyText)
+        reply = isQuotaExhausted
+          ? 'Sorry, the chatbot is not available for now. You may ask questions using the topic buttons beside the chat, or check My Requests, Reports, and other pages directly for now.'
+          : 'MediBot is getting a lot of requests right now. Please wait a few seconds and try again.'
+      } else if (status === 404 || status === 403) reply = 'The assistant model is temporarily unavailable. Please try again shortly or contact support if this continues.'
       else if (status >= 500) reply = 'Sorry, something went wrong while contacting the assistant. Please try again in a moment.'
 
-      const bodyText = await groqRes.text().catch(() => '')
       console.error('[GROQ_API_ERROR]', { status, body: bodyText })
       // Forward the real status instead of flattening every non-429
       // failure to a generic 502 — that made a bad/expired GROQ_API_KEY

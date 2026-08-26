@@ -121,6 +121,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
+  const [justRegistered] = useState(() => !!location.state?.registeredEmail)
   // Set only when a sign-in attempt fails specifically because the
   // account's email hasn't been confirmed yet — drives showing the
   // "Resend confirmation email" button instead of the normal wrong-
@@ -288,7 +289,7 @@ export default function LoginPage() {
         clearAttempts(email)
         setLockUntil(0)
         setUnconfirmedEmail(email)
-        setError('Please confirm your email before signing in — check your inbox for the confirmation link.')
+        setError('If you just registered, please verify your email first. Check your inbox for the confirmation link before signing in.')
       } else {
         // Admin accounts are exempt from the entire lockout/disable
         // escalation below — see getRoleByEmail's doc comment in
@@ -413,6 +414,7 @@ export default function LoginPage() {
           <CreditCardIcon width={13} height={13} /> Scan ID
         </button>
       </div>
+
 
       {error && (
   <div className="login-error show" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

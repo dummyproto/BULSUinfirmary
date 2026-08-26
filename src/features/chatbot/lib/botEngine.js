@@ -21,6 +21,31 @@ const PHONE_LINK = '<a href="tel:+639076842769"><strong>0907-684-2769</strong></
 // button in the Topbar.
 const SOS_CALLOUT = '<div class="chat-emergency-box">🆘 You can type <strong>SOS</strong> here to open the Emergency Alert form directly, or tap the <strong>SOS</strong> button at the top of the screen.</div>'
 
+// Turns a PH mobile number like "0907-684-2769" into "tel:+639076842769"
+// (the same tel: format already used for the phone link in
+// ChatbotPage.jsx's Clinic Contacts card and in SYSTEM_PROMPT on the AI
+// path) — dashes/spaces are stripped either way. Anything that isn't an
+// 11-digit 09XXXXXXXXX number (e.g. "911") is passed through as-is
+// rather than force-fit into the +63 format, since that would turn
+// "911" into nonsense.
+function telHref(value) {
+  const digits = String(value).replace(/[^\d]/g, '')
+  if (digits.length === 11 && digits.startsWith('09')) return `tel:+63${digits.slice(1)}`
+  return `tel:${digits}`
+}
+
+// Renders a KB.emergency.contacts entry's value as a clickable tel:/
+// mailto: link based on its `type`, so someone reading an emergency
+// reply can tap straight through to calling or emailing instead of
+// having to copy a phone number/address out of plain text by hand.
+// Falls back to plain text for any contact type that isn't a phone or
+// email (there currently isn't one, but this keeps a future addition
+// like a Facebook page from breaking instead of just not linking).
+function contactValueHtml(contact) {
+  const href = contact.type === 'phone' ? telHref(contact.value) : contact.type === 'email' ? `mailto:${contact.value}` : null
+  return href ? `<a href="${href}" style="color:inherit;text-decoration:underline">${contact.value}</a>` : contact.value
+}
+
 // Lightweight "pattern recognition" for the rule-based fallback (Phase 2)
 // — reuses SYMPTOM_MAP's own keys as the canonical symptom vocabulary
 // rather than a second, separately-maintained keyword list. Genuinely
@@ -296,10 +321,10 @@ function buildMentalHealthResourcesResponse() {
   </div>
   <strong>📞 National Hotlines (Philippines):</strong>
   <div class="chat-info-box">
-    <div class="info-row"><span>🆘 NCMH Crisis Line</span><span><strong>1553</strong> (24/7, Free)</span></div>
-    <div class="info-row"><span>💙 Hopeline PH</span><span><strong>02-8804-4673</strong> (24/7)</span></div>
-    <div class="info-row"><span>🤝 In Touch Crisis</span><span><strong>02-8893-7603</strong></span></div>
-    <div class="info-row"><span>🚑 Emergency</span><span><strong>911</strong></span></div>
+    <div class="info-row"><span>🆘 NCMH Crisis Line</span><span><strong><a href="tel:1553" style="color:inherit;text-decoration:underline">1553</a></strong> (24/7, Free)</span></div>
+    <div class="info-row"><span>💙 Hopeline PH</span><span><strong><a href="tel:+63288044673" style="color:inherit;text-decoration:underline">02-8804-4673</a></strong> (24/7)</span></div>
+    <div class="info-row"><span>🤝 In Touch Crisis</span><span><strong><a href="tel:+63288937603" style="color:inherit;text-decoration:underline">02-8893-7603</a></strong></span></div>
+    <div class="info-row"><span>🚑 Emergency</span><span><strong><a href="tel:911" style="color:inherit;text-decoration:underline">911</a></strong></span></div>
   </div>
   <strong>🌿 Healthy Coping Strategies:</strong>
   ${MENTAL_HEALTH_FOLLOW_UPS.join('')}
@@ -331,7 +356,7 @@ function buildTalkToSomeoneResponse() {
   <div class="chat-tip-item">🤝 A trusted friend or family member — sometimes just saying it out loud helps</div>
   <div class="chat-tip-item">🏫 A teacher, mentor, or adviser you feel comfortable with</div>
   <div class="chat-tip-item">🏥 Our clinic counselor — no appointment needed, walk-ins welcome</div>
-  <div class="chat-tip-item">📞 A crisis hotline if things feel urgent (NCMH: <strong>1553</strong>, 24/7)</div>
+  <div class="chat-tip-item">📞 A crisis hotline if things feel urgent (NCMH: <strong><a href="tel:1553" style="color:inherit;text-decoration:underline">1553</a></strong>, 24/7)</div>
   <br>
   <strong>💡 How to Start the Conversation:</strong>
   <div class="chat-tip-item">You can simply say: <em>"I haven't been doing well lately and I needed to tell someone."</em></div>
@@ -458,8 +483,6 @@ function buildBotResponse(intent, msg, ctx) {
       </div>`
     }
 
-  
-
     case 'pre_clinic':
       if (lower.includes('lab')) {
         return topicCard('🔬', 'Before a Lab Test',
@@ -482,18 +505,26 @@ function buildBotResponse(intent, msg, ctx) {
         ${chip('📋 Physical Exam', 'prepare for physical exam')}
       </div>`
 
-  
-    case 'emergency':
-      return `🚨 <strong>EMERGENCY GUIDANCE</strong><br><br>
-      <div class="chat-emergency-box">
-        ${KB.emergency.steps.map((s) => `<div class="emergency-step">${s}</div>`).join('')}
-      </div>
-      <br>` +
-      topicCard('📞', 'Emergency Contacts',
-        KB.emergency.contacts.map((c) => `<div class="info-row"><span>${c.label}</span><span><strong>${c.value}</strong></span></div>`).join('')
-      ) +
-      `<br>${SOS_CALLOUT}
-      <br>${KB.emergency.disclaimer}`
+        case 'emergency': {
+      // Defensive against knowledgeBase.js being hand-edited (fields
+      // renamed, trimmed, or removed entirely) — a missing steps/
+      // contacts/disclaimer field used to throw "Cannot read
+      // properties of undefined (reading 'map')" and crash the whole
+      // reply instead of just quietly showing less. Each section below
+      // only renders if that field actually exists and has content.
+      const steps = Array.isArray(KB.emergency?.steps) ? KB.emergency.steps : []
+      const contacts = Array.isArray(KB.emergency?.contacts) ? KB.emergency.contacts : []
+      const disclaimer = KB.emergency?.disclaimer || ''
+
+      const stepsHtml = steps.length
+        ? `<div class="chat-emergency-box">${steps.map((s) => `<div class="emergency-step">${s}</div>`).join('')}</div><br>`
+        : ''
+      const contactsHtml = contacts.length
+        ? topicCard('📞', 'Emergency Contacts', contacts.map((c) => `<div class="info-row"><span>${c.label}</span><span><strong>${contactValueHtml(c)}</strong></span></div>`).join('')) + '<br>'
+        : ''
+
+      return `🚨 <strong>EMERGENCY GUIDANCE</strong><br><br>${stepsHtml}${contactsHtml}${SOS_CALLOUT}${disclaimer ? `<br>${disclaimer}` : ''}`
+    }
 
     case 'headache':
       return buildHealthTipResponse('headache', KB.healthTips.headache) + DISCLAIMER
