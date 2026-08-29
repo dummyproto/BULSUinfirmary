@@ -28,5 +28,27 @@
 // consistent URL — the fallback is the same behavior as before, just
 // no longer the ONLY option.
 export function getAppUrl() {
-  return import.meta.env.VITE_APP_URL || window.location.origin
+  const configured = (import.meta.env.VITE_APP_URL || '').trim()
+  const isConfiguredLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(configured)
+  const isRunningOnLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+
+  // Guards against the exact failure this whole file exists to prevent,
+  // just from the opposite direction: VITE_APP_URL pins the redirect to
+  // one deliberate address, but if that address is localhost and this
+  // code is actually running somewhere that is NOT localhost (a real
+  // deployment — Vercel, a custom domain, a staging URL), trusting it
+  // would silently bake an unreachable http://localhost:... link into
+  // every confirmation/reset email sent from production. That's a very
+  // plausible real misconfiguration to end up with, not a hypothetical
+  // one: VITE_APP_URL=http://localhost:3000 copy-pasted into Vercel's
+  // dashboard env vars alongside the rest of a local .env file (or left
+  // over from testing locally with `vercel dev`) would do exactly this
+  // otherwise. In that specific case, fall through to
+  // window.location.origin instead — the real, currently-running
+  // address — rather than trusting the stale configured value.
+  if (isConfiguredLocalhost && !isRunningOnLocalhost) {
+    return window.location.origin
+  }
+
+  return configured || window.location.origin
 }

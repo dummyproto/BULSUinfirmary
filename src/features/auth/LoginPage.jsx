@@ -6,6 +6,8 @@ import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClie
 import { logAuthEvent } from '@services/auditLogsService'
 import PasswordInput from '@components/ui/PasswordInput'
 import PinInput from '@components/ui/PinInput'
+import AccountActivatedModal from './AccountActivatedModal'
+import AccountActivatedModal from './AccountActivatedModal'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
 import logo from '@/assets/logo.png'
@@ -105,7 +107,7 @@ const ForgotPasswordModal = lazy(() => import('./ForgotPasswordModal'))
 const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
 export default function LoginPage() {
-  const { isAuthenticated, role, signIn, signInWithPin } = useAuth()
+  const { isAuthenticated, role, signIn, signInWithPin, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [mode, setMode] = useState('password') // 'password' | 'scan' | 'pin'
@@ -138,6 +140,7 @@ export default function LoginPage() {
   // a dedicated "Your account has been activated!" screen first
   // instead — see the render below.
   const [justConfirmedEmail, setJustConfirmedEmail] = useState(() => new URLSearchParams(location.search).get('confirmed') === '1')
+  const [confirmingBackToLogin, setConfirmingBackToLogin] = useState(false)
   // Set only when a sign-in attempt fails specifically because the
   // account's email hasn't been confirmed yet — drives showing the
   // "Resend confirmation email" button instead of the normal wrong-
@@ -191,42 +194,39 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (justConfirmedEmail) {
-    return (
-      <div className="login-page">
-        <div className="login-box" style={{ textAlign: 'center' }}>
-          <div style={{ margin: '8px auto 18px', width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircleIcon width={30} height={30} style={{ color: 'var(--success)' }} />
-          </div>
-          <h2 style={{ margin: '0 0 8px' }}>Your account has been activated!</h2>
-          <p style={{ color: 'var(--text-2)', fontSize: 13.5, marginBottom: 22 }}>
-            Your email is confirmed and your account is now active. You can sign in below.
-          </p>
-          <button
-            type="button"
-            className="btn btn-blue"
-            style={{ width: '100%' }}
-            onClick={() => {
-              // isAuthenticated is already true by this point (the
-              // confirmation link's own session was established before
-              // this page even rendered) — flipping this state is what
-              // actually lets the isAuthenticated check below take over
-              // and redirect onward, same as any other already-signed-in
-              // visit to this route.
-              setJustConfirmedEmail(false)
-            }}
-          >
-            Continue
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // Account-activation confirmation is now the custom AccountActivatedModal
+  // (rendered further below, alongside the page's other modals —
+  // ForgotPasswordModal, EmergencyConfirmModal, etc.) layered ON TOP of
+  // the normal login form, instead of a full-page takeover. The login
+  // form underneath is what's actually left showing, requiring real
+  // credentials, once the modal is dismissed via its "Go to Login" button.
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !justConfirmedEmail) {
     const fromPath = location.state?.from?.pathname
     const redirectTo = fromPath && isRouteAllowedForRole(fromPath, role) ? fromPath : '/dashboard'
     return <Navigate to={redirectTo} replace />
+  }
+
+  // Confirming the email link auto-creates a real session (Supabase's
+  // own detectSessionInUrl) before this page even renders. Signing out
+  // here, right before dismissing the modal, is what makes this a
+  // genuine "go back to login" rather than a silent auto-login off the
+  // confirmation link alone — once the modal closes, isAuthenticated is
+  // false again and the login form underneath (already rendered the
+  // whole time, just covered by this modal) is what's left, requiring
+  // real credentials to get in. Passed to AccountActivatedModal as
+  // onConfirm — used by both the button and clicking its backdrop, so
+  // there's no path that leaves a stale signed-in session sitting
+  // behind a supposedly-logged-out login form.
+  async function handleBackToSignIn() {
+    setConfirmingBackToLogin(true)
+    try {
+      await signOut()
+    } finally {
+      setEmail((prev) => prev || location.state?.registeredEmail || '')
+      setJustConfirmedEmail(false)
+      setConfirmingBackToLogin(false)
+    }
   }
 
   function switchMode(next) {
@@ -674,6 +674,8 @@ export default function LoginPage() {
           <ForgotPasswordModal isOpen={forgotOpen} onClose={() => setForgotOpen(false)} initialEmail={email} />
         </Suspense>
       )}
+
+      <AccountActivatedModal isOpen={justConfirmedEmail} onConfirm={handleBackToSignIn} loading={confirmingBackToLogin} />
 
       <EmergencyConfirmModal
         isOpen={emgConfirmOpen}
