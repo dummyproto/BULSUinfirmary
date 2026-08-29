@@ -12,6 +12,16 @@ export function AuthProvider({ children }) {
   const { show } = useToast()
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null) // flattened row from public.users + role-specific profile table
+  // Set only on a DEFINITIVE loadProfile() failure (retries exhausted,
+  // or a genuine non-transient error) — never on the brief in-progress
+  // window before the very first successful load. Consumed by
+  // DashboardPage.jsx to show a real error state (with a way to retry
+  // or sign out) instead of leaving someone stuck on an infinite,
+  // silent "Loading your dashboard…" spinner forever, which is what a
+  // failed profile load used to look like — indistinguishable from
+  // still loading, with zero indication anything had actually gone
+  // wrong and no way to recover short of knowing to open DevTools.
+  const [profileError, setProfileError] = useState(null)
   const [loading, setLoading] = useState(true)
   // Set when Supabase's client fires the PASSWORD_RECOVERY auth event
   // (i.e. the person arrived via a password-reset link/OTP, resolved
@@ -21,6 +31,7 @@ export function AuthProvider({ children }) {
   const loadProfile = useCallback(async (authUser) => {
     if (!authUser) {
       setProfile(null)
+      setProfileError(null)
       return
     }
     // Retries specifically on Supabase's "JWT issued at future" error — a
@@ -81,13 +92,38 @@ export function AuthProvider({ children }) {
             if (isRaceWithAnotherTab) {
               row = await getUserByEmail(authUser.email)
               if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
-              if (!row) throw regErr
+              // One more check, by auth_user_id this time, before giving
+              // up — covers the case where the OTHER concurrent call's
+              // row is only findable this specific way (e.g. this
+              // session's own auth_user_id got linked by the OTHER call
+              // a moment after the getUserByEmail lookup above already
+              // ran). Cheap, and only ever runs on this already-rare
+              // failure path.
+              if (!row) row = await getUserByAuthId(authUser.id)
+              if (!row) {
+                // Neither lookup found a matching row — this isn't this
+                // session racing its own account, it's a genuinely
+                // different, pre-existing users row with the same
+                // username (most likely an orphaned row from an earlier,
+                // separate registration attempt). The raw Postgres
+                // message ("duplicate key value violates unique
+                // constraint...") means nothing to an end user and was
+                // previously left to reach the catch block below
+                // verbatim — surfaced here instead as something
+                // specific and actionable.
+                const friendly = new Error(
+                  "We couldn't finish loading your account — there's a conflicting registration on file (likely from an earlier, incomplete sign-up attempt). Please contact an administrator so they can look into it."
+                )
+                friendly.cause = regErr
+                throw friendly
+              }
             } else {
               throw regErr
             }
           }
         }
         setProfile(row)
+        setProfileError(null)
         return row
       } catch (err) {
         const isClockSkew = /jwt issued at future/i.test(err.message || '')
@@ -97,6 +133,7 @@ export function AuthProvider({ children }) {
         }
         console.error('Failed to load user profile:', err.message)
         setProfile(null)
+        setProfileError(err.message || 'Failed to load your account.')
         return
       }
     }
@@ -459,6 +496,7 @@ export function AuthProvider({ children }) {
     session,
     user: session?.user ?? null,
     profile,
+    profileError,
     role: profile?.role ?? null,
     isAuthenticated: !!session,
     isPasswordRecovery,

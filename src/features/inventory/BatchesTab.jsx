@@ -1,9 +1,6 @@
-import { useState } from 'react'
-import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
 import { batchKey, getBatchStatus, daysUntil } from './lib/inventoryHelpers'
-import { FolderIcon, MinusIcon, PlusIcon, EditIcon, TrashIcon, RefreshCwIcon, AlertTriangleIcon, QrCodeIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
-import { defaultShowMore } from '@lib/viewport'
+import { MinusIcon, PlusIcon, EditIcon, TrashIcon, RefreshCwIcon, AlertTriangleIcon, QrCodeIcon } from '@components/ui/icons'
 
 function statusColor(status) {
   if (status === 'Expired' || status === 'Recalled' || status === 'Damaged') return 'badge-red'
@@ -125,8 +122,14 @@ function BatchRow({ b, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveB
   )
 }
 
-export default function BatchesTab({ batches, search, onSearchChange, onAddBatch, onReleaseBatchPicker, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveBatch, onUnarchiveBatch, onReportDamaged, onViewQR }) {
-  const [showMore, setShowMore] = useState(defaultShowMore)
+// Body-only version of what used to be this file's default-exported
+// BatchesTab — same grouped-by-medicine tables, same empty state, same
+// footer note, just without its own <div className="card">, header,
+// search box, or action buttons. Those now live in the merged Items
+// tab's single header (see ItemsTab.jsx), which passes this component
+// `search` (raw string, filtered here exactly as before) and `showMore`
+// as plain props instead of owning them locally.
+export function BatchesBody({ batches, search, showMore, onEditBatch, onReplenishBatch, onReleaseBatch, onArchiveBatch, onUnarchiveBatch, onReportDamaged, onViewQR }) {
   const q = search.toLowerCase()
   const filtered = search
     ? batches.filter((b) => b.batch_code.toLowerCase().includes(q) || b.item_name.toLowerCase().includes(q) || (b.supplier || '').toLowerCase().includes(q))
@@ -154,32 +157,7 @@ export default function BatchesTab({ batches, search, onSearchChange, onAddBatch
   }
 
   return (
-    <div className="card">
-      <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <FolderIcon width={15} height={15} /> Batch Tracking
-        </h3>
-        <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
-          <SearchInput value={search} onChange={onSearchChange} placeholder="Search batch ID, item, supplier…" width={220} />
-          <button type="button" className="btn btn-xs btn-teal" onClick={onAddBatch} title="Add a new batch to an item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <FolderIcon width={13} height={13} /> Add Batch
-          </button>
-          <button type="button" className="btn btn-xs btn-orange" onClick={onReleaseBatchPicker} title="Choose a batch and release stock" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <MinusIcon width={13} height={13} /> Release Batch
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline inv-view-more-btn"
-            onClick={() => setShowMore((v) => !v)}
-            title="Show or hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns"
-            aria-label={showMore ? 'View Less — hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns' : 'View More — show Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns'}
-          >
-            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
-            <span>{showMore ? 'View Less' : 'View More'}</span>
-          </button>
-        </div>
-      </div>
-
+    <div>
       {medicineGroups.length === 0 && legacyBatches.length === 0 && (
         <div className="empty-state" style={{ padding: 40 }}>
           <p>No batches found</p>

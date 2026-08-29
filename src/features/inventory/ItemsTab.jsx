@@ -3,7 +3,8 @@ import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
 import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil } from './lib/inventoryHelpers'
-import { InventoryIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
+import { BatchesBody } from './BatchesTab'
+import { InventoryIcon, FolderIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
 
 const CATEGORIES = ['All', 'Medicine', 'Supply', 'Equipment']
@@ -73,9 +74,34 @@ export default function ItemsTab({
   onRemove,
   onRestore,
   onReplenish,
+  // Batches sub-view — same tab now covers both, toggled via the pill
+  // control in the header below. subTab/onSubTabChange are controlled
+  // from InventoryPage.jsx (not local state) so its Dashboard tab's
+  // "View Batches" quick-link can jump straight to this sub-view.
+  subTab,
+  onSubTabChange,
+  batches,
+  batchSearch,
+  onBatchSearchChange,
+  onAddBatch,
+  onReleaseBatchPicker,
+  onEditBatch,
+  onReplenishBatch,
+  onReleaseBatch,
+  onArchiveBatch,
+  onUnarchiveBatch,
+  onReportDamaged,
+  onViewQR,
 }) {
   const { search, category, status } = filters
   const set = (patch) => onFiltersChange({ ...filters, ...patch })
+
+  // Separate "View More" state from the Items sub-view's — the two
+  // sub-views show entirely different columns (Category/Unit/Level/
+  // Expiry vs Qty/Received/Expiry/Days Left/Supplier/Purchase Ref/
+  // Status), so collapsing one shouldn't affect the other's memory of
+  // whether it was expanded.
+  const [batchShowMore, setBatchShowMore] = useState(defaultShowMore)
 
   // Information-overload reduction — Category, Unit, Level,
   // Expiry/Maint., and Supplier are hidden by default (Item Name/Batch,
@@ -156,71 +182,121 @@ export default function ItemsTab({
     <div className="card inv-items-card" style={{ '--items-header-h': `${headerHeight}px` }}>
       <div ref={headerRef} className="card-header inv-items-sticky-header" style={{ flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
   <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-    <InventoryIcon width={15} height={15} /> Inventory Items
+    {subTab === 'items' ? <InventoryIcon width={15} height={15} /> : <FolderIcon width={15} height={15} />}
+    {subTab === 'items' ? 'Inventory Items' : 'Batch Tracking'}
   </h3>
+  <div className="inv-view-toggle" role="group" aria-label="Switch between Items and Batches">
+    <button type="button" className={`inv-view-toggle-btn${subTab === 'items' ? ' active' : ''}`} onClick={() => onSubTabChange('items')} title="Show items" aria-pressed={subTab === 'items'}>
+      <InventoryIcon width={13} height={13} /> Items
+    </button>
+    <button type="button" className={`inv-view-toggle-btn${subTab === 'batches' ? ' active' : ''}`} onClick={() => onSubTabChange('batches')} title="Show batches" aria-pressed={subTab === 'batches'}>
+      <FolderIcon width={13} height={13} /> Batches
+    </button>
+  </div>
   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginLeft: 'auto' }}>
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <label htmlFor="items-filter-category" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Category</label>
-      <select id="items-filter-category" name="category" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={category} onChange={(e) => set({ category: e.target.value })}>
-        {CATEGORIES.map((c) => (
-          <option key={c}>{c}</option>
-        ))}
-      </select>
-    </div>
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <label htmlFor="items-filter-status" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Status</label>
-      <select id="items-filter-status" name="status" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={status} onChange={(e) => set({ status: e.target.value })}>
-        {STATUSES.map((s) => (
-          <option key={s}>{s}</option>
-        ))}
-      </select>
-    </div>
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <label htmlFor="items-filter-search" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Search</label>
-      <SearchInput id="items-filter-search" name="search" value={search} onChange={(v) => set({ search: v })} placeholder="Search items…" width={170} />
-    </div>
-    {filtersActive && (
-      <button type="button" className="btn btn-sm btn-outline" onClick={clearFilters} title="Reset category, status, and search">
-        <XCircleIcon width={13} height={13} /> Clear Filters
-      </button>
+    {subTab === 'items' ? (
+      <>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label htmlFor="items-filter-category" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Category</label>
+          <select id="items-filter-category" name="category" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={category} onChange={(e) => set({ category: e.target.value })}>
+            {CATEGORIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label htmlFor="items-filter-status" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Status</label>
+          <select id="items-filter-status" name="status" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={status} onChange={(e) => set({ status: e.target.value })}>
+            {STATUSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label htmlFor="items-filter-search" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Search</label>
+          <SearchInput id="items-filter-search" name="search" value={search} onChange={(v) => set({ search: v })} placeholder="Search items…" width={170} />
+        </div>
+        {filtersActive && (
+          <button type="button" className="btn btn-sm btn-outline" onClick={clearFilters} title="Reset category, status, and search">
+            <XCircleIcon width={13} height={13} /> Clear Filters
+          </button>
+        )}
+        <div className="inv-view-toggle" role="group" aria-label="Switch between list and grid view">
+          <button type="button" className={`inv-view-toggle-btn${viewMode === 'list' ? ' active' : ''}`} onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}>
+            <ListIcon width={14} height={14} />
+          </button>
+          <button type="button" className={`inv-view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`} onClick={() => setViewMode('grid')} title="Grid view" aria-label="Grid view" aria-pressed={viewMode === 'grid'}>
+            <GridIcon width={14} height={14} />
+          </button>
+        </div>
+        {viewMode === 'list' && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline inv-view-more-btn"
+            onClick={() => setShowMore((v) => !v)}
+            title="Show or hide Category, Unit, Level, and Expiry/Maint. columns"
+            aria-label={showMore ? 'View Less — hide Category, Unit, Level, and Expiry/Maint. columns' : 'View More — show Category, Unit, Level, and Expiry/Maint. columns'}
+          >
+            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+            <span>{showMore ? 'View Less' : 'View More'}</span>
+          </button>
+        )}
+        <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
+          <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <PlusIcon width={13} height={13} /> Add Item
+          </button>
+          <button type="button" className="btn btn-sm btn-orange" onClick={onReleasePicker} title="Release stock from a non-expired item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <MinusIcon width={13} height={13} /> Release
+          </button>
+        </div>
+      </>
+    ) : (
+      <>
+        <SearchInput value={batchSearch} onChange={onBatchSearchChange} placeholder="Search batch ID, item, supplier…" width={220} />
+        <button
+          type="button"
+          className="btn btn-sm btn-outline inv-view-more-btn"
+          onClick={() => setBatchShowMore((v) => !v)}
+          title="Show or hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns"
+          aria-label={batchShowMore ? 'View Less — hide Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns' : 'View More — show Qty, Received Date, Expiry Date, Days Left, Supplier, Purchase Ref., and Status columns'}
+        >
+          {batchShowMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+          <span>{batchShowMore ? 'View Less' : 'View More'}</span>
+        </button>
+        <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
+          <button type="button" className="btn btn-sm btn-teal" onClick={onAddBatch} title="Add a new batch to an item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <FolderIcon width={13} height={13} /> Add Batch
+          </button>
+          <button type="button" className="btn btn-sm btn-orange" onClick={onReleaseBatchPicker} title="Choose a batch and release stock" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <MinusIcon width={13} height={13} /> Release Batch
+          </button>
+        </div>
+      </>
     )}
-    <div className="inv-view-toggle" role="group" aria-label="Switch between list and grid view">
-      <button type="button" className={`inv-view-toggle-btn${viewMode === 'list' ? ' active' : ''}`} onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}>
-        <ListIcon width={14} height={14} />
-      </button>
-      <button type="button" className={`inv-view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`} onClick={() => setViewMode('grid')} title="Grid view" aria-label="Grid view" aria-pressed={viewMode === 'grid'}>
-        <GridIcon width={14} height={14} />
-      </button>
-    </div>
-    {viewMode === 'list' && (
-      <button
-        type="button"
-        className="btn btn-sm btn-outline inv-view-more-btn"
-        onClick={() => setShowMore((v) => !v)}
-        title="Show or hide Category, Unit, Level, and Expiry/Maint. columns"
-        aria-label={showMore ? 'View Less — hide Category, Unit, Level, and Expiry/Maint. columns' : 'View More — show Category, Unit, Level, and Expiry/Maint. columns'}
-      >
-        {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
-        <span>{showMore ? 'View Less' : 'View More'}</span>
-      </button>
-    )}
-    <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
-      <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-        <PlusIcon width={13} height={13} /> Add Item
-      </button>
-      <button type="button" className="btn btn-sm btn-orange" onClick={onReleasePicker} title="Release stock from a non-expired item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-        <MinusIcon width={13} height={13} /> Release
-      </button>
-    </div>
   </div>
 </div>
-      {filtersActive && (
+      {subTab === 'items' && filtersActive && (
         <div style={{ padding: '8px 18px', fontSize: 12, color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
           Showing <strong style={{ color: 'var(--text-2)' }}>{filtered.length}</strong> of {inventory.length} item{inventory.length !== 1 ? 's' : ''}
         </div>
       )}
       <div className="table-wrap inv-items-scroll">
-        {viewMode === 'list' ? (
+        {subTab !== 'items' ? (
+          <div style={{ padding: 16 }}>
+            <BatchesBody
+              batches={batches}
+              search={batchSearch}
+              showMore={batchShowMore}
+              onEditBatch={onEditBatch}
+              onReplenishBatch={onReplenishBatch}
+              onReleaseBatch={onReleaseBatch}
+              onArchiveBatch={onArchiveBatch}
+              onUnarchiveBatch={onUnarchiveBatch}
+              onReportDamaged={onReportDamaged}
+              onViewQR={onViewQR}
+            />
+          </div>
+        ) : viewMode === 'list' ? (
           <ItemCardList
             rows={rows}
             filtered={filtered}

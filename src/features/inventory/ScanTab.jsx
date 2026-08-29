@@ -69,7 +69,7 @@ function summarizeLastScan(entry) {
   }
 }
 
-export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete }) {
+export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete, scanPaused }) {
   const [panel, setPanel] = useState(null) // 'manual' | 'upload' | null
   const [manualValue, setManualValue] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
@@ -138,13 +138,48 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
   // continuous-decode API running against the same live video element.
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
+  const [sessionScanCount, setSessionScanCount] = useState(0)
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const codeReaderRef = useRef(null)
   const scanControlsRef = useRef(null)
+  // Tracks the most recently processed code + when, purely to dedupe:
+  // ZXing's decodeFromVideoElement callback fires on every frame it
+  // examines (many times a second), so a single item held steadily in
+  // front of the camera would otherwise get re-processed dozens of times
+  // a second — opening the confirm modal, closing it, opening it again,
+  // over and over — instead of being read once and moving on to the next
+  // item. A ref (not state) is used deliberately: this needs to be read
+  // and written synchronously inside the decode callback below, which is
+  // set up once in startCamera() and would otherwise see a stale,
+  // captured-at-mount-time value of this if it were React state.
+  const lastScanRef = useRef({ text: '', at: 0 })
   if (codeReaderRef.current === null) codeReaderRef.current = new BrowserMultiFormatReader()
+  // Mirrors the `scanPaused` prop into a ref for the same reason
+  // lastScanRef exists — the decode callback below is handed to ZXing
+  // ONCE per startCamera() call and keeps firing on every frame after
+  // that, so it would otherwise only ever see whatever `scanPaused` was
+  // at the moment the camera started, not its current value each time a
+  // confirm modal opens or closes in the parent.
+  const scanPausedRef = useRef(scanPaused)
+  useEffect(() => {
+    scanPausedRef.current = scanPaused
+  }, [scanPaused])
 
   useEffect(() => stopCamera, []) // stop the camera if the page is left while scanning
+
+  // Surfaces *why* holding up a new item isn't doing anything while a
+  // previous scan's confirm modal is still open — without this, it could
+  // easily look like the camera silently stopped working rather than
+  // deliberately waiting.
+  useEffect(() => {
+    if (!cameraActive) return
+    setDecodeStatus((s) => {
+      if (scanPaused) return { text: 'Waiting for the current item to be confirmed…', kind: 'info' }
+      if (s.text === 'Waiting for the current item to be confirmed…') return { text: 'Scanning for QR code or barcode…', kind: 'info' }
+      return s
+    })
+  }, [scanPaused, cameraActive])
 
   // scan_history is fetched newest-first (listScanHistory orders by
   // scanned_at descending), so the most recent scan is simply index 0 —
@@ -169,17 +204,38 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
         await videoRef.current.play().catch(() => {})
       }
       setCameraActive(true)
+      setSessionScanCount(0)
+      lastScanRef.current = { text: '', at: 0 }
       setDecodeStatus({ text: 'Scanning for QR code or barcode…', kind: 'info' })
       // decodeFromVideoElement calls back on every frame it examines —
       // `result` is only set when something was actually found; on every
       // other frame it fires with a NotFoundException in `error`, which
       // is the library's normal "nothing here yet" signal, not a real
       // error, so it's silently ignored rather than surfaced.
+      //
+      // Deliberately does NOT stop the camera or call onProcessRaw again
+      // for the SAME code within a 3-second cooldown — without this, a
+      // single item held steadily in front of the camera gets re-decoded
+      // on nearly every frame (many times a second), which used to
+      // immediately call stopCamera() and shut the whole feed off after
+      // the very first read. That meant scanning a second item required
+      // manually pressing "Start Camera" again every single time. Now the
+      // feed stays live: each NEWLY seen code (or the same code again
+      // after the cooldown, e.g. if it's genuinely rescanned later) is
+      // handed to onProcessRaw and the camera just keeps running,
+      // ready for the next item to be held up to it — a full session can
+      // read as many different items in a row as the person presents,
+      // without ever needing to restart the camera in between.
       scanControlsRef.current = await codeReaderRef.current.decodeFromVideoElement(videoRef.current, (result) => {
         if (!result) return
-        setDecodeStatus({ text: 'Code detected!', kind: 'success' })
-        stopCamera()
-        onProcessRaw(result.getText())
+        if (scanPausedRef.current) return
+        const text = result.getText()
+        const now = Date.now()
+        if (text === lastScanRef.current.text && now - lastScanRef.current.at < 3000) return
+        lastScanRef.current = { text, at: now }
+        setSessionScanCount((n) => n + 1)
+        setDecodeStatus({ text: 'Code detected! Scanning for next item…', kind: 'success' })
+        onProcessRaw(text)
       })
     } catch (err) {
       const msg =
@@ -434,6 +490,17 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
           >
             {cameraActive ? (<><SquareIcon width={13} height={13} /> Stop Camera</>) : cameraStarting ? 'Starting…' : (<><CameraIcon width={14} height={14} /> Start Camera</>)}
           </button>
+          {/* Only meaningful once at least one item has been read this
+              session — before that, showing "0 scanned" would just read
+              as noise. Camera intentionally keeps running after each
+              scan now (see startCamera's decode callback), so this is
+              the main visible confirmation that holding up item after
+              item is actually being picked up, not just the first one. */}
+          {cameraActive && sessionScanCount > 0 && (
+            <span className="badge badge-green badge-no-dot" style={{ fontSize: 11 }}>
+              <CheckCircleIcon width={12} height={12} /> {sessionScanCount} scanned this session
+            </span>
+          )}
         </div>
 
         {panel === 'upload' && (

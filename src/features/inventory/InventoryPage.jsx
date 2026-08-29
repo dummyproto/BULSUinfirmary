@@ -4,7 +4,6 @@ import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import ItemsTab from './ItemsTab'
-import BatchesTab from './BatchesTab'
 import ScanTab from './ScanTab'
 import LogTab from './LogTab'
 import AlertsTab from './AlertsTab'
@@ -13,7 +12,6 @@ import AddEditSupplierModal from './AddEditSupplierModal'
 import InventoryDashboardTab from './InventoryDashboardTab'
 import BatchQRModal from './BatchQRModal'
 import BatchDetailModal from './BatchDetailModal'
-import NotificationCenterTab from './NotificationCenterTab'
 import AddItemModal from './AddItemModal'
 import AddBatchModal from './AddBatchModal'
 import ReplenishBatchModal from './ReplenishBatchModal'
@@ -66,21 +64,19 @@ import {
 } from '@services/medicineService'
 import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply, deactivateSupply } from '@services/supplyService'
 import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment, deactivateEquipment } from '@services/equipmentService'
-import { listInventoryNotifications, countUnreadInventoryNotifications, markInventoryNotificationRead, markAllInventoryNotificationsRead, deleteInventoryNotification, clearInventoryNotifications } from '@services/inventoryNotificationsService'
+import { clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
-import { InventoryIcon, FolderIcon, CameraIcon, ClipboardIcon, BellIcon, AlertOctagonIcon, AlertTriangleIcon, TruckIcon, BarChartIcon, MailIcon } from '@components/ui/icons'
+import { InventoryIcon, CameraIcon, ClipboardIcon, BellIcon, AlertOctagonIcon, AlertTriangleIcon, TruckIcon, BarChartIcon } from '@components/ui/icons'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', Icon: BarChartIcon },
   { key: 'items', label: 'Items', Icon: InventoryIcon },
-  { key: 'batches', label: 'Batches', Icon: FolderIcon },
   { key: 'suppliers', label: 'Suppliers', Icon: TruckIcon },
   { key: 'scan', label: 'QR Scanner', Icon: CameraIcon },
   { key: 'log', label: 'Log', Icon: ClipboardIcon },
   { key: 'alerts', label: 'Alerts', Icon: BellIcon },
-  { key: 'notifications', label: 'Notifications', Icon: MailIcon },
 ]
 
 export default function InventoryPage() {
@@ -90,7 +86,13 @@ export default function InventoryPage() {
   const currentUserId = profile?.user_id ?? null
   const canDeleteLogs = profile?.role === 'admin' || !!profile?.permissions?.delete_logs
 
-  const [tab, setTab] = useState('items')
+ const [tab, setTab] = useState('dashboard')
+  // Which sub-view the merged Items tab shows — 'items' (the item
+  // list/grid) or 'batches' (the batch-tracking tables, formerly its own
+  // top-level tab). Lifted up here rather than kept local to ItemsTab so
+  // InventoryDashboardTab's "View Batches" quick-link (onNavigateToBatches
+  // below) can land directly on the Batches sub-view, not just the tab.
+  const [itemsSubTab, setItemsSubTab] = useState('items')
   const [loading, setLoading] = useState(true)
   const [inventory, setInventory] = useState([])
   const [batches, setBatches] = useState([])
@@ -98,8 +100,6 @@ export default function InventoryPage() {
   const [scanHistory, setScanHistory] = useState([])
   const [staff, setStaff] = useState([])
   const [suppliers, setSuppliers] = useState([])
-  const [inventoryNotifications, setInventoryNotifications] = useState([])
-  const [unreadNotifCount, setUnreadNotifCount] = useState(0)
 
   const [itemsFilters, setItemsFilters] = useState({ search: '', category: 'All', status: 'All' })
   const [logSearch, setLogSearch] = useState('')
@@ -155,17 +155,6 @@ export default function InventoryPage() {
     }
   }
 
-  // Declared here (before the effect below that calls it) rather than
-  // further down with the other refresh* helpers — that ordering used to
-  // trip up the react-hooks linter ("accessed before it is declared"),
-  // since function declarations being hoisted at runtime doesn't change
-  // how ESLint reads top-to-bottom source order.
-  async function refreshInventoryNotifications() {
-    const [list, unread] = await Promise.all([listInventoryNotifications(), countUnreadInventoryNotifications()])
-    setInventoryNotifications(list)
-    setUnreadNotifCount(unread)
-  }
-
   useEffect(() => {
     let cancelled = false
     Promise.all([
@@ -181,10 +170,8 @@ export default function InventoryPage() {
       listEquipmentAsInventoryItems(),
       listEquipmentBatches(),
       listSuppliers(),
-      listInventoryNotifications(),
-      countUnreadInventoryNotifications(),
     ])
-      .then(async ([inv, log, scan, users, batchList, medicines, medBatches, supplies, supplyBatchList, equipmentItems, equipmentBatchList, supplierList, notifList, unread]) => {
+      .then(async ([inv, log, scan, users, batchList, medicines, medBatches, supplies, supplyBatchList, equipmentItems, equipmentBatchList, supplierList]) => {
         if (cancelled) return
         // Medicine, Supply, and Equipment now all live in normalized
         // tables (migrations 007/008 for Medicine, 024/025 for Supply and
@@ -207,30 +194,23 @@ export default function InventoryPage() {
           ...equipmentBatchList.map((b) => ({ ...b, _source: 'equipment', item_category: 'Equipment' })),
         ])
         setSuppliers(supplierList)
-        setInventoryNotifications(notifList)
-        setUnreadNotifCount(unread)
         // Loading ends here — everything the page actually renders is
-        // already set above. checkExpirationAlerts() (a server-side
-        // RPC) and the notification refresh it can trigger were
-        // previously awaited before setLoading(false) ran, meaning the
-        // spinner stayed up for this extra sequential round-trip even
-        // though the inventory list itself was already fully ready to
-        // show. Running it in the background instead means the page
-        // becomes interactive as soon as its own data arrives — any
-        // fresh expiration-triggered notification just shows up a
-        // moment later once this finishes, rather than the whole page
-        // waiting on it first.
+        // already set above. checkExpirationAlerts() (a server-side RPC)
+        // was previously awaited before setLoading(false) ran, meaning
+        // the spinner stayed up for this extra round-trip even though the
+        // inventory list itself was already fully ready to show. Running
+        // it in the background instead means the page becomes interactive
+        // as soon as its own data arrives — any status change it makes
+        // (e.g. an item flipping to Near Expiry) shows up moments later
+        // via the realtime subscriptions below, rather than the whole
+        // page waiting on it first.
         if (!cancelled) setLoading(false)
-        checkExpirationAlerts()
-          .then(() => {
-            if (!cancelled) return refreshInventoryNotifications()
-          })
-          .catch(() => {
-            // Non-critical — see the try/catch this mirrors elsewhere in
-            // this file for the same reasoning. A failed background
-            // expiration check must never disrupt the page the person
-            // is already looking at.
-          })
+        checkExpirationAlerts().catch(() => {
+          // Non-critical — see the try/catch this mirrors elsewhere in
+          // this file for the same reasoning. A failed background
+          // expiration check must never disrupt the page the person is
+          // already looking at.
+        })
       })
       .catch((err) => show(`Failed to load inventory: ${err.message}`, 'error'))
       .finally(() => {
@@ -322,13 +302,72 @@ export default function InventoryPage() {
   useRealtimeRefresh(['inventory_batches', 'medicine_batches', 'supply_batches', 'equipment_batches'], refreshBatches)
   useRealtimeRefresh('suppliers', refreshSuppliers)
   useRealtimeRefresh('inventory_logs', refreshLogs)
-  useRealtimeRefresh('inventory_notifications', refreshInventoryNotifications)
   useRealtimeRefresh('scan_history', refreshScanHistory)
 
   const low = inventory.filter((i) => getInventoryStatus(i) === 'Low Stock').length
   const expired = inventory.filter((i) => getInventoryStatus(i) === 'Expired').length
   const expiring = inventory.filter((i) => getInventoryStatus(i) === 'Near Expiry').length
   const alertCount = low + expired + expiring
+
+  // ── SHARED MERGE HELPER (Items) ──
+  // Every one of the item-quantity flows below — staged Add Item finding
+  // a duplicate, Edit Save detecting a duplicate, plain Replenish, QR
+  // scan stock-in, and Add Batch's non-medicine branch — used to
+  // separately repeat the same two calls: bump the existing legacy
+  // `inventory` row's quantity (plus whatever other fields that flow
+  // merges in) via updateInventoryItem, then addInventoryLog a matching
+  // before/after quantity pair for it. That duplication is consolidated
+  // here. Each caller still builds its OWN `patch` object — they
+  // genuinely differ in which fields they merge and how (e.g. QR scan
+  // stock-in sets min_stock directly where the others Math.max it
+  // against the existing value) — only the "write it, then log exactly
+  // that delta" plumbing is shared. Returns the updated row so callers
+  // that keep their own local copy of the inventory list (staged Add
+  // Item's `working` array) can splice it back in.
+  async function mergeQuantityIntoItem(item, patch, { quantity, actionType = 'Replenish', notes }) {
+    const updated = await updateInventoryItem(item.inventory_id, { ...patch, quantity: item.quantity + quantity })
+    if (quantity > 0) {
+      await addInventoryLog({
+        inventoryId: item.inventory_id,
+        actionType,
+        quantityChange: quantity,
+        previousQuantity: item.quantity,
+        newQuantity: item.quantity + quantity,
+        staffId: currentUserId,
+        notes,
+      })
+    }
+    return updated
+  }
+
+  // ── SHARED MERGE HELPER (Batches) ──
+  // Same idea as mergeQuantityIntoItem above, but for adding quantity to
+  // an existing medicine batch — handleReplenishBatch's medicine branch
+  // (manual "Replenish Batch" modal) and handleScanBatchReplenish
+  // (confirming a scanned batch QR) used to each repeat the identical
+  // updateMedicineBatch + addMedicineMovement pair, differing only in
+  // the notes text and what happens after (the QR flow also logs scan
+  // history and navigates back to the Items tab). That shared pair is
+  // consolidated here; each call site keeps its own notes/follow-up.
+  async function mergeQuantityIntoMedicineBatch(batch, form, notes) {
+    await updateMedicineBatch(batch.medicine_batch_id, {
+      quantity: batch.quantity + form.qty,
+      expiration_date: form.expiry || batch.expiration_date,
+      received_date: form.received || batch.received_date,
+      supplier_id: form.supplierId || batch.supplier_id,
+      status: 'Active',
+    })
+    await addMedicineMovement({
+      medicineId: batch.medicine_id,
+      medicineBatchId: batch.medicine_batch_id,
+      actionType: 'Received',
+      quantityChange: form.qty,
+      previousQuantity: batch.quantity,
+      newQuantity: batch.quantity + form.qty,
+      staffId: currentUserId,
+      notes,
+    })
+  }
 
   // ── ADD ITEM (staged multi-item, with merge-into-existing detection) ──
   async function handleSaveAllStaged(staged) {
@@ -379,18 +418,20 @@ export default function InventoryPage() {
         // NAME (still a plain VARCHAR on this table) now comes from the
         // resolved dropdown selection instead of free-typed text.
         if (match) {
-          const updated = await updateInventoryItem(match.inventory_id, {
-            quantity: match.quantity + f.quantity,
-            unit: f.unit || match.unit,
-            min_stock: Math.max(f.minStock || 0, match.min_stock || 0) || match.min_stock,
-            batch_no: f.batchNo || match.batch_no,
-            supplier: supplierRow?.supplier_name || match.supplier,
-            expiration_date: mergeDisplayExpirationDate(match.expiration_date, f.expiry || null),
-            received_date: f.received || match.received_date,
-            image_url: f.photoUrl || match.image_url,
-          })
+          const updated = await mergeQuantityIntoItem(
+            match,
+            {
+              unit: f.unit || match.unit,
+              min_stock: Math.max(f.minStock || 0, match.min_stock || 0) || match.min_stock,
+              batch_no: f.batchNo || match.batch_no,
+              supplier: supplierRow?.supplier_name || match.supplier,
+              expiration_date: mergeDisplayExpirationDate(match.expiration_date, f.expiry || null),
+              received_date: f.received || match.received_date,
+              image_url: f.photoUrl || match.image_url,
+            },
+            { quantity: f.quantity, notes: 'Merged into existing inventory item' }
+          )
           working = working.map((i) => (i.inventory_id === updated.inventory_id ? updated : i))
-          if (f.quantity > 0) await addInventoryLog({ inventoryId: match.inventory_id, actionType: 'Replenish', quantityChange: f.quantity, previousQuantity: match.quantity, newQuantity: match.quantity + f.quantity, staffId: currentUserId, notes: 'Merged into existing inventory item' })
           consolidated++
         } else {
           const created = await createInventoryItem({
@@ -496,21 +537,21 @@ export default function InventoryPage() {
       const supplierRow = form.supplierId ? suppliers.find((s) => String(s.supplier_id) === form.supplierId) : null
       const match = findInventoryItemMatch(inventory, { name: form.name, category: form.category, unit: form.unit, supplier: supplierRow?.supplier_name || null }, item.inventory_id)
       if (match) {
-        await updateInventoryItem(match.inventory_id, {
-          quantity: match.quantity + item.quantity,
-          category: form.category || match.category,
-          unit: form.unit || match.unit,
-          min_stock: Math.max(form.minStock || 0, match.min_stock || 0) || match.min_stock,
-          batch_no: form.batchNo || match.batch_no,
-          supplier: supplierRow?.supplier_name || match.supplier,
-          expiration_date: mergeDisplayExpirationDate(match.expiration_date, form.expiry),
-          received_date: form.received || match.received_date,
-          image_url: form.photoUrl || match.image_url,
-        })
+        await mergeQuantityIntoItem(
+          match,
+          {
+            category: form.category || match.category,
+            unit: form.unit || match.unit,
+            min_stock: Math.max(form.minStock || 0, match.min_stock || 0) || match.min_stock,
+            batch_no: form.batchNo || match.batch_no,
+            supplier: supplierRow?.supplier_name || match.supplier,
+            expiration_date: mergeDisplayExpirationDate(match.expiration_date, form.expiry),
+            received_date: form.received || match.received_date,
+            image_url: form.photoUrl || match.image_url,
+          },
+          { quantity: item.quantity, actionType: 'Merge', notes: `Merged from duplicate item details (ID: ${item.inventory_id})` }
+        )
         await deleteInventoryItem(item.inventory_id)
-        if (item.quantity > 0) {
-          await addInventoryLog({ inventoryId: match.inventory_id, actionType: 'Merge', quantityChange: item.quantity, previousQuantity: match.quantity, newQuantity: match.quantity + item.quantity, staffId: currentUserId, notes: `Merged from duplicate item details (ID: ${item.inventory_id})` })
-        }
         show(`"${form.name}" merged into existing inventory item.`, 'success')
       } else {
         await updateInventoryItem(item.inventory_id, {
@@ -568,14 +609,16 @@ export default function InventoryPage() {
         return
       }
 
-      await updateInventoryItem(item.inventory_id, {
-        quantity: item.quantity + form.qty,
-        expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
-        batch_no: form.batchNo || item.batch_no,
-        received_date: form.received || item.received_date,
-        supplier: supplierRow?.supplier_name || item.supplier,
-      })
-      await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: item.quantity, newQuantity: item.quantity + form.qty, staffId: currentUserId, notes: form.notes })
+      await mergeQuantityIntoItem(
+        item,
+        {
+          expiration_date: mergeDisplayExpirationDate(item.expiration_date, form.expiry),
+          batch_no: form.batchNo || item.batch_no,
+          received_date: form.received || item.received_date,
+          supplier: supplierRow?.supplier_name || item.supplier,
+        },
+        { quantity: form.qty, notes: form.notes }
+      )
       await Promise.all([refreshInventory(), refreshLogs()])
       show(`${item.name} replenished by ${form.qty} ${item.unit}`, 'success')
     } catch (err) {
@@ -872,15 +915,17 @@ export default function InventoryPage() {
           show(`${form.name} added to inventory`, 'success')
 
       } else if (match) {
-        await updateInventoryItem(match.inventory_id, {
-          quantity: match.quantity + form.qty,
-          min_stock: form.minStock,
-          expiration_date: mergeDisplayExpirationDate(match.expiration_date, form.expiry),
-          batch_no: form.batch || match.batch_no,
-          received_date: form.receivedDate || match.received_date,
-          supplier: supplierRow?.supplier_name || match.supplier,
-        })
-        await addInventoryLog({ inventoryId: match.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: match.quantity, newQuantity: match.quantity + form.qty, staffId: currentUserId, notes: `QR scan stock-in · Batch: ${form.batch || '—'} · Received: ${form.receivedDate}` })
+        await mergeQuantityIntoItem(
+          match,
+          {
+            min_stock: form.minStock,
+            expiration_date: mergeDisplayExpirationDate(match.expiration_date, form.expiry),
+            batch_no: form.batch || match.batch_no,
+            received_date: form.receivedDate || match.received_date,
+            supplier: supplierRow?.supplier_name || match.supplier,
+          },
+          { quantity: form.qty, notes: `QR scan stock-in · Batch: ${form.batch || '—'} · Received: ${form.receivedDate}` }
+        )
         show(`${form.name} restocked by ${form.qty} ${form.unit}`, 'success')
       } else {
         const created = await createInventoryItem({
@@ -975,14 +1020,16 @@ export default function InventoryPage() {
       if (duplicate) return show(`Batch "${form.batchCode}" with the same expiry and received date already exists. Use Replenish on that batch instead.`, 'error')
 
       await createInventoryBatch({ inventoryId: target.inventory_id, batchCode: form.batchCode, quantity: form.qty, expirationDate: form.expiry, receivedDate: form.received, supplier: supplierRow?.supplier_name || null, notes: form.notes })
-      await updateInventoryItem(target.inventory_id, {
-        quantity: target.quantity + form.qty,
-        batch_no: form.batchCode,
-        expiration_date: mergeDisplayExpirationDate(target.expiration_date, form.expiry),
-        received_date: form.received,
-        supplier: supplierRow?.supplier_name || target.supplier,
-      })
-      await addInventoryLog({ inventoryId: target.inventory_id, actionType: 'Replenish', quantityChange: form.qty, previousQuantity: target.quantity, newQuantity: target.quantity + form.qty, staffId: currentUserId, notes: `New batch added: ${form.batchCode}${form.notes ? ' — ' + form.notes : ''}` })
+      await mergeQuantityIntoItem(
+        target,
+        {
+          batch_no: form.batchCode,
+          expiration_date: mergeDisplayExpirationDate(target.expiration_date, form.expiry),
+          received_date: form.received,
+          supplier: supplierRow?.supplier_name || target.supplier,
+        },
+        { quantity: form.qty, notes: `New batch added: ${form.batchCode}${form.notes ? ' — ' + form.notes : ''}` }
+      )
 
       await Promise.all([refreshInventory(), refreshBatches(), refreshLogs()])
       setAddBatchOpen(false)
@@ -1113,82 +1160,11 @@ export default function InventoryPage() {
   // batch in sync — creating always makes exactly one new batch; editing
   // always adjusts that same batch by the quantity delta. Never creates a
   // second batch or a second record for the same event.
-  // ── NOTIFICATION CENTER ──
-  async function handleMarkNotificationRead(id) {
-    try {
-      await markInventoryNotificationRead(id)
-      await refreshInventoryNotifications()
-    } catch (err) {
-      show(`Failed to mark notification read: ${err.message}`, 'error')
-    }
-  }
-
-  async function handleDeleteInventoryNotifications(ids) {
-    const ok = await confirm(
-      ids.length === 1
-        ? 'Delete this notification?\nThis cannot be undone.'
-        : `Delete ${ids.length} notifications?\nThis cannot be undone.`,
-      { confirmLabel: 'Delete', danger: true }
-    )
-    if (!ok) return
-    try {
-      await Promise.all(ids.map((id) => deleteInventoryNotification(id)))
-      await refreshInventoryNotifications()
-      show(ids.length === 1 ? 'Notification deleted' : `${ids.length} notifications deleted`, 'success')
-    } catch (err) {
-      show(`Failed to delete: ${err.message}`, 'error')
-    }
-  }
-
-  async function handleMarkAllNotificationsRead() {
-    try {
-      await markAllInventoryNotificationsRead()
-      await refreshInventoryNotifications()
-      show('All notifications marked read', 'success')
-    } catch (err) {
-      show(`Failed to mark all read: ${err.message}`, 'error')
-    }
-  }
-
-  // "Clicking a notification should open the related inventory record."
-  // Batch-linked notifications (expiration, event alerts) reuse the same
-  // BatchDetailModal the QR-scan flow already opens (Phase 9) — acting
-  // on a batch found via a notification behaves identically to acting on
-  // one found via scan or the Batches tab. Medicine-only notifications
-  // (Low/Critical/Out of Stock have no single batch) route to the Items
-  // tab, pre-filtered to that medicine by name, reusing the existing
-  // search-filter state rather than building a second detail view.
-  async function handleOpenNotificationRecord(notification) {
-    if (!notification.is_read) {
-      try {
-        await markInventoryNotificationRead(notification.id)
-        await refreshInventoryNotifications()
-      } catch {
-        // Non-critical — still navigate even if marking read failed.
-      }
-    }
-    if (notification.batch_id) {
-      try {
-        const batch = await getMedicineBatchById(notification.batch_id)
-        if (batch) {
-          setScannedBatch(batch)
-          return
-        }
-      } catch {
-        // Batch may have been removed — fall through to the medicine-level route below.
-      }
-    }
-    if (notification.medicine_name) {
-      setTab('items')
-      setItemsFilters((f) => ({ ...f, search: notification.medicine_name, status: 'All' }))
-    }
-  }
 
   // "Clicking an alert row should open that item's detail." The Alerts
   // tab no longer has its own per-row action buttons (Restock/Remove/
-  // Restore/etc.) — this single handler replaces all of them, reusing
-  // the same navigate-to-Items-tab-filtered-by-name pattern already used
-  // by handleOpenNotificationRecord above.
+  // Restore/etc.) — this single handler replaces all of them, navigating
+  // to the Items tab filtered by name.
   function handleAlertItemClick(item) {
     setTab('items')
     setItemsFilters((f) => ({ ...f, search: item.name, status: 'All' }))
@@ -1200,14 +1176,7 @@ export default function InventoryPage() {
     const supplierRow = form.supplierId ? suppliers.find((s) => String(s.supplier_id) === form.supplierId) : null
     try {
       if (batch._source === 'medicine') {
-        await updateMedicineBatch(batch.medicine_batch_id, {
-          quantity: batch.quantity + form.qty,
-          expiration_date: form.expiry || batch.expiration_date,
-          received_date: form.received || batch.received_date,
-          supplier_id: form.supplierId || batch.supplier_id,
-          status: 'Active',
-        })
-        await addMedicineMovement({ medicineId: batch.medicine_id, medicineBatchId: batch.medicine_batch_id, actionType: 'Received', quantityChange: form.qty, previousQuantity: batch.quantity, newQuantity: batch.quantity + form.qty, staffId: currentUserId, notes: `Batch replenish: ${batch.batch_code}${form.notes ? ' — ' + form.notes : ''}` })
+        await mergeQuantityIntoMedicineBatch(batch, form, `Batch replenish: ${batch.batch_code}${form.notes ? ' — ' + form.notes : ''}`)
         await Promise.all([refreshInventory(), refreshBatches(), refreshLogs()])
         show(`Batch ${batch.batch_code} replenished — ${batch.item_name} +${form.qty} ${batch.item_unit}`, 'success')
         setReplenishBatchId(null)
@@ -1255,23 +1224,7 @@ export default function InventoryPage() {
     const batch = scanReplenishBatch
     if (!batch) return
     try {
-      await updateMedicineBatch(batch.medicine_batch_id, {
-        quantity: batch.quantity + form.qty,
-        expiration_date: form.expiry || batch.expiration_date,
-        received_date: form.received || batch.received_date,
-        supplier_id: form.supplierId || batch.supplier_id,
-        status: 'Active',
-      })
-      await addMedicineMovement({
-        medicineId: batch.medicine_id,
-        medicineBatchId: batch.medicine_batch_id,
-        actionType: 'Received',
-        quantityChange: form.qty,
-        previousQuantity: batch.quantity,
-        newQuantity: batch.quantity + form.qty,
-        staffId: currentUserId,
-        notes: `Batch replenish via QR scan: ${batch.batch_code}${form.notes ? ' — ' + form.notes : ''}`,
-      })
+      await mergeQuantityIntoMedicineBatch(batch, form, `Batch replenish via QR scan: ${batch.batch_code}${form.notes ? ' — ' + form.notes : ''}`)
       await addScanHistory({
         scannedBy: currentUserId,
         itemName: batch.item_name,
@@ -1351,11 +1304,9 @@ export default function InventoryPage() {
 
   const tabItems = TABS.map((t) => {
     if (t.key === 'items') return { ...t, label: `Items (${inventory.length})` }
-    if (t.key === 'batches') return { ...t, label: `Batches (${batches.length})` }
     if (t.key === 'suppliers') return { ...t, label: `Suppliers (${suppliers.length})` }
     if (t.key === 'log') return { ...t, label: `Log (${logs.length})` }
     if (t.key === 'alerts') return { ...t, label: `Alerts${alertCount > 0 ? ` (${alertCount})` : ''}` }
-    if (t.key === 'notifications') return { ...t, label: `Notifications${unreadNotifCount > 0 ? ` (${unreadNotifCount})` : ''}` }
     return t
   })
 
@@ -1402,7 +1353,10 @@ export default function InventoryPage() {
               setTab('items')
               setItemsFilters((f) => ({ ...f, status }))
             }}
-            onNavigateToBatches={() => setTab('batches')}
+            onNavigateToBatches={() => {
+              setTab('items')
+              setItemsSubTab('batches')
+            }}
           />
         </div>
       )}
@@ -1420,15 +1374,11 @@ export default function InventoryPage() {
             onRemove={handleRemove}
             onRestore={setRestoreItemId}
             onReplenish={setReplenishItemId}
-          />
-        </div>
-      )}
-      {tab === 'batches' && (
-        <div>
-          <BatchesTab
+            subTab={itemsSubTab}
+            onSubTabChange={setItemsSubTab}
             batches={batches}
-            search={batchSearch}
-            onSearchChange={setBatchSearch}
+            batchSearch={batchSearch}
+            onBatchSearchChange={setBatchSearch}
             onAddBatch={() => setAddBatchOpen(true)}
             onReleaseBatchPicker={() => setReleaseBatchPickerOpen(true)}
             onEditBatch={setEditBatchId}
@@ -1454,24 +1404,21 @@ export default function InventoryPage() {
           />
         </div>
       )}
-      {tab === 'scan' && <div><ScanTab scanHistory={scanHistory} onProcessRaw={handleProcessRaw} canDelete={canDeleteLogs} onDelete={handleDeleteScanHistory} /></div>}
+      {tab === 'scan' && (
+  <div>
+    <ScanTab
+      scanHistory={scanHistory}
+      onProcessRaw={handleProcessRaw}
+      canDelete={canDeleteLogs}
+      onDelete={handleDeleteScanHistory}
+      scanPaused={!!scanVerify || !!scanReplenishBatch || (addItemOpen && !!pendingItemPrefill)}
+    />
+  </div>
+)}
       {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} canDelete={canDeleteLogs} onDelete={handleDeleteInventoryLogs} /></div>}
       {tab === 'alerts' && (
         <div>
           <AlertsTab inventory={inventory} onItemClick={handleAlertItemClick} />
-        </div>
-      )}
-      {tab === 'notifications' && (
-        <div>
-          <NotificationCenterTab
-            notifications={inventoryNotifications}
-            unreadCount={unreadNotifCount}
-            onMarkRead={handleMarkNotificationRead}
-            onMarkAllRead={handleMarkAllNotificationsRead}
-            onOpenRecord={handleOpenNotificationRecord}
-            canDelete={canDeleteLogs}
-            onDelete={handleDeleteInventoryNotifications}
-          />
         </div>
       )}
 

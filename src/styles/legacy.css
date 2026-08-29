@@ -1584,15 +1584,21 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
      min-width:0 fix, just the other end of the same row. */
   min-width:0;
 }
-/* List/Grid view toggle — a compact segmented pair, matching the size
-   of the surrounding .btn-sm controls in the same header row. */
+/* Items/Batches view toggle — a compact segmented pair, matching the
+   height of the surrounding .btn-sm controls in the same header row.
+   Each button renders an icon PLUS a text label ("Items"/"Batches"),
+   not just an icon — the old fixed width:32px below was sized for an
+   icon-only toggle (a leftover from this control's earlier List/Grid
+   icon-toggle form) and left no room for the label, so it wrapped onto
+   a second line and got clipped by this container's overflow:hidden. */
 .inv-view-toggle{
   display:flex;border:1.5px solid var(--border-strong);border-radius:8px;
   overflow:hidden;height:30px;flex-shrink:0;
 }
 .inv-view-toggle-btn{
-  width:32px;height:100%;min-width:0;min-height:0;border:none;background:var(--surface);
-  color:var(--text-3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  height:100%;padding:0 12px;min-width:0;border:none;background:var(--surface);
+  color:var(--text-3);cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;
   transition:background .1s ease,color .1s ease;
 }
 .inv-view-toggle-btn:first-child{border-right:1px solid var(--border-strong)}

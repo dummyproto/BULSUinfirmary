@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import SearchInput from '@components/ui/SearchInput'
 import Spinner from '@components/ui/Spinner'
 import Tabs from '@components/ui/Tabs'
-import { listAuditLogs } from '@services/auditLogsService'
+import { listAuditLogs, logConfigEvent } from '@services/auditLogsService'
 import { listInventoryLogs } from '@services/inventoryService'
+import { exportToCSV } from '@features/reports/lib/exportReport'
 import { formatDateTime } from '@lib/format'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
-import { HistoryIcon } from '@components/ui/icons'
+import { HistoryIcon, DownloadIcon } from '@components/ui/icons'
 
 // Maps the fixed set of action codes this app actually writes (see
 // addAuditLog()/logAuthEvent() call sites across MaintenancePage.jsx,
@@ -104,6 +106,12 @@ const ACTION_STYLES = {
   // Management Logs) and just gets included in this tab's action set
   // too, same dual-tab pattern as ACTIVATE_USER/DEACTIVATE_USER.
   SYSTEM_BACKUP_INITIATED: { color: 'purple', label: 'System Backup Generated' },
+  // Written by this page's own new "Back Up" button below (exportBackup)
+  // — kept distinct from SYSTEM_BACKUP_INITIATED (the full multi-table
+  // JSON export from Maintenance -> Backup) since this one only ever
+  // covers whichever single tab/filtered view of the audit trail the
+  // admin was actually looking at, as a CSV rather than JSON.
+  AUDIT_TRAIL_BACKUP: { color: 'purple', label: 'Audit Trail Backed Up' },
 }
 
 // Everything shown on the "User Management Logs" tab — account
@@ -174,7 +182,7 @@ const DOCUMENT_ACTIONS = new Set([
 // MaintenancePage.jsx's handleGenerateBackup — see BackupTab.jsx).
 // There's no dedicated "system settings" page in this app yet to log
 // changes from, so this tab only covers what actually exists so far.
-const SYSTEM_CONFIG_ACTIONS = new Set(['UPDATE_PERMISSION', 'SYSTEM_BACKUP_INITIATED'])
+const SYSTEM_CONFIG_ACTIONS = new Set(['UPDATE_PERMISSION', 'SYSTEM_BACKUP_INITIATED', 'AUDIT_TRAIL_BACKUP'])
 
 const TABS = [
   { key: 'system', label: 'System Activity Log' },
@@ -249,6 +257,7 @@ function actionColor(action) {
 }
 
 export default function AuditTrailPage() {
+  const { profile } = useAuth()
   const { show } = useToast()
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState([])
@@ -369,6 +378,37 @@ export default function AuditTrailPage() {
     )
   })
 
+  const currentTabLabel = TABS.find((t) => t.key === tab)?.label || 'Audit Trail'
+
+  // Exports exactly what's currently on screen — whichever tab, action
+  // filter, role filter, and search text are active — not the whole,
+  // unfiltered audit_logs table every time. Someone reviewing (say) just
+  // this week's Authentication Logs for a specific admin almost always
+  // wants a backup of THAT slice, not a dump of everything else mixed
+  // in; if a full, unfiltered export is ever wanted instead, clearing
+  // the filters first gets exactly that from this same button. Distinct
+  // from Maintenance -> Backup's generateSystemBackup(), which bundles
+  // every core table (not just audit_logs) into one JSON file — this is
+  // audit-trail-specific and CSV, immediately opens in Excel/Sheets
+  // rather than needing to be parsed.
+  function handleBackup() {
+    if (filtered.length === 0) {
+      show('Nothing to back up — no rows match the current filters.', 'warning')
+      return
+    }
+    exportToCSV({
+      title: `Audit Trail - ${currentTabLabel}`,
+      headers: ['Date & Time', 'User', 'Role', 'Action', 'Details'],
+      rows: filtered.map((l) => [formatDateTime(l.created_at), l.user_name || 'Unknown user', l.user_role || '—', actionLabel(l.action), l.details || '']),
+    })
+    logConfigEvent({
+      userId: profile?.user_id ?? null,
+      action: 'AUDIT_TRAIL_BACKUP',
+      details: `${profile?.name || 'Admin'} backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} from "${currentTabLabel}"${actionFilter !== 'all' ? ` (filtered: ${actionLabel(actionFilter)})` : ''}${roleFilter !== 'all' ? ` (role: ${roleFilter})` : ''}`,
+    })
+    show(`Backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} as CSV`, 'success')
+  }
+
   if (loading) return <Spinner label="Loading audit trail…" />
 
   return (
@@ -432,6 +472,9 @@ export default function AuditTrailPage() {
                 ))}
               </select>
               <SearchInput value={search} onChange={setSearch} placeholder="Search by user, action, or details…" width={260} />
+              <button type="button" className="btn btn-sm btn-outline" onClick={handleBackup} title="Download the rows currently shown as a CSV file">
+                <DownloadIcon width={13} height={13} /> Back Up
+              </button>
             </div>
           </div>
           {tab === 'user-mgmt' && (
