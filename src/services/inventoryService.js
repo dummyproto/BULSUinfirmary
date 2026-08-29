@@ -79,13 +79,21 @@ export async function listInventoryLogs() {
   // wider window.
   const { data, error } = await supabase
     .from('inventory_logs')
-    .select('*, staff:users!inventory_logs_staff_id_fkey ( name ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number ), equipment:equipment ( equipment_name ), supply:supplies ( supply_name )')
+    // `role` is pulled alongside `name` so the Audit Trail page's
+    // Inventory Logs tab can be filtered by Administrator/Staff/Patient
+    // too, same as the other tabs — see AuditTrailPage.jsx's roleFilter
+    // and normalizeInventoryLog().
+    .select('*, staff:users!inventory_logs_staff_id_fkey ( name, role ), item:inventory ( name ), medicine:medicines ( medicine_name ), medicine_batch:medicine_batches ( batch_number ), equipment:equipment ( equipment_name ), supply:supplies ( supply_name )')
     .order('created_at', { ascending: false })
     .limit(300)
   if (error) throw error
+  // Same preference-over-live-join reasoning as listAuditLogs() above —
+  // staff_name_snapshot/staff_role_snapshot (migration 048) survive the
+  // staff account being deleted later; the join is just a fallback.
   return data.map((l) => ({
     ...l,
-    staff_name: l.staff?.name ?? null,
+    staff_name: l.staff_name_snapshot ?? l.staff?.name ?? null,
+    staff_role: l.staff_role_snapshot ?? l.staff?.role ?? null,
     item_name: l.item?.name ?? l.medicine?.medicine_name ?? l.equipment?.equipment_name ?? l.supply?.supply_name ?? null,
     medicine_batch_number: l.medicine_batch?.batch_number ?? null,
   }))

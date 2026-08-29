@@ -22,6 +22,7 @@ const InventoryPage = lazy(() => import('@features/inventory/InventoryPage'))
 const ReportsPage = lazy(() => import('@features/reports/ReportsPage'))
 const EmergencyAlertsPage = lazy(() => import('@features/emergency-alerts/EmergencyAlertsPage'))
 const MaintenancePage = lazy(() => import('@features/maintenance/MaintenancePage'))
+const AuditTrailPage = lazy(() => import('@features/audit-trail/AuditTrailPage'))
 const ChatbotPage = lazy(() => import('@features/chatbot/ChatbotPage'))
 const ProfilePage = lazy(() => import('@features/profile/ProfilePage'))
 const ResetPasswordPage = lazy(() => import('@features/auth/ResetPasswordPage'))
@@ -88,9 +89,10 @@ export default function AppRoutes() {
             <Route path="/consultation" element={<LazyPage><ConsultationPage /></LazyPage>} />
           </Route>
 
-          {/* Admin only */}
+                    {/* Admin only */}
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route path="/maintenance" element={<LazyPage><MaintenancePage /></LazyPage>} />
+            <Route path="/audit-trail" element={<LazyPage><AuditTrailPage /></LazyPage>} />
           </Route>
 
           {/* Patient only */}

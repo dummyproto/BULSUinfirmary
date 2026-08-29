@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail, checkEmailHasPin, resendConfirmationEmail } from '@services/usersService'
 import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClient'
+import { logAuthEvent } from '@services/auditLogsService'
 import PasswordInput from '@components/ui/PasswordInput'
 import PinInput from '@components/ui/PinInput'
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
@@ -26,6 +27,7 @@ const ROLE_RESTRICTED_ROUTES = {
   '/emergency-alerts': ['admin', 'staff'],
   '/consultation': ['staff'],
   '/maintenance': ['admin'],
+  '/audit-trail': ['admin'],
   '/my-requests': ['patient'],
   '/chatbot': ['patient'],
 }
@@ -122,6 +124,20 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
   const [justRegistered] = useState(() => !!location.state?.registeredEmail)
+  // Captured on the very first render, same lazy-initializer pattern as
+  // justRegistered above — reads the ?confirmed=1 query param this app
+  // itself appended to the email confirmation link (see
+  // usersService.js's registerPatient/resendConfirmationEmail, both of
+  // which set emailRedirectTo to this exact URL). Clicking that link is
+  // what lands someone back here: Supabase's own detectSessionInUrl
+  // (supabaseClient.js) auto-establishes a real session from the
+  // link's own token before this component even mounts, which would
+  // otherwise hit the `if (isAuthenticated)` redirect-to-dashboard
+  // below and silently drop them straight into the app with no
+  // indication anything just happened. This flag makes that case show
+  // a dedicated "Your account has been activated!" screen first
+  // instead — see the render below.
+  const [justConfirmedEmail, setJustConfirmedEmail] = useState(() => new URLSearchParams(location.search).get('confirmed') === '1')
   // Set only when a sign-in attempt fails specifically because the
   // account's email hasn't been confirmed yet — drives showing the
   // "Resend confirmation email" button instead of the normal wrong-
@@ -163,6 +179,50 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Same reasoning as the router-state cleanup effect above, for the
+  // ?confirmed=1 query param instead — strips it from the URL once
+  // captured into justConfirmedEmail's state above, so refreshing this
+  // page (or using the browser back button) doesn't keep re-triggering
+  // the activation screen on every subsequent visit to /login.
+  useEffect(() => {
+    if (justConfirmedEmail) {
+      navigate(location.pathname, { replace: true, state: location.state })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (justConfirmedEmail) {
+    return (
+      <div className="login-page">
+        <div className="login-box" style={{ textAlign: 'center' }}>
+          <div style={{ margin: '8px auto 18px', width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckCircleIcon width={30} height={30} style={{ color: 'var(--success)' }} />
+          </div>
+          <h2 style={{ margin: '0 0 8px' }}>Your account has been activated!</h2>
+          <p style={{ color: 'var(--text-2)', fontSize: 13.5, marginBottom: 22 }}>
+            Your email is confirmed and your account is now active. You can sign in below.
+          </p>
+          <button
+            type="button"
+            className="btn btn-blue"
+            style={{ width: '100%' }}
+            onClick={() => {
+              // isAuthenticated is already true by this point (the
+              // confirmation link's own session was established before
+              // this page even rendered) — flipping this state is what
+              // actually lets the isAuthenticated check below take over
+              // and redirect onward, same as any other already-signed-in
+              // visit to this route.
+              setJustConfirmedEmail(false)
+            }}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (isAuthenticated) {
     const fromPath = location.state?.from?.pathname
     const redirectTo = fromPath && isRouteAllowedForRole(fromPath, role) ? fromPath : '/dashboard'
@@ -189,11 +249,30 @@ export default function LoginPage() {
     setEmail(foundEmail)
     setPin('')
     setError('')
-    let pinEnabled
+    // Was previously a bare try/catch that silently swallowed ANY
+    // failure here and fell back to password mode with zero trace —
+    // meaning a real, reproducible bug in this check (a network blip
+    // right after the camera just released, a stale schema cache, etc.)
+    // looked EXACTLY like "this account has no PIN set," with nothing
+    // in the console to tell the two apart. One retry after a short
+    // delay covers the transient case (this call fires the instant the
+    // camera stops, and mobile browsers can briefly stall a new network
+    // request right after releasing a media stream); logging on genuine,
+    // repeated failure means a future report of "the PIN pad didn't
+    // appear" can actually be diagnosed from the console instead of
+    // guessed at again.
+    let pinEnabled = false
     try {
       pinEnabled = await checkEmailHasPin(foundEmail)
-    } catch {
-      pinEnabled = false
+    } catch (err) {
+      console.warn('checkEmailHasPin failed, retrying once:', err.message)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      try {
+        pinEnabled = await checkEmailHasPin(foundEmail)
+      } catch (err2) {
+        console.error('checkEmailHasPin failed twice — falling back to password sign-in:', err2.message)
+        pinEnabled = false
+      }
     }
     if (pinEnabled) {
       setInfo(`Identified account for ${foundEmail} — enter your 4-digit PIN to continue.`)
@@ -337,6 +416,18 @@ export default function LoginPage() {
         const phase = record.phase === 'tier2' ? 'tier2' : 'tier1'
         const nextCount = (record.count || 0) + 1
 
+        // Logged here — this is the one place that means "a real,
+        // registered, non-admin account just had a genuinely wrong
+        // password typed against it" (ACCOUNT_DISABLED, "email not
+        // confirmed", unregistered emails, and admin accounts are all
+        // handled in their own branches above and never reach this
+        // point). No user_id lookup here — getRoleByEmail() above only
+        // returns the role string, not the row, and a second query just
+        // to attach an id isn't worth it for a failed-attempt log; the
+        // RLS policy on audit_logs already allows a null user_id for
+        // exactly this pre-auth case.
+        logAuthEvent({ userId: null, action: 'LOGIN_FAILED', details: `${email} — incorrect password (attempt ${nextCount}, ${phase})`, actorRole: role })
+
         if (phase === 'tier1') {
           if (nextCount >= TIER1_ATTEMPTS) {
             // 5th wrong attempt — lock input for 60s, then move into
@@ -357,6 +448,14 @@ export default function LoginPage() {
             // stop counting rather than looping forever.
             try {
               await disableAccountAfterLockout(email)
+              // Reuses the same DEACTIVATE_USER action code
+              // MaintenancePage.jsx writes for an admin-toggled
+              // deactivation — this is functionally the same event
+              // (account.is_active flips to false), just triggered by
+              // the lockout system instead of a person clicking a
+              // toggle, so it belongs in the same bucket on the audit
+              // trail rather than inventing a separate code for it.
+              logAuthEvent({ userId: null, action: 'DEACTIVATE_USER', details: `${email} — account automatically disabled after ${TIER2_ATTEMPTS} failed login attempts`, actorRole: role })
             } catch {
               // ignore — see comment above
             }

@@ -8,7 +8,7 @@ import AlertLogTab from './AlertLogTab'
 import SMSComposerTab from './SMSComposerTab'
 import SmsLogTab from './SmsLogTab'
 import SmsSuccessOverlay from './SmsSuccessOverlay'
-import EmergencySidebar, { PICKUP_OPTIONS } from './EmergencySidebar'
+import EmergencySidebar from './EmergencySidebar'
 import { stopEmergencySiren } from '@lib/emergencySound'
 import { SMS_TEMPLATES, validatePHPhone, buildSMSMessage } from './lib/smsHelpers'
 import {
@@ -22,6 +22,7 @@ import {
 } from '@services/emergencyAlertsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
+import { logAuthEvent } from '@services/auditLogsService'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 /**
@@ -169,6 +170,7 @@ export default function EmergencyAlertsPage() {
       const updated = await acknowledgeAlert(id, currentUserId)
       setAlerts((list) => list.map((a) => (a.emergency_alert_id === id ? { ...a, ...updated } : a)))
       show('Alert acknowledged', 'success')
+      logAuthEvent({ userId: currentUserId, action: 'EMERGENCY_ACKNOWLEDGED', details: `${profile?.name || 'Staff'} acknowledged the emergency alert for ${updated.subject_name || 'an unregistered patient'}` })
       // The person who filed this was already notified nothing back once
       // staff actually responded — patient-to-staff was covered, but not
       // the reverse direction. reported_by can be null for a pre-login
@@ -196,6 +198,7 @@ export default function EmergencyAlertsPage() {
       const updated = await resolveAlert(id)
       setAlerts((list) => list.map((a) => (a.emergency_alert_id === id ? { ...a, ...updated } : a)))
       show('Alert marked as resolved', 'success')
+      logAuthEvent({ userId: currentUserId, action: 'EMERGENCY_RESOLVED', details: `${profile?.name || 'Staff'} resolved the emergency alert for ${updated.subject_name || 'an unregistered patient'}` })
     } catch (err) {
       show(`Failed to resolve alert: ${err.message}`, 'error')
     }

@@ -5,9 +5,10 @@ import PinInput from '@components/ui/PinInput'
 import { KeyIcon } from '@components/ui/icons'
 import { useAuth } from '@context/AuthContext'
 import { setOwnPin, clearOwnPin } from '@services/usersService'
+import { logAuthEvent } from '@services/auditLogsService'
 
 export default function SetPinModal({ isOpen, onClose, onSuccess, onError, hasPin }) {
-  const { verifyCurrentPassword } = useAuth()
+  const { verifyCurrentPassword, profile } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
@@ -33,6 +34,10 @@ export default function SetPinModal({ isOpen, onClose, onSuccess, onError, hasPi
       // verifyCurrentPassword's own comment in AuthContext.jsx.
       await verifyCurrentPassword(currentPassword)
       await setOwnPin(newPin)
+      // Records only that the PIN was changed, and by whom — never the
+      // PIN value itself (see auditLogsService.js's own security note on
+      // never storing secrets in audit details).
+      logAuthEvent({ userId: profile?.user_id, action: 'PIN_UPDATED', details: `${profile?.name || 'User'} ${hasPin ? 'updated' : 'set'} their quick-login PIN.` })
       onSuccess(hasPin ? 'PIN updated' : 'Quick-login PIN set')
       handleClose()
     } catch (err) {
@@ -48,6 +53,7 @@ export default function SetPinModal({ isOpen, onClose, onSuccess, onError, hasPi
     try {
       await verifyCurrentPassword(currentPassword)
       await clearOwnPin()
+      logAuthEvent({ userId: profile?.user_id, action: 'PIN_REMOVED', details: `${profile?.name || 'User'} removed their quick-login PIN.` })
       onSuccess('Quick-login PIN removed')
       handleClose()
     } catch (err) {

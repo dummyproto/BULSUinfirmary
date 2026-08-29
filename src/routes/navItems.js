@@ -8,6 +8,7 @@ import {
   ConsultationIcon,
   ChatbotIcon,
   PeopleIcon,
+  HistoryIcon,
 } from '@components/ui/icons'
 
 // Mirrors the legacy buildSidebar() menus object + Router.go's
@@ -25,7 +26,8 @@ export const NAV_ITEMS = {
     { key: 'inventory', label: 'Inventory', path: '/inventory', icon: InventoryIcon },
     { key: 'reports', label: 'Reports', path: '/reports', icon: ReportsIcon },
     { key: 'emergency-alerts', label: 'Emergency Alerts', path: '/emergency-alerts', icon: EmergencyIcon, emg: true },
-    { key: 'maintenance', label: 'System Maintenance', path: '/maintenance', icon: SettingsIcon },
+        { key: 'maintenance', label: 'System Maintenance', path: '/maintenance', icon: SettingsIcon },
+    { key: 'audit-trail', label: 'Audit Trail', path: '/audit-trail', icon: HistoryIcon },
   ],
   staff: [
     { key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: GridIcon },

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
+import { logAuthEvent } from '@services/auditLogsService'
 import Spinner from '@components/ui/Spinner'
 
 /**
@@ -12,7 +13,7 @@ import Spinner from '@components/ui/Spinner'
  *     instead of rendering the page.
  */
 export default function ProtectedRoute({ roles }) {
-  const { isAuthenticated, role, loading } = useAuth()
+  const { isAuthenticated, role, profile, loading } = useAuth()
   const { show } = useToast()
   const location = useLocation()
   const shownRef = useRef(false)
@@ -22,6 +23,11 @@ export default function ProtectedRoute({ roles }) {
   useEffect(() => {
     if (forbidden && !shownRef.current) {
       show('Access denied', 'error')
+      logAuthEvent({
+        userId: profile?.user_id,
+        action: 'ACCESS_DENIED',
+        details: `${profile?.email || 'A user'} (role: ${role || 'unknown'}) was denied access to ${location.pathname}`,
+      })
       shownRef.current = true
     } else if (!forbidden) {
       // Reset so a later, genuinely new forbidden attempt (e.g. this
@@ -30,7 +36,7 @@ export default function ProtectedRoute({ roles }) {
       // for the *same* forbidden transition, not forever.
       shownRef.current = false
     }
-  }, [forbidden, show])
+  }, [forbidden, show, profile, role, location.pathname])
 
   if (loading) return <Spinner label="Loading session…" />
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />

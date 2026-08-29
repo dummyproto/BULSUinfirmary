@@ -9,6 +9,7 @@ import Spinner from '@components/ui/Spinner'
 import Modal from '@components/ui/Modal'
 import { formatDate } from '@lib/format'
 import { listDocumentRequests, createDocumentRequest, updateDocumentRequestStatus, updateDocumentRequest } from '@services/documentRequestsService'
+import { logDocumentEvent } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { exportElementAsPng, exportRequestAsDocx } from '@lib/exportRequestDoc'
 import logo from '@/assets/logo.png'
@@ -175,6 +176,11 @@ export default function MyRequestsPage() {
       const updated = await updateDocumentRequestStatus(id, 'Cancelled')
       setRequests((list) => list.map((r) => (r.doc_request_id === id ? updated : r)))
       show('Request cancelled', 'success')
+      logDocumentEvent({
+        userId: myPatientId,
+        action: 'DOC_REQUEST_CANCELLED',
+        details: `${updated.patient_name} cancelled their own ${updated.doc_type} request`,
+      })
     } catch (err) {
       show(`Failed to cancel request: ${err.message}`, 'error')
     }
@@ -185,6 +191,11 @@ export default function MyRequestsPage() {
       const created = await createDocumentRequest({ patientId: myPatientId, docType, purpose, dateNeeded })
       setRequests((list) => [created, ...list])
       setNewRequestOpen(false)
+      logDocumentEvent({
+        userId: myPatientId,
+        action: 'DOC_REQUEST_SUBMITTED',
+        details: `${created.patient_name} submitted a request for ${docType}`,
+      })
       try {
         // Both staff and admin can see /document-requests (same dual-role
         // pattern already used for emergency alerts) — previously only
@@ -215,6 +226,11 @@ export default function MyRequestsPage() {
       const updated = await updateDocumentRequestStatus(id, 'Claimed')
       setRequests((list) => list.map((r) => (r.doc_request_id === id ? updated : r)))
       show('Document marked as claimed. Thank you!', 'success')
+      logDocumentEvent({
+        userId: myPatientId,
+        action: 'DOC_REQUEST_CLAIMED',
+        details: `${updated.patient_name} claimed their ${updated.doc_type} — request completed`,
+      })
       try {
         await Promise.all([
           notify({ targetRole: 'staff', message: `${updated.patient_name} confirmed pickup of their ${updated.doc_type}.`, type: 'success', module: '/document-requests' }),
@@ -560,6 +576,11 @@ export default function MyRequestsPage() {
                         }
                         window.addEventListener('afterprint', cleanup)
                         window.print()
+                        logDocumentEvent({
+                          userId: myPatientId,
+                          action: 'DOC_REQUEST_PRINTED',
+                          details: `${profile?.name || 'Patient'} printed their ${d.doc_type} request`,
+                        })
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
                     >
@@ -572,6 +593,11 @@ export default function MyRequestsPage() {
                       onClick={async () => {
                         try {
                           await exportElementAsPng(printableRef.current, `${fileBase}.png`)
+                          logDocumentEvent({
+                            userId: myPatientId,
+                            action: 'DOC_REQUEST_DOWNLOADED_PNG',
+                            details: `${profile?.name || 'Patient'} downloaded their ${d.doc_type} request as PNG`,
+                          })
                         } catch (err) {
                           show(`Failed to save image: ${err.message}`, 'error')
                         }
@@ -597,6 +623,11 @@ export default function MyRequestsPage() {
                             },
                             `${fileBase}.docx`
                           )
+                          logDocumentEvent({
+                            userId: myPatientId,
+                            action: 'DOC_REQUEST_DOWNLOADED_DOCX',
+                            details: `${profile?.name || 'Patient'} downloaded their ${d.doc_type} request as Word`,
+                          })
                         } catch (err) {
                           show(`Failed to save document: ${err.message}`, 'error')
                         }

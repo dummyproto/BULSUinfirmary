@@ -14,18 +14,40 @@ export default function QrLoginScan({ onIdentified, onError }) {
   const streamRef = useRef(null)
   const pollRef = useRef(null)
   const viewportRef = useRef(null)
+  // Guards against captureFrame() firing resolveCode() more than once for
+  // the same held-up QR code. The 250ms poll interval decodes the same
+  // physical code on several consecutive frames while someone holds their
+  // ID in front of the camera — without this lock, each of those frames
+  // kicked off its OWN independent lookupEmailBySchoolId() ->
+  // checkEmailHasPin() chain (in LoginPage's handleIdentified), all racing
+  // each other over the network. Whichever call happened to resolve LAST
+  // won the final setMode(...) in LoginPage — so a straggler call could
+  // silently flip the screen from the PIN pad back to the password field
+  // right after it had already (briefly) shown correctly, making it look
+  // like the PIN screen "never appeared" even for accounts that do have a
+  // PIN set. Locking on the first decoded frame, and stopping the poll
+  // immediately (before the async lookup even starts) rather than only
+  // after it resolves, means only one resolveCode() is ever in flight.
+  const resolvingRef = useRef(false)
 
   useEffect(() => stopCamera, [])
 
   async function resolveCode(raw) {
     const code = normalizeSchoolIdCode(extractSchoolIdCode(raw))
-    if (!code) return
+    if (!code) {
+      resolvingRef.current = false
+      return
+    }
     setScanStatus('Looking up account…')
     try {
       const foundEmail = await lookupEmailBySchoolId(code)
       if (!foundEmail) {
         setScanStatus('')
         onError('No account found for that ID. Try again or sign in with email.')
+        // Not a match — let them try again by resuming the poll instead
+        // of leaving the camera silently stuck on "locked".
+        resolvingRef.current = false
+        if (cameraActive && !pollRef.current) pollRef.current = setInterval(captureFrame, 250)
         return
       }
       stopCamera()
@@ -34,6 +56,8 @@ export default function QrLoginScan({ onIdentified, onError }) {
     } catch (err) {
       setScanStatus('')
       onError(`Lookup failed: ${err.message}`)
+      resolvingRef.current = false
+      if (cameraActive && !pollRef.current) pollRef.current = setInterval(captureFrame, 250)
     }
   }
 
@@ -79,6 +103,7 @@ export default function QrLoginScan({ onIdentified, onError }) {
     }
     setCameraActive(false)
     setTorchOn(false)
+    resolvingRef.current = false
   }
 
   // Best-effort — only supported on some devices/browsers (mainly
@@ -105,6 +130,7 @@ export default function QrLoginScan({ onIdentified, onError }) {
   }
 
   function captureFrame() {
+    if (resolvingRef.current) return
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas || video.readyState < 2) return
@@ -114,7 +140,16 @@ export default function QrLoginScan({ onIdentified, onError }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
-    if (code?.data) resolveCode(code.data)
+    if (code?.data) {
+      // Lock immediately, before the async lookup even starts — see the
+      // comment on resolvingRef above.
+      resolvingRef.current = true
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+      resolveCode(code.data)
+    }
   }
 
   return (

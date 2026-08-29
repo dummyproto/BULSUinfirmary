@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase } from '@services/supabaseClient'
 import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
+import { logAuthEvent } from '@services/auditLogsService'
 import { useToast } from '@context/ToastContext'
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -86,7 +87,7 @@ export function AuthProvider({ children }) {
           }
         }
         setProfile(row)
-        return
+        return row
       } catch (err) {
         const isClockSkew = /jwt issued at future/i.test(err.message || '')
         if (isClockSkew && attempt < maxAttempts) {
@@ -116,6 +117,12 @@ export function AuthProvider({ children }) {
     // token). Captured before the getSession() call below so it's not
     // lost once supabase-js strips it from the URL after processing.
     const hadUrlToken = /access_token=/.test(window.location.hash)
+    // Distinguishes an email-confirmation link ("type=signup") from a
+    // password-recovery link ("type=recovery") — same one-shot capture
+    // as hadUrlToken above and for the same reason: the hash is gone by
+    // the time the getSession() promise below resolves.
+    const urlTokenMatch = window.location.hash.match(/[?&]type=([^&]+)/)
+    const isEmailConfirmationLink = hadUrlToken && urlTokenMatch?.[1] === 'signup'
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return
@@ -138,8 +145,16 @@ export function AuthProvider({ children }) {
       // through with `role` still null (DashboardPage renders nothing
       // for that case) — a blank flash on every page refresh/reopen
       // while already signed in, not just on a fresh login.
-      if (data.session?.user) await loadProfile(data.session.user)
+      let row
+      if (data.session?.user) row = await loadProfile(data.session.user)
       if (!mounted) return
+      // Logged here (not inside loadProfile itself) since this is the
+      // ONE path that means "a confirmation link was just redeemed" —
+      // loadProfile also runs on every ordinary page load/refresh while
+      // already signed in, which must never re-log this.
+      if (isEmailConfirmationLink && row) {
+        logAuthEvent({ userId: row.user_id, action: 'EMAIL_VERIFIED', details: `${row.email || 'Account'} confirmed via email link` })
+      }
       setLoading(false)
     })
 
@@ -194,6 +209,23 @@ export function AuthProvider({ children }) {
       active = true
     }
     if (active === false) {
+      // Best-effort: the account is disabled either way, whether or not
+      // this lookup (needed only to attach a user_id to the log entry)
+      // succeeds — never let it block signing the person back out.
+      let deniedRow
+      try {
+        deniedRow = await getUserByEmail(email)
+      } catch {
+        // ignore — logAuthEvent below just logs with userId: null instead
+      }
+      // Awaited — same race as signOut() below: without this, the log
+      // insert and supabase.auth.signOut() fire concurrently, and
+      // signOut() revoking the session's JWT can win before the insert
+      // actually reaches Supabase, so auth.uid() resolves to nothing
+      // server-side and the RLS check on audit_logs rejects it with a
+      // 403. Awaiting first means the insert completes while the
+      // session backing it is still valid.
+      await logAuthEvent({ userId: deniedRow?.user_id, action: 'LOGIN_DENIED', details: `${email} — account is disabled` })
       await supabase.auth.signOut()
       throw new Error('ACCOUNT_DISABLED')
     }
@@ -209,7 +241,16 @@ export function AuthProvider({ children }) {
     // showed up as a blank flash between "logged in" and "dashboard
     // actually visible" instead of landing on it directly. Awaiting it
     // here means role is already set by the time the caller proceeds.
-    await loadProfile(data.user)
+    const row = await loadProfile(data.user)
+    // Awaited, not fire-and-forget — same category of race as the
+    // LOGIN_DENIED and LOGOUT fixes elsewhere in this file: this insert
+    // must not be left in flight past the point where signIn() resolves,
+    // since the caller (LoginPage.jsx) reacts to that by flipping
+    // isAuthenticated and redirecting immediately, rather than guaranteeing
+    // this background write finishes cleanly first. logAuthEvent() already
+    // swallows its own errors internally, so this can't turn a logging
+    // hiccup into a blocked sign-in.
+    await logAuthEvent({ userId: row?.user_id, action: 'LOGIN_SUCCESS', details: `${email} signed in` })
 
     return data
   }, [loadProfile])
@@ -226,11 +267,6 @@ export function AuthProvider({ children }) {
     async (email, pin) => {
       const { data, error } = await supabase.functions.invoke('verify-pin', { body: { email, pin } })
       if (error) {
-        // supabase-js wraps a non-2xx Edge Function response in a generic
-        // FunctionsHttpError — the actual, useful message ("Incorrect
-        // PIN. 3 attempt(s) left.", the lockout countdown, etc.) is only
-        // available by reading the original response body back out of
-        // the error's own context.
         let message = 'Could not verify PIN'
         try {
           const body = await error.context?.json()
@@ -239,6 +275,13 @@ export function AuthProvider({ children }) {
           // Response wasn't JSON, or context was unavailable — fall back
           // to the generic message above.
         }
+        let attemptedRole
+        try {
+          attemptedRole = (await getUserByEmail(email))?.role
+        } catch {
+          attemptedRole = undefined
+        }
+        logAuthEvent({ userId: null, action: 'LOGIN_FAILED', details: `${email} — PIN sign-in: ${message}`, actorRole: attemptedRole })
         throw new Error(message)
       }
       if (!data?.token_hash) throw new Error('Could not complete sign-in')
@@ -247,14 +290,44 @@ export function AuthProvider({ children }) {
       if (otpError) throw otpError
       // onAuthStateChange (already wired up above) picks up the new
       // session and calls loadProfile() from there automatically — same
-      // as it does after a normal signIn().
+      // as it does after a normal signIn(). email is already confirmed
+      // correct at this point (verify-pin succeeded), so a best-effort
+      // lookup here is enough to attach a user_id to the log entry.
+      let row
+      try {
+        row = await getUserByEmail(email)
+      } catch {
+        // ignore — logAuthEvent below just logs with userId: null instead
+      }
+      // Awaited for the same reason as the password-based LOGIN_SUCCESS
+      // above.
+      await logAuthEvent({ userId: row?.user_id, action: 'LOGIN_SUCCESS', details: `${email} signed in via PIN` })
     },
     []
   )
 
   const signOut = useCallback(async () => {
+    // Logged BEFORE the actual sign-out — profile.user_id is only
+    // available while the session backing it still exists; reading it
+    // after supabase.auth.signOut() would already be too late (profile
+    // clears via the onAuthStateChange listener above).
+    //
+    // Awaited, not fire-and-forget — previously this call and
+    // supabase.auth.signOut() ran concurrently. logAuthEvent() posts the
+    // audit-log INSERT and returns immediately; signOut() revokes the
+    // session's JWT right after. Whichever finished first wasn't
+    // guaranteed, and revocation is the faster of the two in practice —
+    // so the INSERT often reached Supabase's REST API only after the
+    // token backing it was already dead, meaning auth.uid() resolved to
+    // nothing server-side and the audit_logs RLS policy rejected it with
+    // a 403 (visible in the console as [AUTH_AUDIT_LOG_FAILED] LOGOUT).
+    // logAuthEvent() already swallows its own errors internally (see
+    // auditLogsService.js), so awaiting it here can't turn a
+    // logging hiccup into a blocked sign-out — it only guarantees the
+    // insert is attempted while the session is still actually valid.
+    await logAuthEvent({ userId: profile?.user_id, action: 'LOGOUT', details: profile?.email ? `${profile.email} signed out` : 'User signed out' })
     await supabase.auth.signOut()
-  }, [])
+  }, [profile])
 
   // Re-authenticates with the current password first (Supabase Auth has no
   // separate "verify current password" endpoint), then updates to the new
@@ -284,19 +357,25 @@ export function AuthProvider({ children }) {
       if (reauthError) throw new Error('Current password is incorrect')
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
+      logAuthEvent({ userId: profile?.user_id, action: 'PASSWORD_CHANGED', details: `${session.user.email} changed their password` })
     },
-    [session]
+    [session, profile]
   )
 
   // Sends the recovery email; Supabase's own rate-limiting/enumeration
   // protection means this resolves the same way whether or not the email
   // actually matches an account — the caller shows a generic message
-  // either way, never revealing account existence.
+  // either way, never revealing account existence. Logged with
+  // userId: null regardless of whether the email is real, for the same
+  // enumeration-safety reason — attaching a real user_id only when the
+  // email happens to match an account would itself leak which emails
+  // are registered to anyone able to read the audit trail's raw data.
   const requestPasswordReset = useCallback(async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     })
     if (error) throw error
+    logAuthEvent({ userId: null, action: 'PASSWORD_RESET_REQUESTED', details: `Password reset requested for ${email}` })
   }, [])
 
   // OTP-based recovery — verifies the code Supabase emailed (via
@@ -317,7 +396,21 @@ export function AuthProvider({ children }) {
   const completePasswordReset = useCallback(async (newPassword) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
-  }, [])
+    // Resolved fresh (not read from `profile` state) since this recovery
+    // session may be too new for the profile-loading effect above to
+    // have finished — a stale/missing user_id here would silently drop
+    // the log entry (or hit the RLS null-user_id case, which only
+    // applies to a still-anonymous caller, not an authenticated one).
+    if (session?.user?.email) {
+      let row
+      try {
+        row = await getUserByEmail(session.user.email)
+      } catch {
+        // ignore — logAuthEvent below just logs with userId: null instead
+      }
+      logAuthEvent({ userId: row?.user_id, action: 'PASSWORD_RESET_COMPLETED', details: `${session.user.email} completed a password reset` })
+    }
+  }, [session])
 
   // Keeps `profile` live for whoever's actually signed in, not just the
   // person making a change themselves. Without this, `profile` only

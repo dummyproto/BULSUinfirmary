@@ -794,7 +794,6 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
   margin:8px 8px 12px;padding:9px 12px;
   border-top:1px solid rgba(255,255,255,.12);
   border-radius:8px;
-  overflow:hidden;
 }
 /* Navigation section labels (MENU, etc.) */
 .nav-section-label{font-size:10px;font-weight:700;color:#B8AFA5;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px;white-space:nowrap}

@@ -5,6 +5,8 @@ import StatusBadge from '@components/ui/StatusBadge'
 import { formatDate } from '@lib/format'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
+import { logClinicalEvent } from '@services/auditLogsService'
+import { useAuth } from '@context/AuthContext'
 import { GraduationCapIcon, DocumentIcon, ConsultationIcon } from '@components/ui/icons'
 
 function DetailRow({ label, value }) {
@@ -17,6 +19,7 @@ function DetailRow({ label, value }) {
 }
 
 export default function PatientDetailModal({ isOpen, onClose, patient, onError }) {
+  const { profile: viewer } = useAuth()
   const [loading, setLoading] = useState(true)
   const [docs, setDocs] = useState([])
   const [consultations, setConsultations] = useState([])
@@ -24,6 +27,19 @@ export default function PatientDetailModal({ isOpen, onClose, patient, onError }
   useEffect(() => {
     if (!isOpen || !patient) return
     let cancelled = false
+
+    // Logged as soon as the modal opens (not inside the .then() below) —
+    // the record's own basic info (name, email, phone, guardian contact)
+    // is already on screen at that point regardless of whether the
+    // docs/consultations history goes on to load successfully, so the
+    // access itself shouldn't go unrecorded just because that follow-up
+    // fetch happens to fail.
+    logClinicalEvent({
+      userId: viewer?.user_id ?? null,
+      action: 'PATIENT_RECORD_VIEWED',
+      details: `${viewer?.name || 'A staff member'} viewed ${patient.name}'s patient record`,
+    })
+
     Promise.all([listDocumentRequests({ patientId: patient.user_id }), listConsultations({ patientId: patient.user_id })])
       .then(([d, c]) => {
         if (cancelled) return

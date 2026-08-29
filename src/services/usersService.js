@@ -2,6 +2,8 @@ import { supabase } from './supabaseClient'
 import { initialsFor } from '@features/maintenance/lib/userHelpers'
 import { generateSchoolIdCode } from '@lib/schoolId'
 import { invokeEdgeFunction } from './edgeFunctions'
+import { logUserMgmtEvent } from './auditLogsService'
+import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 
 // ── ARCHITECTURE NOTE (updated post-Phase-D) ──
 // `users.auth_user_id` bridges public.users <-> auth.users (migration 001).
@@ -188,7 +190,18 @@ export async function registerPatient({ email, password, username, name, surname
       // allow-list in the Dashboard, or Supabase rejects it outright —
       // see this function's own module-level comment for the full
       // email-confirmation setup this depends on.)
-      emailRedirectTo: `${window.location.origin}/login`,
+      //
+      // ?confirmed=1 is OUR OWN query param, not Supabase's — it's what
+      // LoginPage.jsx checks to show a clean "Your account has been
+      // activated!" screen instead of the normal login form or an
+      // instant silent redirect to the dashboard. It survives
+      // supabase-js's own post-confirmation cleanup (which clears ITS
+      // token hash/code from the URL once the session is established,
+      // but leaves an unrelated query param we added alone), which a
+      // check for Supabase's own `type=signup` param wouldn't reliably
+      // do, since that can already be gone by the time this app's own
+      // code gets to look at the URL.
+      emailRedirectTo: `${window.location.origin}/login?confirmed=1`,
       data: {
         username,
         name,
@@ -251,7 +264,7 @@ export async function resendConfirmationEmail(email) {
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email,
-    options: { emailRedirectTo: `${window.location.origin}/login` },
+    options: { emailRedirectTo: `${window.location.origin}/login?confirmed=1` },
   })
   if (error) throw error
 }
@@ -349,13 +362,45 @@ export async function finalizeSelfRegistration(authUser) {
         p_year_level: m.year_level || null,
       })
       if (claimError) throw claimError
-    } catch {
-      // Non-critical — see doc comment above. The account is fully
-      // created and scan-to-login-capable either way; a claim failure
-      // here only risks the (unlikely, and low-stakes) case of the same
-      // code prefilling a second registration attempt later.
+    } catch (err) {
+      // Non-critical to the REGISTRATION itself — see doc comment above,
+      // the account is fully created and scan-to-login-capable either
+      // way. But this used to be a bare `catch {}` with nothing logged
+      // at all, which meant a genuine, reproducible failure writing to
+      // registration_qr_codes (a stale PostgREST schema cache not yet
+      // seeing the 6-arg overload from 025_registration_qr_upsert.sql,
+      // an RLS/grant issue, anything) looked IDENTICAL to it simply
+      // never being called — impossible to tell apart from the outside.
+      // Logging here doesn't fix an underlying DB-side problem by
+      // itself, but it's what turns "the QR code isn't saving, for some
+      // reason" into an actual, checkable error message.
+      console.error('claim_registration_qr failed — registration_qr_codes was not written for this scan:', err.message)
     }
   }
+
+  // ACTION_STYLES/USER_MGMT_ACTIONS on AuditTrailPage.jsx were already
+  // set up to display a REGISTER entry, but nothing ever actually wrote
+  // one — every patient self-registration was invisible in the audit
+  // trail. Written here (not in RegisterModal.jsx) so it's covered
+  // exactly once regardless of which of the two paths that lead here
+  // actually ran: an immediate account (email confirmation OFF, this
+  // function called straight from registerPatient()) or a deferred one
+  // (confirmation ON, this function instead called later from
+  // AuthContext.loadProfile() the first time the confirmed link is
+  // followed).
+  // isPersonnelNumber() is the same letters-prefix-vs-plain-digits check
+  // Account Settings already uses (profileHelpers.js) to tell a campus
+  // Personnel account apart from a Student one from the stored User/ID
+  // Number alone — there's no separate patient-type column to read
+  // instead. Included here per the requirement that the Audit Trail
+  // preserve the Student/Personnel distinction for patient actions, not
+  // just a generic "patient."
+  const patientKind = isPersonnelNumber(m.student_number) ? 'Personnel' : 'Student'
+  logUserMgmtEvent({
+    userId: user.user_id,
+    action: 'REGISTER',
+    details: `${m.name || user.name} self-registered as a patient (${patientKind}${m.student_number ? ` — ${m.student_number}` : ', no ID number'})`,
+  })
 
   return user
 }
@@ -511,8 +556,30 @@ export async function getUserByAuthId(authUserId) {
  */
 export async function linkAuthUserIfNeeded(row, authUserId) {
   if (!row || row.auth_user_id === authUserId) return row
-  const { error } = await supabase.from('users').update({ auth_user_id: authUserId }).eq('user_id', row.user_id)
+  // Was a plain client-side `.update({ auth_user_id }).eq('user_id', ...)`
+  // — that silently affected ZERO rows (no error thrown by Supabase JS
+  // either way) whenever the UPDATE's RLS USING clause didn't match this
+  // row, most commonly an exact-case mismatch between what's stored in
+  // `public.users.email` and Supabase Auth's own auth.email() for the
+  // same account. This function then optimistically returned
+  // `{...row, auth_user_id: authUserId}` as if linking had worked, when
+  // `auth_user_id` was never actually written — silently breaking every
+  // RLS policy keyed off "is this my own row" for that account from then
+  // on (most visibly: that same account's own LOGIN_SUCCESS/LOGOUT audit
+  // log writes getting rejected with a 403 — see migration 050's comment
+  // for the full chain).
+  //
+  // link_current_auth_user() (migration 050) does the same update as a
+  // SECURITY DEFINER function matching case-INSENSITIVELY on email —
+  // fixing the mismatch instead of just working around it — and returns
+  // the linked user_id, so a genuine failure (no users row shares this
+  // session's email at all) is now something this can actually detect
+  // and surface, instead of pretending to succeed.
+  const { data: linkedUserId, error } = await supabase.rpc('link_current_auth_user')
   if (error) throw error
+  if (!linkedUserId) {
+    throw new Error("Couldn't link your account to this login session — please contact an administrator.")
+  }
   return { ...row, auth_user_id: authUserId }
 }
 

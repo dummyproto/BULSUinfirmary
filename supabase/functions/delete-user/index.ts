@@ -115,29 +115,26 @@ Deno.serve(async (req) => {
     const alreadyGone = error && /user not found/i.test(error.message || '')
     if (error && !alreadyGone) throw error
 
-    // ── 4. Free up this person's registration QR code, if they had one ──
-    // registration_qr_codes.is_used (migration 023) gets set true by
-    // claim_registration_qr() when someone registers, and NOTHING ever
-    // reset it back — the row's used_by_user_id FK is ON DELETE SET
-    // NULL, but that only clears who claimed it, not the is_used flag
-    // itself. So deleting a user permanently "burned" their physical QR
-    // code: re-scanning (or manually entering) the exact same code
-    // afterward always hit RegisterQrScan.jsx's "Your QR code is
-    // already registered" message, forever, even though the account it
-    // was tied to no longer existed. This resets it back to unused so
-    // the same QR code can register a new account again. `userId` is
+    // ── 4. Permanently delete this person's registration QR code row, if
+    //       they had one ──
+    // Previously this UPDATEd the row back to unused (is_used: false,
+    // used_by_user_id/used_at cleared) instead of deleting it, so the
+    // exact same physical QR code could register a brand new account
+    // afterward. Per updated requirements, a deleted account's scanned
+    // QR record should be gone from the system/Supabase permanently
+    // instead — so this now DELETEs the row outright. `userId` is
     // optional (only usersService.deleteUser() passes it, which already
     // has it on hand) so this stays backward-compatible with any other
     // caller of this function that doesn't.
     if (userId) {
       const { error: qrError } = await adminClient
         .from('registration_qr_codes')
-        .update({ is_used: false, used_by_user_id: null, used_at: null })
+        .delete()
         .eq('used_by_user_id', userId)
       // Non-fatal — the account is already fully deleted at this point;
-      // failing to free up the QR code shouldn't undo that or block the
+      // failing to remove the QR row shouldn't undo that or block the
       // delete from being reported as successful.
-      if (qrError) console.error('Failed to reset registration_qr_codes for deleted user:', qrError.message)
+      if (qrError) console.error('Failed to delete registration_qr_codes row for deleted user:', qrError.message)
     }
 
     return jsonResponse({ deleted: true })

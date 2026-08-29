@@ -17,6 +17,7 @@ import { listInventory, deductForConsultation, listLogsForConsultation } from '@
 import { listMedicinesAsInventoryItems, deductMedicinesForConsultation } from '@services/medicineService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
+import { logClinicalEvent } from '@services/auditLogsService'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 import { PlusIcon, FolderIcon, PeopleIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
@@ -180,6 +181,11 @@ const [unregSearch, setUnregSearch] = useState('')
         prescribedMeds,
       })
       setConsultations((list) => [created, ...list])
+      logClinicalEvent({
+        userId: staffId ?? profile?.user_id,
+        action: 'CONSULTATION_ADDED',
+        details: `${profile?.name || 'Staff'} recorded a ${visitType} consultation for ${patient ? patient.name : unregisteredPatientName}`,
+      })
      try {
   if (patient) {
     await notify({

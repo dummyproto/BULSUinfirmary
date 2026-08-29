@@ -11,6 +11,7 @@ import ChangePasswordModal from './ChangePasswordModal'
 import SetPinModal from './SetPinModal'
 import AvatarMenu from './AvatarMenu'
 import { getUserByEmail, updateUser, updatePatientProfile, updateStaffProfile, hasOwnPin } from '@services/usersService'
+import { logUserMgmtEvent } from '@services/auditLogsService'
 import {
   UserIcon,
   PeopleIcon,
@@ -201,6 +202,7 @@ export default function ProfilePage() {
       await updateUser(authProfile.user_id, { profile_img_url: compressedDataUrl })
       setUser((u) => ({ ...u, profileImg: compressedDataUrl }))
       show('Profile photo updated!', 'success')
+      logUserMgmtEvent({ userId: authProfile.user_id, action: 'EDIT_OWN_PROFILE', details: `${authProfile.name} (${role}) updated their profile photo` })
     } catch (err) {
       show(`Failed to save photo: ${err.message}`, 'error')
     }
@@ -260,6 +262,11 @@ export default function ProfilePage() {
       setEditOpen(false)
       show('Profile updated successfully!', 'success')
       refreshProfile?.()
+      logUserMgmtEvent({
+        userId: authProfile.user_id,
+        action: 'EDIT_OWN_PROFILE',
+        details: `${authProfile.name} (${role}) updated their own profile`,
+      })
     } catch (err) {
       // Username has a UNIQUE constraint — now that it's actually being
       // saved, a duplicate-key error is newly reachable here, same
@@ -288,10 +295,12 @@ export default function ProfilePage() {
         await updatePatientProfile(authProfile.user_id, { father_name: form.name || null, father_phone: form.phone || null, father_address: form.address || null })
         setUser((u) => ({ ...u, fatherName: form.name, fatherPhone: form.phone, fatherAddress: form.address }))
         show("Father's information updated", 'success')
+        logUserMgmtEvent({ userId: authProfile.user_id, action: 'EDIT_OWN_PROFILE', details: `${authProfile.name} (${role}) updated their father's information` })
       } else if (section === 'mother') {
         await updatePatientProfile(authProfile.user_id, { mother_name: form.name || null, mother_phone: form.phone || null, mother_address: form.address || null })
         setUser((u) => ({ ...u, motherName: form.name, motherPhone: form.phone, motherAddress: form.address }))
         show("Mother's information updated", 'success')
+        logUserMgmtEvent({ userId: authProfile.user_id, action: 'EDIT_OWN_PROFILE', details: `${authProfile.name} (${role}) updated their mother's information` })
       } else {
         await updatePatientProfile(authProfile.user_id, {
           parent_name: form.name || null,
@@ -301,6 +310,7 @@ export default function ProfilePage() {
         })
         setUser((u) => ({ ...u, parentName: form.name, parentRelation: form.relation, parentPhone: form.phone, guardianAddress: form.address }))
         show('Guardian information updated', 'success')
+        logUserMgmtEvent({ userId: authProfile.user_id, action: 'EDIT_OWN_PROFILE', details: `${authProfile.name} (${role}) updated their guardian's information` })
       }
     } catch (err) {
       show(`Failed to update family information: ${err.message}`, 'error')
@@ -320,6 +330,7 @@ export default function ProfilePage() {
       await updateUser(authProfile.user_id, { profile_img_url: null })
       setUser((u) => ({ ...u, profileImg: null }))
       show('Profile photo removed.', 'success')
+      logUserMgmtEvent({ userId: authProfile.user_id, action: 'EDIT_OWN_PROFILE', details: `${authProfile.name} (${role}) removed their profile photo` })
     } catch (err) {
       show(`Failed to remove photo: ${err.message}`, 'error')
     }

@@ -8,7 +8,6 @@ import { getInventoryStatus, daysUntil } from '@features/inventory/lib/inventory
 import { listInventory, listInventoryLogsInRange } from '@services/inventoryService'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
-import { listAuditLogs } from '@services/auditLogsService'
 import { listMedicinesAsInventoryItems, listReceivingRecordsInRange, listSuppliers, getMonthlyMovement } from '@services/medicineService'
 import { exportToPDF, exportToExcel, exportToCSV } from './lib/exportReport'
 import PrintPreviewModal from './PrintPreviewModal'
@@ -23,13 +22,12 @@ import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
  * permission they've actually been granted. This is deliberately
  * per-report-type, not an all-or-nothing gate on the whole page: a staff
  * account with only Health Records access still sees that one type, just
- * not Document Requests or Audit Logs.
+ * not Document Requests.
  */
 function getClinicReportTypes(role, permissions) {
   const types = []
   if (role === 'admin' || permissions?.print_documents) types.push({ value: 'doc', label: 'Document Requests' })
   if (role === 'admin' || permissions?.print_health) types.push({ value: 'consultation', label: 'Consultations / Health Records' })
-  if (role === 'admin') types.push({ value: 'audit', label: 'Audit Logs' })
   return types
 }
 
@@ -58,7 +56,7 @@ function firstOfMonthStr() {
   return todayStr().slice(0, 7) + '-01'
 }
 
-function buildClinicReport(type, from, to, { docs, consultations, auditLogs }) {
+function buildClinicReport(type, from, to, { docs, consultations }) {
   if (type === 'doc') {
     const data = docs.filter((d) => d.date_requested >= from && d.date_requested <= to)
     return {
@@ -87,14 +85,6 @@ function buildClinicReport(type, from, to, { docs, consultations, auditLogs }) {
       ]),
     }
   }
-  if (type === 'audit') {
-    const data = auditLogs.filter((l) => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to)
-    return {
-      title: 'Audit Log Report',
-      headers: ['Date/Time', 'Staff', 'Action', 'Details'],
-      rows: data.map((l) => [new Date(l.created_at).toLocaleString('en-PH'), l.user_name, l.action, l.details]),
-    }
-  }
   return null
 }
 
@@ -121,7 +111,7 @@ export default function ReportsPage() {
   const [report, setReport] = useState(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [exporting, setExporting] = useState(null)
-  const [source, setSource] = useState({ docs: [], consultations: [], auditLogs: [] })
+  const [source, setSource] = useState({ docs: [], consultations: [] })
 
   // Same freeze-header-and-column-labels-while-scrolling treatment as
   // Inventory Items/Log and Health Records — see legacy.css's note above
@@ -163,9 +153,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([listDocumentRequests(), listConsultations(), listAuditLogs()])
-      .then(([docs, consultations, auditLogs]) => {
-        if (!cancelled) setSource({ docs, consultations, auditLogs })
+    Promise.all([listDocumentRequests(), listConsultations()])
+      .then(([docs, consultations]) => {
+        if (!cancelled) setSource({ docs, consultations })
       })
       .catch((err) => show(`Failed to load report data: ${err.message}`, 'error'))
       .finally(() => {
@@ -178,15 +168,15 @@ export default function ReportsPage() {
   }, [])
 
   async function refreshSource() {
-    const [docs, consultations, auditLogs] = await Promise.all([listDocumentRequests(), listConsultations(), listAuditLogs()])
-    setSource({ docs, consultations, auditLogs })
+    const [docs, consultations] = await Promise.all([listDocumentRequests(), listConsultations()])
+    setSource({ docs, consultations })
   }
 
   // Keeps the underlying data any clinic report is generated FROM
   // current, so clicking Generate always builds off today's actual
-  // requests/consultations/audit logs rather than whatever happened to
+  // requests/consultations rather than whatever happened to
   // be loaded when this page was first opened.
-  useRealtimeRefresh(['document_requests', 'consultations', 'audit_logs'], refreshSource)
+  useRealtimeRefresh(['document_requests', 'consultations'], refreshSource)
 
  
 
@@ -386,6 +376,12 @@ export default function ReportsPage() {
     }
   }
 
+  // CSV needs its own wrapper (unlike PDF/Excel above) since
+  // exportToCSV() is synchronous and was called directly from the button.
+  function handleDownloadCSV() {
+    exportToCSV(report)
+  }
+
   if (loading) return <Spinner label="Loading report data…" />
 
   return (
@@ -481,7 +477,7 @@ export default function ReportsPage() {
               <button type="button" className="btn btn-sm btn-outline" onClick={() => handleExport('excel', exportToExcel)} disabled={exporting !== null}>
                 <FileSpreadsheetIcon width={13} height={13} /> {exporting === 'excel' ? 'Preparing…' : 'Excel'}
               </button>
-              <button type="button" className="btn btn-sm btn-outline" onClick={() => exportToCSV(report)}>
+              <button type="button" className="btn btn-sm btn-outline" onClick={handleDownloadCSV}>
                 <DownloadIcon width={13} height={13} /> CSV
               </button>
             </div>

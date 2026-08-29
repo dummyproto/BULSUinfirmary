@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { addAuditLog } from './auditLogsService'
 
 // ── NOTES (post-Phase-A-migration) ──
 // `diagnosis`, `follow_up_notes`, and the `'Emergency'` visit type are now
@@ -103,5 +104,25 @@ export async function createConsultation({
     if (medError) throw medError
   }
 
-  return getConsultation(consultation.consultation_id)
+  const full = await getConsultation(consultation.consultation_id)
+
+  // Best-effort, same shape as EMERGENCY_ALERT's own direct addAuditLog()
+  // call in EmergencyReportModal.jsx — a transient logging failure must
+  // never turn an already-successful consultation record into a failed
+  // one. Deliberately generic (no chief complaint, diagnosis, or
+  // assessment text) — the Audit Trail should show THAT a consultation
+  // was recorded, not duplicate protected health information into a
+  // general-purpose log (see 048's own actor-snapshot migration and
+  // this project's broader privacy stance on audit details). Uses
+  // full.patient_name — flattenConsultation() already resolves this to
+  // the registered patient's real name OR the walk-in name OR "Deleted
+  // User", so this stays accurate for every case rather than only the
+  // walk-in one.
+  addAuditLog({
+    userId: staffId,
+    action: 'CONSULTATION_ADDED',
+    details: `Consultation recorded for ${full.patient_name}.`,
+  }).catch((err) => console.error('[CONSULTATION_AUDIT_LOG_FAILED]', err.message))
+
+  return full
 }

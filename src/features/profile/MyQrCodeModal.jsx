@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import Modal from '@components/ui/Modal'
 import { QrCodeIcon, DownloadIcon } from '@components/ui/icons'
 import { buildUserQrPayload } from '@lib/schoolId'
+import { addAuditLog } from '@services/auditLogsService'
 
 export default function MyQrCodeModal({ isOpen, onClose, profile }) {
   const [dataUrl, setDataUrl] = useState(null)
@@ -39,6 +40,13 @@ export default function MyQrCodeModal({ isOpen, onClose, profile }) {
     a.href = dataUrl
     a.download = `${namePart}-qr-code.png`
     a.click()
+    // Best-effort, same shape as this project's other client-only
+    // (no dedicated service function) audit calls — the actual download
+    // above has already fully succeeded via the browser's own <a
+    // download> mechanism regardless of whether this insert lands.
+    addAuditLog({ userId: profile.user_id, action: 'QR_CODE_DOWNLOADED', details: `${profile.name || 'User'} downloaded their QR code.` }).catch((err) =>
+      console.error('[QR_CODE_AUDIT_LOG_FAILED]', err.message)
+    )
   }
 
   return (

@@ -3,7 +3,8 @@ import Modal from '@components/ui/Modal'
 import { useAuth } from '@context/AuthContext'
 import PasswordInput from '@components/ui/PasswordInput'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
-import { checkEmailRegistered } from '@services/usersService'
+import { checkEmailRegistered, getUserByEmail } from '@services/usersService'
+import { addAuditLog } from '@services/auditLogsService'
 import { LockIcon, CheckCircleIcon, AlertTriangleIcon, MailIcon } from '@components/ui/icons'
 
 // Send Code / Resend rate limit — 60s between actual sends, per email,
@@ -52,10 +53,8 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
   // because it was just reacting to a prop change, which isn't what this
   // is.
   useEffect(() => {
-    if (!cooldownUntil) {
-      setCooldownLeft(0)
-      return undefined
-    }
+    if (!cooldownUntil) return undefined
+
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000))
       setCooldownLeft(remaining)
@@ -140,6 +139,15 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
         return
       }
       await requestPasswordReset(trimmedEmail)
+      // userId: null — this runs pre-login (no session yet), and there's
+      // no RPC exposing a user_id lookup by email to an anon caller
+      // (deliberately narrower than email_is_registered/email_has_pin,
+      // which only ever reveal a boolean — see their own comments in
+      // usersService.js). Same NULL-actor pattern LOGIN_FAILED already
+      // uses for the same reason; the email itself is still in details.
+      addAuditLog({ userId: null, action: 'PASSWORD_RESET_REQUESTED', details: `Password reset code requested for ${trimmedEmail}` }).catch((err) =>
+        console.error('[PASSWORD_RESET_AUDIT_LOG_FAILED]', err.message)
+      )
       const until = Date.now() + RESEND_COOLDOWN_MS
       setCooldownUntilStorage(trimmedEmail, until)
       setCooldownUntil(until)
@@ -163,6 +171,20 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
     try {
       await verifyRecoveryOtp(email.trim(), otp.trim())
       await completePasswordReset(password)
+      // Logged here, BEFORE signOut() below clears the session — the OTP
+      // verification just above established a real, brief session for
+      // this account, which is what makes the insert below authenticate
+      // as THIS user at all; logging it after signOut() would send it as
+      // anonymous instead, same ordering bug already fixed once for
+      // LOGOUT logging in AuthContext.jsx (see that file's own comment).
+      try {
+        const resetUser = await getUserByEmail(email.trim())
+        if (resetUser) {
+          await addAuditLog({ userId: resetUser.user_id, action: 'PASSWORD_RESET_COMPLETED', details: `${resetUser.name || email.trim()} completed a password reset.` })
+        }
+      } catch (auditErr) {
+        console.error('[PASSWORD_RESET_AUDIT_LOG_FAILED]', auditErr.message)
+      }
       await signOut()
       setStep('done')
     } catch (err) {

@@ -9,6 +9,7 @@ import Spinner from '@components/ui/Spinner'
 import { formatDate } from '@lib/format'
 import { useAuth } from '@context/AuthContext'
 import { listDocumentRequests, updateDocumentRequestStatus, deleteDocumentRequests } from '@services/documentRequestsService'
+import { logDocumentEvent } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import DocDetailModal from './DocDetailModal'
 import DocActionModal from './DocActionModal'
@@ -142,6 +143,18 @@ export default function DocumentRequestsPage() {
     try {
       const updated = await updateDocumentRequestStatus(id, statusFor[type], { processedBy: currentUserId, notes: finalNotes })
       setRequests((list) => list.map((r) => (r.doc_request_id === id ? updated : r)))
+
+      // Only approve/decline are lifecycle events the Document Requests
+      // Logs tab tracks (see DOCUMENT_ACTIONS in AuditTrailPage.jsx) —
+      // "Processing" is an intermediate status, not one of the
+      // submitted/approved/rejected/completed events that were asked for.
+      if (type === 'approve' || type === 'decline') {
+        logDocumentEvent({
+          userId: currentUserId,
+          action: type === 'approve' ? 'DOC_REQUEST_APPROVED' : 'DOC_REQUEST_DECLINED',
+          details: `${updated.patient_name}'s ${updated.doc_type} request was ${type === 'approve' ? 'approved' : 'declined'}${notes ? ` — ${notes}` : ''}`,
+        })
+      }
 
       const messages = {
         approve: 'Document approved',

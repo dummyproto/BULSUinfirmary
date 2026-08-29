@@ -5,20 +5,23 @@ import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import UserManagementTab from './UserManagementTab'
 import PermissionsTab from './PermissionsTab'
+import BackupTab from './BackupTab'
+import { generateSystemBackup } from './lib/systemBackup'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import ChangePasswordModal from './ChangePasswordModal'
 import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, resetUserPassword, togglePermission } from '@services/usersService'
-import { addAuditLog } from '@services/auditLogsService'
+import { addAuditLog, logConfigEvent } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
 import { generateSchoolIdCode, generateStaffId } from '@lib/schoolId'
-import { PeopleIcon, ShieldIcon } from '@components/ui/icons'
+import { PeopleIcon, ShieldIcon, SaveIcon } from '@components/ui/icons'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = [
   { key: 'users', label: 'User Management', Icon: PeopleIcon },
   { key: 'perms', label: 'Staff Permissions', Icon: ShieldIcon },
+  { key: 'backup', label: 'Backup & Export', Icon: SaveIcon },
 ]
 
 export default function MaintenancePage() {
@@ -35,6 +38,7 @@ export default function MaintenancePage() {
   const [editId, setEditId] = useState(null)
   const [pwUserId, setPwUserId] = useState(null)
   const [pwSaving, setPwSaving] = useState(false)
+  const [backupGenerating, setBackupGenerating] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -239,6 +243,28 @@ export default function MaintenancePage() {
     }
   }
 
+  async function handleGenerateBackup() {
+    setBackupGenerating(true)
+    try {
+      const { counts, filename } = await generateSystemBackup({ generatedByName: profile?.name })
+      const summary = Object.entries(counts)
+        .map(([key, n]) => `${key}: ${n}`)
+        .join(', ')
+      logConfigEvent({
+        userId: currentUserId,
+        action: 'SYSTEM_BACKUP_INITIATED',
+        details: `${profile?.name || 'Admin'} generated a system backup (${filename}) — ${summary}`,
+      })
+      show('System backup downloaded', 'success')
+      return { counts, filename }
+    } catch (err) {
+      show(`Failed to generate backup: ${err.message}`, 'error')
+      return null
+    } finally {
+      setBackupGenerating(false)
+    }
+  }
+
   if (loading) return <Spinner label="Loading users…" />
 
   return (
@@ -264,6 +290,7 @@ export default function MaintenancePage() {
         />
       )}
       {tab === 'perms' && <PermissionsTab users={users} onTogglePerm={handleTogglePerm} />}
+      {tab === 'backup' && <BackupTab onGenerateBackup={handleGenerateBackup} generating={backupGenerating} />}
 
       <AddUserModal isOpen={addOpen} existingUsers={users} onClose={() => setAddOpen(false)} onSave={handleAddUser} onError={(msg) => show(msg, 'error')} />
 
