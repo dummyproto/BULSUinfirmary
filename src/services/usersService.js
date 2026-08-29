@@ -296,41 +296,41 @@ export async function finalizeSelfRegistration(authUser) {
   // VARCHAR(50)-safe sanitization applied either way, and same
   // capped-to-50 reasoning as before: a long chosen username shouldn't
   // outright break registration with a column-length DB error.
-  const username = (m.username || (authUser.email || '').split('@')[0])
+    const baseUsername = (m.username || (authUser.email || '').split('@')[0])
     .replace(/[^a-z0-9]/gi, '')
     .toLowerCase()
     .slice(0, 50)
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .insert({
-      username,
-      email: authUser.email,
-      role: 'patient',
-      name: m.name,
-      phone: m.phone ? String(m.phone).slice(0, 20) : null,
-      password_hash: 'MANAGED_BY_SUPABASE_AUTH',
-      is_active: true,
-      auth_user_id: authUser.id,
-      // Capped to match users.school_id_barcode's VARCHAR(50) column —
-      // already capped at the source in extractSchoolIdCode(), but
-      // capped again here too so this specific column can never fail
-      // this way regardless of which upstream path a future change
-      // might route through this field.
-      //
-      // Falls back to a freshly generated code when registration
-      // happened without scanning one — previously this was left as
-      // NULL for anyone who just filled the form normally instead of
-      // scanning a registration QR, meaning most patients never ended
-      // up with a working QR-login code at all. Every patient now gets
-      // one either way: a real scanned code if they used one, a
-      // generated one (same generator used for admin/staff accounts)
-      // if they didn't.
-      school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : generateSchoolIdCode(),
-    })
-    .select()
-    .single()
-  if (error) throw error
+  const maxUsernameAttempts = 8
+  let user
+  for (let attempt = 1; attempt <= maxUsernameAttempts; attempt++) {
+    const suffix = attempt === 1 ? '' : String(attempt)
+    const username = attempt === 1 ? baseUsername : (baseUsername.slice(0, 50 - suffix.length) + suffix)
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        username,
+        email: authUser.email,
+        role: 'patient',
+        name: m.name,
+        phone: m.phone ? String(m.phone).slice(0, 20) : null,
+        password_hash: 'MANAGED_BY_SUPABASE_AUTH',
+        is_active: true,
+        auth_user_id: authUser.id,
+        school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : generateSchoolIdCode(),
+      })
+      .select()
+      .single()
+
+    if (!error) {
+      user = data
+      break
+    }
+
+    const isUsernameCollision = error.code === '23505' && /users_username_key/.test(error.message || '')
+    if (!isUsernameCollision || attempt === maxUsernameAttempts) throw error
+  }
 
   const { error: ppError } = await supabase.from('patient_profiles').insert({
     user_id: user.user_id,
