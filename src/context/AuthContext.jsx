@@ -3,6 +3,7 @@ import { supabase } from '@services/supabaseClient'
 import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
 import { logAuthEvent } from '@services/auditLogsService'
 import { useToast } from '@context/ToastContext'
+import { getAppUrl } from '@lib/appUrl'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext(undefined)
@@ -329,12 +330,8 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }, [profile])
 
-  // Re-authenticates with the current password first (Supabase Auth has no
-  // separate "verify current password" endpoint), then updates to the new
-  // one. Fully real — no service-role key needed since this only ever acts
-  // on the signed-in user's own account.
   // Pure re-auth check — confirms the current password is correct
-  // WITHOUT changing anything, unlike changePassword() above. Used by
+  // WITHOUT changing anything, unlike changePassword() below. Used by
   // SetPinModal.jsx before letting someone set/change/remove their
   // quick-login PIN: since a PIN is an alternative way into the account,
   // requiring the real password once first (even though Account
@@ -350,6 +347,10 @@ export function AuthProvider({ children }) {
     [session]
   )
 
+  // Re-authenticates with the current password first (Supabase Auth has no
+  // separate "verify current password" endpoint), then updates to the new
+  // one. Fully real — no service-role key needed since this only ever acts
+  // on the signed-in user's own account.
   const changePassword = useCallback(
     async (currentPassword, newPassword) => {
       if (!session?.user?.email) throw new Error('Not signed in')
@@ -372,7 +373,7 @@ export function AuthProvider({ children }) {
   // are registered to anyone able to read the audit trail's raw data.
   const requestPasswordReset = useCallback(async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${getAppUrl()}/reset-password`,
     })
     if (error) throw error
     logAuthEvent({ userId: null, action: 'PASSWORD_RESET_REQUESTED', details: `Password reset requested for ${email}` })

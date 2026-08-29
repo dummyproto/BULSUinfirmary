@@ -3,6 +3,7 @@ import { initialsFor } from '@features/maintenance/lib/userHelpers'
 import { generateSchoolIdCode } from '@lib/schoolId'
 import { invokeEdgeFunction } from './edgeFunctions'
 import { logUserMgmtEvent } from './auditLogsService'
+import { getAppUrl } from '@lib/appUrl'
 import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 
 // ── ARCHITECTURE NOTE (updated post-Phase-D) ──
@@ -201,7 +202,7 @@ export async function registerPatient({ email, password, username, name, surname
       // check for Supabase's own `type=signup` param wouldn't reliably
       // do, since that can already be gone by the time this app's own
       // code gets to look at the URL.
-      emailRedirectTo: `${window.location.origin}/login?confirmed=1`,
+      emailRedirectTo: `${getAppUrl()}/login?confirmed=1`,
       data: {
         username,
         name,
@@ -264,7 +265,7 @@ export async function resendConfirmationEmail(email) {
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email,
-    options: { emailRedirectTo: `${window.location.origin}/login?confirmed=1` },
+    options: { emailRedirectTo: `${getAppUrl()}/login?confirmed=1` },
   })
   if (error) throw error
 }
@@ -583,8 +584,7 @@ export async function linkAuthUserIfNeeded(row, authUserId) {
   return { ...row, auth_user_id: authUserId }
 }
 
-/**
- * Inserts the profile rows for a user whose `auth.users` row already
+
 /**
  * Inserts the `public.users` + profile rows only — does NOT create an
  * `auth.users` row (see the architecture note at the top of this file).
