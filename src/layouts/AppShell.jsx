@@ -8,6 +8,7 @@ import SessionTimeoutManager from './SessionTimeoutManager'
 import AccountStatusGuard from './AccountStatusGuard'
 import ToastViewport from '@components/ui/ToastViewport'
 import OfflineBanner from '@components/ui/OfflineBanner'
+import PendingSyncIndicator from '@components/ui/PendingSyncIndicator'
 import ScrollToTopButton from '@components/ui/ScrollToTopButton'
 import UserManualModal from '@components/ui/UserManualModal'
 import { useSidebar } from '@hooks/useSidebar'
@@ -61,6 +62,7 @@ export default function AppShell() {
       />
       <ToastViewport />
       <OfflineBanner />
+      <PendingSyncIndicator />
       <EmergencyAlertListener />
       <SessionTimeoutManager />
       <AccountStatusGuard />

@@ -168,7 +168,7 @@ function normalizeKey(value) {
   return (value || '').toString().trim().toLowerCase()
 }
 
-function itemIdentity({ name, category, unit, supplier }) {
+export function itemIdentity({ name, category, unit, supplier }) {
   return [normalizeKey(name), normalizeKey(category), normalizeKey(unit), normalizeKey(supplier)].join('|')
 }
 
@@ -178,6 +178,21 @@ function itemIdentity({ name, category, unit, supplier }) {
 export function findInventoryItemMatch(inventory, { name, category, unit, supplier }, excludeId) {
   const wanted = itemIdentity({ name, category, unit, supplier })
   return inventory.find((i) => i.inventory_id !== excludeId && itemIdentity(i) === wanted) || null
+}
+
+// Broader than findInventoryItemMatch above — matches on NAME ALONE
+// (case/whitespace-insensitive), ignoring category/unit/supplier
+// entirely. Used by AddItemModal to detect "an item called this already
+// exists" so the person staging a new item can be asked whether they
+// mean the same item (merge) or a genuinely different one that just
+// happens to share a name (keep separate) — a decision
+// findInventoryItemMatch's strict 4-field match can't make on its own,
+// since two rows can share a name while differing in unit/supplier/etc.
+// and still be "the same item" to a human, or vice versa.
+export function findInventoryItemsByName(inventory, name, excludeId) {
+  const wanted = normalizeKey(name)
+  if (!wanted) return []
+  return inventory.filter((i) => i.inventory_id !== excludeId && normalizeKey(i.name) === wanted)
 }
 
 export function timeAgo(dateStr) {

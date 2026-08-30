@@ -184,11 +184,14 @@ export default function DocumentRequestsPage() {
 
   return (
     <>
-      <div className="page-header">
+            <div className="page-header">
         <div>
           <h2>Document Requests</h2>
           <p>{visibleRequests.length} total requests in the system</p>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
         <div className="status-filter-tabs-wrap">
           <Tabs tabs={tabItems} active={tab} onChange={setTab} />
         </div>
@@ -200,7 +203,7 @@ export default function DocumentRequestsPage() {
         </div>
       </div>
 
-      <div className="card">
+           <div className="card">
         <div className="card-header">
           <div>
             <StatusBadge status={tab} />
@@ -208,27 +211,29 @@ export default function DocumentRequestsPage() {
               {filtered.length} record(s)
             </span>
           </div>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by patient name…" />
-          <button
-            type="button"
-            className="btn btn-sm btn-outline inv-view-more-btn"
-            onClick={() => setShowMore((v) => !v)}
-            title="Show or hide User ID, Purpose, and Date Needed columns"
-            aria-label={showMore ? 'View Less — hide User ID, Purpose, and Date Needed columns' : 'View More — show User ID, Purpose, and Date Needed columns'}
-          >
-            {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
-            <span>{showMore ? 'View Less' : 'View More'}</span>
-          </button>
-          {canDeleteRequests && selectionMode && selected.length > 0 && (
-            <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected}>
-              <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by patient name…" />
+            <button
+              type="button"
+              className="btn btn-sm btn-outline inv-view-more-btn"
+              onClick={() => setShowMore((v) => !v)}
+              title="Show or hide User ID, Purpose, and Date Needed columns"
+              aria-label={showMore ? 'View Less — hide User ID, Purpose, and Date Needed columns' : 'View More — show User ID, Purpose, and Date Needed columns'}
+            >
+              {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
+              <span>{showMore ? 'View Less' : 'View More'}</span>
             </button>
-          )}
-          {canDeleteRequests && (
-            <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode}>
-              {selectionMode ? 'Cancel' : (<><TrashIcon width={13} height={13} /> Delete</>)}
-            </button>
-          )}
+            {canDeleteRequests && selectionMode && selected.length > 0 && (
+              <button type="button" className="btn btn-sm btn-red" onClick={handleDeleteSelected}>
+                <TrashIcon width={13} height={13} /> Delete Selected ({selected.length})
+              </button>
+            )}
+            {canDeleteRequests && (
+              <button type="button" className="btn btn-sm btn-outline" onClick={toggleSelectionMode}>
+                {selectionMode ? 'Cancel' : (<><TrashIcon width={13} height={13} /> Delete</>)}
+              </button>
+            )}
+          </div>
         </div>
 
         {canDeleteRequests && selectionMode && filtered.length > 0 && (

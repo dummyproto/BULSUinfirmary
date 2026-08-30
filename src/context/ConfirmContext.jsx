@@ -76,6 +76,11 @@ export function ConfirmProvider({ children }) {
 // directly (not wrapped in an object) — every call site just needs the
 // one function, so this skips the extra `.confirm` property access every
 // caller would otherwise repeat.
+// Returns the `confirm(message, options?) => Promise<boolean>` function
+// directly (not wrapped in an object) — every call site just needs the
+// one function, so this skips the extra `.confirm` property access every
+// caller would otherwise repeat.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useConfirm() {
   const ctx = useContext(ConfirmContext)
   if (ctx === undefined) throw new Error('useConfirm must be used within a ConfirmProvider')

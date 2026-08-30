@@ -21,7 +21,8 @@ import { MailIcon, CreditCardIcon, AlertTriangleIcon, CheckCircleIcon, ShieldIco
 // straight out of a successful login is what was producing an
 // immediate, confusing "Access denied" right after signing in.
 const ROLE_RESTRICTED_ROUTES = {
-  '/patients': ['admin', 'staff'],
+  '/patients': ['staff'],
+  '/user-presence': ['admin'],
   '/document-requests': ['admin', 'staff'],
   '/inventory': ['admin', 'staff'],
   '/reports': ['admin', 'staff'],
@@ -124,9 +125,8 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
-  const [justRegistered] = useState(() => !!location.state?.registeredEmail)
   // Captured on the very first render, same lazy-initializer pattern as
-  // justRegistered above — reads the ?confirmed=1 query param this app
+  // email/info above — reads the ?confirmed=1 query param this app
   // itself appended to the email confirmation link (see
   // usersService.js's registerPatient/resendConfirmationEmail, both of
   // which set emailRedirectTo to this exact URL). Clicking that link is
@@ -260,7 +260,7 @@ export default function LoginPage() {
     // repeated failure means a future report of "the PIN pad didn't
     // appear" can actually be diagnosed from the console instead of
     // guessed at again.
-    let pinEnabled = false
+    let pinEnabled
     try {
       pinEnabled = await checkEmailHasPin(foundEmail)
     } catch (err) {

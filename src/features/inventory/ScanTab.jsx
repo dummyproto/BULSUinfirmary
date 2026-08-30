@@ -166,20 +166,7 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
     scanPausedRef.current = scanPaused
   }, [scanPaused])
 
-  useEffect(() => stopCamera, []) // stop the camera if the page is left while scanning
-
-  // Surfaces *why* holding up a new item isn't doing anything while a
-  // previous scan's confirm modal is still open — without this, it could
-  // easily look like the camera silently stopped working rather than
-  // deliberately waiting.
-  useEffect(() => {
-    if (!cameraActive) return
-    setDecodeStatus((s) => {
-      if (scanPaused) return { text: 'Waiting for the current item to be confirmed…', kind: 'info' }
-      if (s.text === 'Waiting for the current item to be confirmed…') return { text: 'Scanning for QR code or barcode…', kind: 'info' }
-      return s
-    })
-  }, [scanPaused, cameraActive])
+    useEffect(() => stopCamera, []) // stop the camera if the page is left while scanning
 
   // scan_history is fetched newest-first (listScanHistory orders by
   // scanned_at descending), so the most recent scan is simply index 0 —
@@ -476,8 +463,14 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
               <MaximizeIcon width={16} height={16} />
             </button>
           </div>
-          <div className="scan-status-bar">
-            <StatusIcon status={decodeStatus} />
+                   <div className="scan-status-bar">
+            {/* Derived at render time instead of stored via a useEffect
+                (see the comment that used to sit above the now-removed
+                effect near the top of this component) — avoids the
+                react-hooks/set-state-in-effect lint rule entirely, and is
+                simpler: this is just "what to show right now", not a
+                separate piece of state that needs to be kept in sync. */}
+            <StatusIcon status={cameraActive && scanPaused ? { text: 'Waiting for the current item to be confirmed…', kind: 'info' } : decodeStatus} />
           </div>
         </div>
 

@@ -99,19 +99,35 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
                           </div>
                         )}
                       </td>
-                      <td style={groupDividerStyle}>
-                        <code style={{ fontSize: 11 }}>{usr.student_number || 'N/A'}</code>
+                                           <td style={groupDividerStyle}>
+                        {/* student_number only ever gets set for patients (see
+                            AddUserModal's handleSubmit) — admin/staff accounts
+                            have no such field, so this column showed a
+                            permanent, useless "N/A" for every non-patient row.
+                            Falling back to the account's own user_id (the one
+                            identifier every user actually has, patient or
+                            not) gives admin/staff a real ID here instead. */}
+                        <code style={{ fontSize: 11 }}>{usr.student_number || usr.user_id}</code>
                       </td>
                       <td style={groupDividerStyle}>
                         {usr.role === 'admin' ? (
                           <span className="badge badge-blue badge-no-dot" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><LockIcon width={10} height={10} /> Protected</span>
                         ) : (
-                          <Toggle
-                            checked={usr.active}
-                            onChange={() => onToggleActive(usr.user_id, usr.active)}
-                            label={usr.active ? `Deactivate ${usr.name}` : `Activate ${usr.name}`}
-                            title={usr.active ? 'Deactivate' : 'Activate'}
-                          />
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                            <Toggle
+                              checked={usr.active}
+                              onChange={() => onToggleActive(usr.user_id, usr.active)}
+                              label={usr.active ? `Deactivate ${usr.name}` : `Activate ${usr.name}`}
+                              title={usr.active ? 'Deactivate' : 'Activate'}
+                            />
+                            {/* The toggle's on/off position alone doesn't say
+                                which state IS which — this spells it out so
+                                Active/Inactive is legible at a glance, not
+                                just inferred from the switch's position. */}
+                            <span style={{ fontSize: 11.5, fontWeight: 600, color: usr.active ? 'var(--success)' : 'var(--text-3)' }}>
+                              {usr.active ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
                         )}
                       </td>
                     </>

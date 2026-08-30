@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useToast } from '@context/ToastContext'
+import { usePresence } from '@context/PresenceContext'
 import Avatar from '@components/ui/Avatar'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
@@ -11,6 +12,7 @@ import { GraduationCapIcon, EyeIcon, ChevronDownIcon } from '@components/ui/icon
 
 export default function PatientsPage() {
   const { show } = useToast()
+  const { isUserOnline } = usePresence()
   const [loading, setLoading] = useState(true)
   const [patients, setPatients] = useState([])
   const [search, setSearch] = useState('')
@@ -117,7 +119,16 @@ export default function PatientsPage() {
                   <td style={{ fontSize: 12 }}>{p.course || '—'}</td>
                   <td style={{ fontSize: 12 }}>{p.year_level || '—'}</td>
                   <td>
-                    <StatusBadge status={p.active ? 'Active' : 'Inactive'} color={p.active ? 'green' : 'gray'} />
+                    {/* Same meaning-change as AdminDashboardPage.jsx's
+                        "Active Users" stat: this now reflects whether
+                        this patient has a live connection right now
+                        (Realtime Presence, PresenceContext.jsx), not
+                        p.active (users.is_active — the separate,
+                        admin-controlled "is this account allowed to
+                        sign in at all" flag, toggled from Maintenance
+                        -> User Management and left untouched here).
+                        Updates live as the patient signs in/out. */}
+                    <StatusBadge status={isUserOnline(p.user_id) ? 'Active' : 'Inactive'} color={isUserOnline(p.user_id) ? 'green' : 'gray'} />
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <div className="inv-action-group-icons patient-row-action" style={{ justifyContent: 'flex-end' }}>

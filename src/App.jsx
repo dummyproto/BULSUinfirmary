@@ -1,5 +1,6 @@
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '@context/AuthContext'
+import { PresenceProvider } from '@context/PresenceContext'
 import { ThemeProvider } from '@context/ThemeContext'
 import { ToastProvider } from '@context/ToastContext'
 import { ConfirmProvider } from '@context/ConfirmContext'
@@ -11,9 +12,11 @@ function App() {
       <ToastProvider>
         <ConfirmProvider>
           <AuthProvider>
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
+            <PresenceProvider>
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </PresenceProvider>
           </AuthProvider>
         </ConfirmProvider>
       </ToastProvider>

@@ -3,7 +3,8 @@ import Modal from '@components/ui/Modal'
 import Toggle from '@components/ui/Toggle'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import ItemPhotoUpload from './ItemPhotoUpload'
-import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon } from '@components/ui/icons'
+import { findInventoryItemsByName, itemIdentity } from './lib/inventoryHelpers'
+import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon, AlertTriangleIcon } from '@components/ui/icons'
 
 const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
 
@@ -22,46 +23,76 @@ const EMPTY_FORM = {
   photoUrl: '',
 }
 
-export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, suppliers }) {
+export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, suppliers, inventory }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [staged, setStaged] = useState([])
   const [editIdx, setEditIdx] = useState(null)
+  const [duplicatePrompt, setDuplicatePrompt] = useState(null) // { entry, existingItem, source: 'inventory' | 'staged' }
 
   const setField = (field) => (val) => setForm((f) => ({ ...f, [field]: val }))
 
   function stageItem() {
-    if (!form.name.trim()) return onError('Item name is required')
-    // Category never had a validation check before — it always
-    // defaulted to a real value ('Medicine'), so there was nothing to
-    // catch. Now that it starts blank (an explicit "-- Select Category
-    // --" placeholder, not a silent default), submitting without
-    // choosing one needs to be caught explicitly, the same way Unit
-    // already is just below.
-    if (!form.category) return onError('Please select a category')
-    if (!form.unit.trim()) return onError('Unit is required')
-    // Quantity is marked required (see the "QUANTITY *" label below) but
-    // was silently defaulting an empty field to 0 via `|| 0` further
-    // down instead of actually blocking the save — an item with no
-    // quantity typed in at all would stage successfully as if it had 0
-    // on hand, no different from someone who deliberately entered 0.
-    // Checking the raw string here (not the parsed number) is what
-    // distinguishes "field left empty" from "genuinely typed 0" — a
-    // real Out of Stock item with 0 on hand is still a valid, intended
-    // entry and shouldn't be blocked by this.
-    if (form.quantity === '') return onError('Quantity is required')
-    if (!form.expiry) return onError('Expiration date is required')
-    if (!form.batchNo.trim()) return onError('Batch number is required')
-    if (!form.supplierId) return onError('Supplier is required')
-    const entry = { ...form, name: form.name.trim(), unit: form.unit.trim(), quantity: parseInt(form.quantity, 10) || 0, minStock: parseInt(form.minStock, 10) || 10 }
+  if (!form.name.trim()) return onError('Item name is required')
+  if (!form.category) return onError('Please select a category')
+  if (!form.unit.trim()) return onError('Unit is required')
+  if (form.quantity === '') return onError('Quantity is required')
+  if (!form.expiry) return onError('Expiration date is required')
+  if (!form.batchNo.trim()) return onError('Batch number is required')
+  if (!form.supplierId) return onError('Supplier is required')
+  const entry = { ...form, name: form.name.trim(), unit: form.unit.trim(), quantity: parseInt(form.quantity, 10) || 0, minStock: parseInt(form.minStock, 10) || 10 }
 
-    if (editIdx !== null) {
-      setStaged((list) => list.map((it, i) => (i === editIdx ? entry : it)))
-      setEditIdx(null)
-    } else {
-      setStaged((list) => [...list, entry])
-    }
-    setForm(EMPTY_FORM)
+  const existingInInventory = findInventoryItemsByName(inventory, entry.name)[0] || null
+  const existingStagedIdx = staged.findIndex((s, i) => i !== editIdx && s.name.trim().toLowerCase() === entry.name.trim().toLowerCase())
+  const existingStaged = existingStagedIdx !== -1 ? staged[existingStagedIdx] : null
+
+  if (existingInInventory) {
+    setDuplicatePrompt({ entry, existingItem: existingInInventory, source: 'inventory' })
+    return
   }
+  if (existingStaged) {
+    setDuplicatePrompt({ entry, existingItem: existingStaged, source: 'staged', existingStagedIdx })
+    return
+  }
+
+  commitStagedEntry(entry)
+}
+
+function commitStagedEntry(entry) {
+  if (editIdx !== null) {
+    setStaged((list) => list.map((it, i) => (i === editIdx ? entry : it)))
+    setEditIdx(null)
+  } else {
+    setStaged((list) => [...list, entry])
+  }
+  setForm(EMPTY_FORM)
+}
+
+function confirmMerge() {
+  if (!duplicatePrompt) return
+  const { entry, existingItem, source, existingStagedIdx } = duplicatePrompt
+  if (source === 'staged') {
+    setStaged((list) => list.map((it, i) => (i === existingStagedIdx ? { ...it, quantity: (it.quantity || 0) + (entry.quantity || 0) } : it)))
+    setDuplicatePrompt(null)
+    setForm(EMPTY_FORM)
+    setEditIdx(null)
+    return
+  }
+  const tagged = { ...entry, _mergeIntoIdentity: itemIdentity(existingItem), _mergeIntoLabel: existingItem.name }
+  setDuplicatePrompt(null)
+  commitStagedEntry(tagged)
+}
+
+function confirmSeparate() {
+  if (!duplicatePrompt) return
+  const { entry } = duplicatePrompt
+  const tagged = { ...entry, _forceSeparate: true }
+  setDuplicatePrompt(null)
+  commitStagedEntry(tagged)
+}
+
+function cancelDuplicatePrompt() {
+  setDuplicatePrompt(null)
+}
 
   function editStaged(idx) {
     setForm(staged[idx])
@@ -82,11 +113,12 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
   }
 
   function handleClose() {
-    setStaged([])
-    setForm(EMPTY_FORM)
-    setEditIdx(null)
-    onClose()
-  }
+  setStaged([])
+  setForm(EMPTY_FORM)
+  setEditIdx(null)
+  setDuplicatePrompt(null)
+  onClose()
+}
 
   function handleSaveAll() {
     if (staged.length === 0) return
@@ -230,12 +262,18 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
                 ) : (
                   <div style={{ width: 34, height: 34, borderRadius: 7, background: 'var(--surface2)', flexShrink: 0 }} />
                 )}
-                <div>
+                                <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{it.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
                     {it.category} · {it.quantity} {it.unit} · Min {it.minStock}
                     {it.batchNo ? ` · Batch: ${it.batchNo}` : ''}
                   </div>
+                  {it._mergeIntoIdentity && (
+                    <div style={{ fontSize: 10.5, color: 'var(--primary)', marginTop: 2, fontWeight: 600 }}>Will merge into existing item</div>
+                  )}
+                  {it._forceSeparate && (
+                    <div style={{ fontSize: 10.5, color: 'var(--warning, #D97706)', marginTop: 2, fontWeight: 600 }}>Kept as a separate item</div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -249,6 +287,42 @@ export default function AddItemModal({ isOpen, onClose, onSaveAll, onError, supp
             </div>
           ))}
         </div>
+      )}
+
+      {duplicatePrompt && (
+        <Modal
+          isOpen={!!duplicatePrompt}
+          onClose={cancelDuplicatePrompt}
+          title="Item Already Exists"
+          icon={<AlertTriangleIcon width={16} height={16} />}
+          actions={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              <button type="button" className="btn btn-blue" onClick={confirmMerge}>
+                <SaveIcon width={13} height={13} /> Merge into Existing Item
+              </button>
+              <button type="button" className="btn btn-outline" onClick={confirmSeparate}>
+                <PlusIcon width={13} height={13} /> Add as Separate Item
+              </button>
+              <button type="button" className="btn btn-outline" onClick={cancelDuplicatePrompt} style={{ opacity: 0.75 }}>
+                Cancel
+              </button>
+            </div>
+          }
+        >
+          <p style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 14 }}>
+            An item named <strong>{duplicatePrompt.entry.name}</strong> already {duplicatePrompt.source === 'inventory' ? 'exists in inventory' : 'is staged in this batch'}:
+          </p>
+          <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 14 }}>
+            <div><strong>{duplicatePrompt.existingItem.name}</strong></div>
+            <div style={{ marginTop: 4 }}>
+              {duplicatePrompt.existingItem.category} · {duplicatePrompt.existingItem.quantity ?? duplicatePrompt.existingItem.qty ?? 0} {duplicatePrompt.existingItem.unit}
+              {duplicatePrompt.existingItem.supplier ? ` · Supplier: ${duplicatePrompt.existingItem.supplier}` : ''}
+            </div>
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6 }}>
+            <strong>Merge</strong> adds this quantity onto the existing item. <strong>Add as Separate</strong> creates a new, independent item entry with the same name.
+          </p>
+        </Modal>
       )}
     </Modal>
   )

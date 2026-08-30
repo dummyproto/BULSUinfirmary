@@ -126,21 +126,21 @@ export default function PatientDashboardPage() {
   return (
     <>
       <div className="stats-row cols-3">
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/my-requests')}>
           <div className="stat-icon blue">
             <DocumentIcon width={18} height={18} />
           </div>
           <div className="stat-num">{activeCount}</div>
           <div className="stat-label">Active Requests</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/my-requests')}>
           <div className="stat-icon orange">
             <ClockIcon width={18} height={18} />
           </div>
           <div className="stat-num">{pending}</div>
           <div className="stat-label">Pending Requests</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/my-requests')}>
           <div className="stat-icon green">
             <CheckCircleIcon width={18} height={18} />
           </div>
@@ -177,7 +177,7 @@ export default function PatientDashboardPage() {
                   </tr>
                 )}
                 {activeDocs.map((d) => (
-                  <tr key={d.doc_request_id}>
+                  <tr key={d.doc_request_id} style={{ cursor: 'pointer' }} onClick={() => navigate('/my-requests')}>
                     <td>
                       <strong>{d.doc_type}</strong>
                     </td>

@@ -10,6 +10,13 @@ import { exportToCSV } from '@features/reports/lib/exportReport'
 import { formatDateTime } from '@lib/format'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 import { HistoryIcon, DownloadIcon } from '@components/ui/icons'
+// Moved here from Maintenance's own "Backup & Export" tab — same
+// component and underlying generateSystemBackup() logic, just relocated
+// so the full-system JSON backup lives alongside the rest of this app's
+// activity/record-keeping tools instead of mixed in with account
+// management. MaintenancePage.jsx no longer has a 'backup' tab at all.
+import BackupTab from '@features/maintenance/BackupTab'
+import { generateSystemBackup } from '@features/maintenance/lib/systemBackup'
 
 // Maps the fixed set of action codes this app actually writes (see
 // addAuditLog()/logAuthEvent() call sites across MaintenancePage.jsx,
@@ -114,46 +121,7 @@ const ACTION_STYLES = {
   AUDIT_TRAIL_BACKUP: { color: 'purple', label: 'Audit Trail Backed Up' },
 }
 
-// Everything shown on the "User Management Logs" tab — account
-// creation (both an admin manually adding someone via ADD_USER, and a
-// patient self-registering via REGISTER), profile edits, deletion,
-// enabling/disabling an account, and permission changes. ACTIVATE_USER/
-// DEACTIVATE_USER deliberately also appear in AUTH_ACTIONS below — an
-// account being enabled/disabled is both a user-management action and
-// a security-relevant one, so it's not an either/or.
-const USER_MGMT_ACTIONS = new Set([
-  'ADD_USER',
-  'REGISTER',
-  'EDIT_USER',
-  'EDIT_OWN_PROFILE',
-  'DELETE_USER',
-  'ACTIVATE_USER',
-  'DEACTIVATE_USER',
-  'UPDATE_PERMISSION',
-])
-
-// Everything shown on the "Authentication Logs" tab — account activation/
-// deactivation is included here too (reusing the same ACTIVATE_USER/
-// DEACTIVATE_USER codes MaintenancePage.jsx already writes, plus the
-// auto-disable-after-lockout case LoginPage.jsx writes under the same
-// code) since it's as much an authentication-security event as a login
-// or password change is.
-const AUTH_ACTIONS = new Set([
-  'LOGIN_SUCCESS',
-  'LOGIN_FAILED',
-  'LOGIN_DENIED',
-  'LOGOUT',
-  'PASSWORD_CHANGED',
-  'PASSWORD_RESET_REQUESTED',
-  'PASSWORD_RESET_COMPLETED',
-  'QR_CODE_DOWNLOADED',
-  'PIN_UPDATED',
-  'PIN_REMOVED',
-  'EMAIL_VERIFIED',
-  'ACTIVATE_USER',
-  'DEACTIVATE_USER',
-  'ACCESS_DENIED',
-])
+// Everything shown on the "Document Requests Logs" tab — the request
 
 // Everything shown on the "Document Requests Logs" tab — the request
 // lifecycle (submitted/approved/rejected/completed) plus what a patient
@@ -178,26 +146,19 @@ const DOCUMENT_ACTIONS = new Set([
 // handleTogglePerm for the Staff Permissions tab, and already shown on
 // User Management Logs too — same "belongs on more than one tab"
 // reasoning as ACTIVATE_USER/DEACTIVATE_USER above) plus system backups
-// (SYSTEM_BACKUP_INITIATED, written by logConfigEvent() from
-// MaintenancePage.jsx's handleGenerateBackup — see BackupTab.jsx).
+// (SYSTEM_BACKUP_INITIATED, written by this page's own
+// handleGenerateBackup — see the Backup & Export tab below).
 // There's no dedicated "system settings" page in this app yet to log
 // changes from, so this tab only covers what actually exists so far.
 const SYSTEM_CONFIG_ACTIONS = new Set(['UPDATE_PERMISSION', 'SYSTEM_BACKUP_INITIATED', 'AUDIT_TRAIL_BACKUP'])
 
 const TABS = [
   { key: 'system', label: 'System Activity Log' },
-  { key: 'user-mgmt', label: 'User Management Logs' },
   { key: 'inventory', label: 'Inventory Logs' },
-  { key: 'auth', label: 'Authentication Logs' },
   { key: 'documents', label: 'Document Requests Logs' },
   { key: 'system-config', label: 'System Configuration Logs' },
+  { key: 'backup', label: 'Backup & Export' },
 ]
-
-// Shown under the card header only on the User Management Logs tab —
-// states plainly what this tab covers, since "system activity" and
-// "user management" can otherwise look like overlapping catch-alls.
-const USER_MGMT_DESCRIPTION =
-  'The system records the creation/new registration, updating, deletion, and enabling/disabling of user accounts, as well as changes to user roles and permissions.'
 
 const INVENTORY_DESCRIPTION = 'The system records all inventory actions.'
 
@@ -266,6 +227,8 @@ export default function AuditTrailPage() {
   const [actionFilter, setActionFilter] = useState('all')
   const [roleFilter, setRoleFilter] = useState('all')
   const [tab, setTab] = useState('system')
+  // Moved from MaintenancePage.jsx alongside the BackupTab import above.
+  const [backupGenerating, setBackupGenerating] = useState(false)
 
   // Same sticky-header-while-scrolling treatment as Patients/Inventory —
   // see legacy.css's note above .inv-items-scroll for why this needs a
@@ -347,17 +310,27 @@ export default function AuditTrailPage() {
   // System Activity Log, then switching to Authentication Logs, would
   // otherwise leave a filter selected that still matches the same rows
   // (harmless) but looks like it belongs to the wrong tab's action set.
+    // 'system' used to just fall through to the raw `logs` array (every
+  // audit_logs row, unfiltered — already everything EXCEPT inventory,
+  // which lives in its own inventory_logs table/array and only used to
+  // surface under the dedicated Inventory Logs tab). Now that User
+  // Management Logs and Authentication Logs have been folded in here
+  // too (their entries were always already part of `logs`, just also
+  // duplicated onto their own filtered tabs), System Activity Log is
+  // meant to be the true everything-view — so inventory gets merged in
+  // as well. `logs` and `inventoryLogs` are each already sorted newest-
+  // first on their own (see listAuditLogs()/listInventoryLogs()), but
+  // simply concatenating two independently-sorted lists doesn't produce
+  // one overall-sorted list, hence the explicit re-sort.
   const tabLogs =
-    tab === 'auth'
-      ? logs.filter((l) => AUTH_ACTIONS.has(l.action))
-      : tab === 'user-mgmt'
-      ? logs.filter((l) => USER_MGMT_ACTIONS.has(l.action))
-      : tab === 'inventory'
+    tab === 'inventory'
       ? inventoryLogs
       : tab === 'documents'
       ? logs.filter((l) => DOCUMENT_ACTIONS.has(l.action))
       : tab === 'system-config'
       ? logs.filter((l) => SYSTEM_CONFIG_ACTIONS.has(l.action))
+      : tab === 'system'
+      ? [...logs, ...inventoryLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       : logs
 
   const actionOptions = Object.keys(ACTION_STYLES).filter((a) => tabLogs.some((l) => l.action === a))
@@ -378,35 +351,63 @@ export default function AuditTrailPage() {
     )
   })
 
-  const currentTabLabel = TABS.find((t) => t.key === tab)?.label || 'Audit Trail'
-
-  // Exports exactly what's currently on screen — whichever tab, action
-  // filter, role filter, and search text are active — not the whole,
-  // unfiltered audit_logs table every time. Someone reviewing (say) just
-  // this week's Authentication Logs for a specific admin almost always
-  // wants a backup of THAT slice, not a dump of everything else mixed
-  // in; if a full, unfiltered export is ever wanted instead, clearing
-  // the filters first gets exactly that from this same button. Distinct
-  // from Maintenance -> Backup's generateSystemBackup(), which bundles
-  // every core table (not just audit_logs) into one JSON file — this is
-  // audit-trail-specific and CSV, immediately opens in Excel/Sheets
-  // rather than needing to be parsed.
+  // Only reachable from the Backup & Export tab now (the button used to
+  // sit in the page header on every OTHER tab too, exporting whichever
+  // one was active with its filters applied — moved here so it's a
+  // single, consolidated CSV export button instead). Since the
+  // role/action/search filters live on the OTHER tabs' own card header
+  // and this tab has none of those controls, this always exports the
+  // full, unfiltered audit trail — up to the 500 most recent entries.
+  // Distinct from this same tab's generateSystemBackup() below, which
+  // bundles every core table (not just audit_logs) into one JSON file —
+  // this is audit-trail-specific and CSV, immediately opens in
+  // Excel/Sheets rather than needing to be parsed.
+  const backupExportLabel = 'System Activity Log (Full Export)'
   function handleBackup() {
     if (filtered.length === 0) {
       show('Nothing to back up — no rows match the current filters.', 'warning')
       return
     }
     exportToCSV({
-      title: `Audit Trail - ${currentTabLabel}`,
+      title: `Audit Trail - ${backupExportLabel}`,
       headers: ['Date & Time', 'User', 'Role', 'Action', 'Details'],
       rows: filtered.map((l) => [formatDateTime(l.created_at), l.user_name || 'Unknown user', l.user_role || '—', actionLabel(l.action), l.details || '']),
     })
     logConfigEvent({
       userId: profile?.user_id ?? null,
       action: 'AUDIT_TRAIL_BACKUP',
-      details: `${profile?.name || 'Admin'} backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} from "${currentTabLabel}"${actionFilter !== 'all' ? ` (filtered: ${actionLabel(actionFilter)})` : ''}${roleFilter !== 'all' ? ` (role: ${roleFilter})` : ''}`,
+      details: `${profile?.name || 'Admin'} backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} from "${backupExportLabel}"`,
     })
     show(`Backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} as CSV`, 'success')
+  }
+
+  // Moved here from MaintenancePage.jsx's BackupTab wiring — same
+  // generateSystemBackup() call, same SYSTEM_BACKUP_INITIATED audit
+  // action, just relocated alongside handleBackup() below. Distinct
+  // from handleBackup(): this bundles every core table (Users, Document
+  // Requests, Consultations, Inventory, Inventory Logs, Audit Logs) into
+  // one JSON file, versus handleBackup()'s CSV of just whatever's
+  // currently on screen in this page's own log table.
+  async function handleGenerateBackup() {
+    setBackupGenerating(true)
+    try {
+      const { counts, filename } = await generateSystemBackup({ generatedByName: profile?.name })
+      const summary = Object.entries(counts)
+        .map(([key, n]) => `${key}: ${n}`)
+        .join(', ')
+      logConfigEvent({
+        userId: profile?.user_id ?? null,
+        action: 'SYSTEM_BACKUP_INITIATED',
+        details: `${profile?.name || 'Admin'} generated a system backup (${filename}) — ${summary}`,
+      })
+      show('System backup downloaded', 'success')
+      return { counts, filename }
+    } catch (err) {
+      show(`Failed to generate backup: ${err.message}`, 'error')
+      return null
+    } finally {
+      setBackupGenerating(false)
+    }
   }
 
   if (loading) return <Spinner label="Loading audit trail…" />
@@ -416,9 +417,13 @@ export default function AuditTrailPage() {
       <div className="page-header">
         <div>
           <h2>Audit Trail</h2>
-          <p>
-            {tab === 'inventory' ? inventoryLogs.length : logs.length} recorded action
-            {(tab === 'inventory' ? inventoryLogs.length : logs.length) === 1 ? '' : 's'} · most recent {tab === 'inventory' ? 300 : 500}
+                    <p>
+            {tab === 'backup'
+              ? 'System backup & data export'
+              : (() => {
+                  const count = tab === 'inventory' ? inventoryLogs.length : tab === 'system' ? logs.length + inventoryLogs.length : logs.length
+                  return `${count} recorded action${count === 1 ? '' : 's'} · most recent ${tab === 'inventory' ? 300 : 500}`
+                })()}
           </p>
         </div>
       </div>
@@ -432,18 +437,42 @@ export default function AuditTrailPage() {
         }}
       />
 
+      {tab === 'backup' ? (
+        <>
+          {/* Moved here from the page header above, where it used to sit
+              on every OTHER tab as a page-level action — now scoped to
+              this tab specifically, alongside the full-system JSON
+              backup below. Distinct from that one: this is a CSV of the
+              audit log itself (all 500 most recent entries, unfiltered,
+              since the role/action/search controls live on the other
+              tabs' own card header, not here), not every core table. */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <DownloadIcon width={15} height={15} /> Audit Log CSV Export
+              </h3>
+            </div>
+            <div style={{ padding: 18 }}>
+              <div className="alert alert-info" style={{ marginBottom: 14 }}>
+                Downloads the audit trail itself — up to the 500 most recent recorded actions across every tab — as a
+                CSV file that opens directly in Excel or Sheets.
+              </div>
+              <button type="button" className="btn btn-blue" onClick={handleBackup}>
+                <DownloadIcon width={14} height={14} /> Back Up Audit Log (CSV)
+              </button>
+            </div>
+          </div>
+          <BackupTab onGenerateBackup={handleGenerateBackup} generating={backupGenerating} />
+        </>
+      ) : (
       <div className="card" style={{ '--patients-header-h': `${headerHeight}px` }}>
         <div ref={headerRef} className="card-header patients-sticky-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, width: '100%' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7, margin: 0 }}>
               <HistoryIcon width={15} height={15} />
-              {tab === 'auth'
-                ? 'Authentication Activity'
-                : tab === 'user-mgmt'
-                ? 'User Management Activity'
-                : tab === 'inventory'
+                            {tab === 'inventory'
                 ? 'Inventory Activity'
-                 : tab === 'documents'
+                : tab === 'documents'
                 ? 'Document Requests Activity'
                 : tab === 'system-config'
                 ? 'System Configuration Activity'
@@ -472,15 +501,9 @@ export default function AuditTrailPage() {
                 ))}
               </select>
               <SearchInput value={search} onChange={setSearch} placeholder="Search by user, action, or details…" width={260} />
-              <button type="button" className="btn btn-sm btn-outline" onClick={handleBackup} title="Download the rows currently shown as a CSV file">
-                <DownloadIcon width={13} height={13} /> Back Up
-              </button>
             </div>
           </div>
-          {tab === 'user-mgmt' && (
-            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)' }}>{USER_MGMT_DESCRIPTION}</p>
-          )}
-          {tab === 'inventory' && (
+                    {tab === 'inventory' && (
             <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)' }}>{INVENTORY_DESCRIPTION}</p>
           )}
           {tab === 'documents' && (
@@ -516,7 +539,7 @@ export default function AuditTrailPage() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
-                    No {tab === 'auth' ? 'authentication log' : tab === 'user-mgmt' ? 'user management log' : tab === 'inventory' ? 'inventory log' : tab === 'documents' ? 'document request log' : tab === 'system-config' ? 'system configuration log' : 'audit trail'} entries found
+               No {tab === 'inventory' ? 'inventory log' : tab === 'documents' ? 'document request log' : tab === 'system-config' ? 'system configuration log' : 'audit trail'} entries found
                   </td>
                 </tr>
               )}
@@ -536,6 +559,7 @@ export default function AuditTrailPage() {
           </table>
         </div>
       </div>
+      )}
     </>
   )
 }

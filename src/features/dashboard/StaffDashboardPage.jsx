@@ -8,7 +8,6 @@ import { getInventoryStatus, itemKey } from '@features/inventory/lib/inventoryHe
 import { listInventory } from '@services/inventoryService'
 import { listDocumentRequests } from '@services/documentRequestsService'
 import { listConsultations } from '@services/consultationsService'
-import { listUsers } from '@services/usersService'
 import { listEmergencyAlerts } from '@services/emergencyAlertsService'
 import { listInventoryNotifications } from '@services/inventoryNotificationsService'
 import HealthDetailModal from '@features/consultations/HealthDetailModal'
@@ -17,9 +16,7 @@ import {
   DocumentIcon,
   InventoryIcon,
   ReportsIcon,
-  SettingsIcon,
   AlertTriangleIcon,
-  PeopleIcon,
   ConsultationIcon,
   ClipboardIcon,
   AlertOctagonIcon,
@@ -40,20 +37,18 @@ export default function StaffDashboardPage() {
   const [docs, setDocs] = useState([])
   const [inventory, setInventory] = useState([])
   const [consultations, setConsultations] = useState([])
-  const [users, setUsers] = useState([])
   const [detailId, setDetailId] = useState(null)
   const [emergencyAlerts, setEmergencyAlerts] = useState([])
   const [invNotifications, setInvNotifications] = useState([])
 
-  useEffect(() => {
+    useEffect(() => {
     let cancelled = false
-    Promise.all([listDocumentRequests(), listInventory(), listConsultations(), listUsers(), listEmergencyAlerts(), listInventoryNotifications({ unreadOnly: true })])
-      .then(([d, i, c, u, ea, invn]) => {
+    Promise.all([listDocumentRequests(), listInventory(), listConsultations(), listEmergencyAlerts(), listInventoryNotifications({ unreadOnly: true })])
+      .then(([d, i, c, ea, invn]) => {
         if (cancelled) return
         setDocs(d)
         setInventory(i)
         setConsultations(c)
-        setUsers(u)
         setEmergencyAlerts(ea)
         setInvNotifications(invn)
       })
@@ -67,19 +62,17 @@ export default function StaffDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function refreshDashboard() {
-    const [d, i, c, u, ea, invn] = await Promise.all([
+    async function refreshDashboard() {
+    const [d, i, c, ea, invn] = await Promise.all([
       listDocumentRequests(),
       listInventory(),
       listConsultations(),
-      listUsers(),
       listEmergencyAlerts(),
       listInventoryNotifications({ unreadOnly: true }),
     ])
     setDocs(d)
     setInventory(i)
     setConsultations(c)
-    setUsers(u)
     setEmergencyAlerts(ea)
     setInvNotifications(invn)
   }
@@ -101,10 +94,7 @@ export default function StaffDashboardPage() {
     .filter((d) => ['Pending', 'Processing', 'Approved'].includes(d.status))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5)
-  const recentCons = [...consultations].slice(0, 4)
-
-  const totalUsers = users.length
-  const activeUsers = users.filter((u) => u.is_active).length
+   const recentCons = [...consultations].slice(0, 4)
 
   const detailConsultation = consultations.find((c) => c.consultation_id === detailId) || null
   const activeEmergencies = emergencyAlerts.filter((a) => a.status === 'Active')
@@ -130,7 +120,7 @@ export default function StaffDashboardPage() {
         </div>
       )}
       {expiredInv.length > 0 && (
-        <div className="alert alert-danger" style={{ marginTop: activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-danger" style={{ marginTop: activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <AlertTriangleIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>
             {expiredInv.length} inventory item(s) expired: {expiredInv.map((i) => <strong key={itemKey(i)}>{i.name}</strong>).reduce((a, b) => [a, ', ', b])}
@@ -138,14 +128,14 @@ export default function StaffDashboardPage() {
         </div>
       )}
       {lowStockCount > 0 && (
-        <div className="alert alert-warning" style={{ marginTop: expiredInv.length || activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-warning" style={{ marginTop: expiredInv.length || activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <InventoryIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>{lowStockCount} item(s) below minimum stock level.</span>
         </div>
       )}
 
       <div className="stats-row cols-3" style={{ marginTop: 14 }}>
-  <div className="stat-card">
+  <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/document-requests')}>
           <div className="stat-icon orange">
             <DocumentIcon width={18} height={18} />
           </div>
@@ -155,7 +145,7 @@ export default function StaffDashboardPage() {
             {pendingDocs} pending · {processingDocs} processing
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <div className="stat-icon red">
             <InventoryIcon width={18} height={18} />
           </div>
@@ -163,13 +153,13 @@ export default function StaffDashboardPage() {
           <div className="stat-label">Inventory Alerts</div>
           <div className={`stat-delta ${lowInv > 0 ? 'down' : 'up'}`}>{lowInv > 0 ? 'Needs attention' : 'All stocked'}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <ConsultationIcon width={18} height={18} />
+                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/emergency-alerts')}>
+          <div className="stat-icon red">
+            <AlertOctagonIcon width={18} height={18} />
           </div>
-          <div className="stat-num">{consultations.length}</div>
-          <div className="stat-label">Total Health Records</div>
-          <div className="stat-delta neutral">Health records on file</div>
+          <div className="stat-num">{activeEmergencies.length}</div>
+          <div className="stat-label">Emergency Alerts</div>
+          <div className={`stat-delta ${activeEmergencies.length > 0 ? 'down' : 'up'}`}>{activeEmergencies.length > 0 ? 'Needs attention' : 'All clear'}</div>
         </div>
       </div>
 
@@ -202,7 +192,7 @@ export default function StaffDashboardPage() {
                   </tr>
                 )}
                 {activeDocs.map((d) => (
-                  <tr key={d.doc_request_id}>
+                  <tr key={d.doc_request_id} style={{ cursor: 'pointer' }} onClick={() => navigate('/document-requests')}>
                     <td>
                       <strong>{d.patient_name}</strong>
                     </td>

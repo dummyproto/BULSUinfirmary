@@ -18,6 +18,9 @@ import { listMedicinesAsInventoryItems, deductMedicinesForConsultation } from '@
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import { logClinicalEvent } from '@services/auditLogsService'
+import { useOnlineStatus } from '@hooks/useOnlineStatus'
+import { enqueueOfflineAction } from '@services/offlineQueueService'
+import './consultationOfflineActions' // registers the offline runner — import kept for its side effect only
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 import { PlusIcon, FolderIcon, PeopleIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
@@ -51,6 +54,9 @@ const TABS = [
 export default function ConsultationPage() {
   const { show } = useToast()
   const { profile } = useAuth()
+  // Phase 3 offline support — checked at the top of
+  // handleSaveConsultation to decide "run it now" vs. "queue it".
+  const isOnline = useOnlineStatus()
   const navigate = useNavigate()
 
   const [tab, setTab] = useState('new')
@@ -161,6 +167,23 @@ const [unregSearch, setUnregSearch] = useState('')
 
   async function handleSaveConsultation(payload) {
   const { patient, unregisteredPatientName, visitType, date, staffId, complaint, bp, temp, pulse, o2sat, diagnosis, assessment, followUpDate, followUpNotes, prescribedMeds } = payload
+
+  if (!isOnline) {
+    // Queued instead of run — see consultationOfflineActions.js's own
+    // risk note on the medicine-deduction step. Unlike Phase 2's
+    // inventory actions, there's no optimistic record to add to the
+    // list here (createConsultation hasn't actually run, so there's no
+    // real consultation_id yet) — the new record simply appears in
+    // Records once this syncs, same as any other queued action.
+    enqueueOfflineAction(
+      'consultation_save',
+      { ...payload, staffName: profile?.name },
+      { summary: `${visitType} consultation for ${patient ? patient.name : unregisteredPatientName}` }
+    )
+    show(`You're offline — this consultation for ${patient ? patient.name : unregisteredPatientName} will sync automatically once you're back online.`, 'warning')
+    setFormKey((k) => k + 1)
+    return
+  }
 
   try {
     const created = await createConsultation({

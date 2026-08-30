@@ -3,21 +3,34 @@ import Modal from '@components/ui/Modal'
 import { CameraIcon, AlertTriangleIcon, SaveIcon } from '@components/ui/icons'
 import SearchableSelect from '@components/ui/SearchableSelect'
 
+// Maps one parsed JSON object's fields into the shape this app's forms
+// use — shared by both parseQRPayload (single item) and
+// parseMultiQRPayload (many items in one code) below so the two don't
+// carry two separate copies of the same field-name fallbacks.
+function mapItemFields(obj) {
+  return {
+    name: obj.name || obj.itemName || '',
+    category: obj.category || 'Medicine',
+    qty: parseInt(obj.qty || obj.quantity || 0, 10),
+    unit: obj.unit || 'Units',
+    batch: obj.batch || obj.batchNo || obj.batchId || '',
+    expiry: obj.expiry || obj.expirationDate || obj.expDate || '',
+    receivedDate: obj.receivedDate || obj.dateReceived || obj.received || '',
+    supplier: obj.supplier || obj.source || '',
+    minStock: parseInt(obj.minStock || obj.minimumStock || 10, 10),
+  }
+}
+
 function parseQRPayload(raw) {
   const trimmed = raw.trim()
   try {
     const obj = JSON.parse(trimmed)
-    return {
-      name: obj.name || obj.itemName || '',
-      category: obj.category || 'Medicine',
-      qty: parseInt(obj.qty || obj.quantity || 0, 10),
-      unit: obj.unit || 'Units',
-      batch: obj.batch || obj.batchNo || obj.batchId || '',
-      expiry: obj.expiry || obj.expirationDate || obj.expDate || '',
-      receivedDate: obj.receivedDate || obj.dateReceived || obj.received || '',
-      supplier: obj.supplier || obj.source || '',
-      minStock: parseInt(obj.minStock || obj.minimumStock || 10, 10),
-    }
+    // An array (or {items:[...]}) is a MULTI-item code — let
+    // parseMultiQRPayload handle it instead of reading it here as if
+    // it were a single item's own field set (which would silently
+    // produce a garbage/empty single item rather than a useful error).
+    if (Array.isArray(obj) || Array.isArray(obj.items)) return null
+    return mapItemFields(obj)
   } catch {
     // fall through to pipe-delimited parsing
   }
@@ -38,7 +51,33 @@ function parseQRPayload(raw) {
   return null
 }
 
-export { parseQRPayload }
+// A single QR normally encodes one item's restock details — this reads
+// the OTHER shape a code can arrive in: a whole delivery/shipment as one
+// scan, encoded either as a bare JSON array (`[{...},{...}]`) or as
+// `{"items":[{...},{...}]}`. Only treated as "multi" once there are
+// actually 2+ usable (named) items — a single-element array/`items`
+// list falls back to the ordinary single-item flow above instead of
+// opening the extra multi-item review step for no real benefit.
+function parseMultiQRPayload(raw) {
+  const trimmed = raw.trim()
+  let obj
+  try {
+    obj = JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+  const list = Array.isArray(obj) ? obj : Array.isArray(obj.items) ? obj.items : null
+  if (!list) return null
+  const items = list.map(mapItemFields).filter((it) => it.name)
+  return items.length >= 2 ? items : null
+}
+
+// Re-exported so InventoryPage.jsx, ScanTab.jsx, and
+// ScanMultiVerifyModal.jsx can all reuse this exact same QR-parsing
+// logic (recognizing our own item/batch/multi-item payload shapes)
+// instead of each duplicating it.
+// eslint-disable-next-line react-refresh/only-export-components
+export { parseQRPayload, parseMultiQRPayload }
 
 export default function ScanVerifyModal({ isOpen, rawData, matchedItem, onClose, onSave, suppliers = [] }) {
   const parsed = rawData ? parseQRPayload(rawData) : null

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@context/AuthContext'
 import { useToast } from '@context/ToastContext'
 import { useConfirm } from '@context/ConfirmContext'
+import { useOnlineStatus } from '@hooks/useOnlineStatus'
 import Spinner from '@components/ui/Spinner'
 import ItemsTab from './ItemsTab'
 import ScanTab from './ScanTab'
@@ -69,6 +70,8 @@ import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
 import { InventoryIcon, CameraIcon, ClipboardIcon, BellIcon, AlertOctagonIcon, AlertTriangleIcon, TruckIcon, BarChartIcon } from '@components/ui/icons'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
+import { enqueueOfflineAction } from '@services/offlineQueueService'
+import './inventoryOfflineActions' // registers the offline runners — import kept for its side effect only
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', Icon: BarChartIcon },
@@ -81,9 +84,13 @@ const TABS = [
 
 export default function InventoryPage() {
   const { profile } = useAuth()
-  const { show } = useToast()
+    const { show } = useToast()
+  const isOnline = useOnlineStatus()
   const confirm = useConfirm()
   const currentUserId = profile?.user_id ?? null
+  // Phase 2 offline support (Release + Replenish only — see
+  // inventoryOfflineActions.js's own scope note) — checked at the top of
+  // each of those two handlers to decide "run it now" vs. "queue it".
   const canDeleteLogs = profile?.role === 'admin' || !!profile?.permissions?.delete_logs
 
  const [tab, setTab] = useState('dashboard')
@@ -562,11 +569,21 @@ export default function InventoryPage() {
         await addInventoryLog({ inventoryId: item.inventory_id, actionType: 'Edit', quantityChange: 0, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Item details updated (category: ${form.category}, unit: ${form.unit}, minStock: ${form.minStock})` })
         show('Item updated successfully', 'success')
       }
-      await Promise.all([refreshInventory(), refreshLogs()])
+            await Promise.all([refreshInventory(), refreshLogs()])
+      setEditItemId(null)
     } catch (err) {
-      show(`Failed to update item: ${err.message}`, 'error')
+      // Editing while offline throws a raw browser fetch error ("Failed
+      // to fetch" / "NetworkError when attempting to fetch resource.")
+      // that doesn't explain WHY it failed — and this used to close the
+      // modal regardless of success or failure (setEditItemId(null) ran
+      // unconditionally after this catch), making a failed save while
+      // offline look identical to a successful one. Both fixed together:
+      // a clear, specific reason when offline is the actual cause, and
+      // the modal now only closes on the success paths above, so a
+      // failed save stays open (with the person's edits still in place)
+      // instead of silently discarding them.
+      show(isOnline ? `Failed to update item: ${err.message}` : 'You appear to be offline. Check your connection and try again.', 'error')
     }
-    setEditItemId(null)
   }
 
   // ── REPLENISH ──
@@ -576,6 +593,30 @@ export default function InventoryPage() {
     const supplierRow = form.supplierId ? suppliers.find((s) => String(s.supplier_id) === form.supplierId) : null
     try {
       if (item._source === 'medicine') {
+        if (!isOnline) {
+          // Queued instead of run — see inventoryOfflineActions.js's own
+          // risk note: replenishMedicineAsNewBatch always creates a NEW
+          // batch rather than picking an existing one, so unlike release
+          // there's no "which batch" ambiguity to worry about here —
+          // this one genuinely is safe to replay verbatim once synced.
+          enqueueOfflineAction(
+            'inventory_replenish_medicine',
+            {
+              medicineId: item._id,
+              quantity: form.qty,
+              expirationDate: form.expiry || null,
+              receivedDate: form.received || null,
+              supplierId: form.supplierId || null,
+              batchNumber: form.batchNo || null,
+              staffId: currentUserId,
+              notes: form.notes,
+            },
+            { summary: `Replenish ${item.name} by ${form.qty} ${item.unit} (new batch)` }
+          )
+          show(`You're offline — ${item.name} restock (+${form.qty} ${item.unit}) will sync automatically once you're back online.`, 'warning')
+          setReplenishItemId(null)
+          return
+        }
         await replenishMedicineAsNewBatch({
           medicineId: item._id,
           quantity: form.qty,
@@ -634,6 +675,20 @@ export default function InventoryPage() {
     if (!item) return
     try {
       if (item._source === 'medicine') {
+        if (!isOnline) {
+          // Queued instead of run — see inventoryOfflineActions.js's own
+          // risk note: FIFO batch selection happens at REPLAY time, not
+          // now, so the batch(es) this actually deducts from once synced
+          // may differ from whatever would have been picked if this ran
+          // immediately. Accepted risk, per explicit confirmation.
+          enqueueOfflineAction(
+            'inventory_release_medicine',
+            { medicineId: item._id, qty: form.qty, staffId: currentUserId, notes: form.notes },
+            { summary: `Release ${form.qty} ${item.unit} of ${item.name}` }
+          )
+          show(`You're offline — releasing ${form.qty} ${item.unit} of ${item.name} will sync automatically once you're back online.`, 'warning')
+          return
+        }
         const touched = await releaseMedicineStockFIFO(item._id, form.qty, currentUserId, form.notes)
         await Promise.all([refreshInventory(), refreshBatches(), refreshLogs()])
         const remaining = item.quantity - form.qty
@@ -644,6 +699,28 @@ export default function InventoryPage() {
         // here anymore, avoiding a duplicate/stale-threshold alert
         // alongside the centralized one.
         show(`${item.name}: ${form.qty} ${item.unit} released from ${batchSummary}${remaining <= item.min_stock ? ' — now low stock' : ''}`, remaining <= item.min_stock ? 'warning' : 'success')
+        return
+      }
+
+      if (!isOnline) {
+        // Equipment/Supply path — safe to queue verbatim (see
+        // inventoryOfflineActions.js's own note: a fixed inventory_id
+        // target, not a batch chosen at write time, so there's no
+        // mismatch risk here at all).
+        const newQuantity = item.quantity - form.qty
+        enqueueOfflineAction(
+          'inventory_release_simple',
+          {
+            inventoryId: item.inventory_id,
+            quantityChange: -form.qty,
+            previousQuantity: item.quantity,
+            newQuantity,
+            staffId: currentUserId,
+            notes: form.notes || 'Manual release',
+          },
+          { summary: `Release ${form.qty} ${item.unit} of ${item.name}` }
+        )
+        show(`You're offline — releasing ${form.qty} ${item.unit} of ${item.name} will sync automatically once you're back online.`, 'warning')
         return
       }
 
@@ -771,9 +848,12 @@ export default function InventoryPage() {
         await deleteInventoryItem(item.inventory_id)
         show(`${item.name} removed`, 'success')
       }
-      await Promise.all([refreshInventory(), refreshLogs()])
+            await Promise.all([refreshInventory(), refreshLogs()])
     } catch (err) {
-      show(`Failed to remove item: ${err.message}`, 'error')
+      // Same reasoning as handleEditSave's catch above — while offline,
+      // err.message is just the browser's raw fetch failure text, which
+      // doesn't tell the person removing an item WHY it didn't work.
+      show(isOnline ? `Failed to remove item: ${err.message}` : 'You appear to be offline. Check your connection and try again.', 'error')
     }
   }
 

@@ -663,6 +663,16 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
   height:100%;border-right:1px solid rgba(255,255,255,.2);
   transition:width .16s cubic-bezier(.4,0,.2,1),min-width .16s cubic-bezier(.4,0,.2,1);
   position:relative;z-index:100;
+  /* Lets the @container rule further down measure THIS element's own
+     actual rendered width directly, and hide the section-header labels
+     based on that — instead of trying to key off which class (.collapsed,
+     .always-expanded, etc.) happens to be present. Several older rules
+     elsewhere in this file fight over the sidebar's width across
+     different states, and untangling which one wins in every case proved
+     unreliable in practice — measuring the real, final width this way
+     sidesteps that entirely and is correct no matter which of those
+     rules ends up "winning". */
+  container-type:inline-size;container-name:sidebar;
   -webkit-backdrop-filter:blur(44px) saturate(180%);backdrop-filter:blur(44px) saturate(180%);
   box-shadow:inset -1px 0 0 rgba(255,255,255,.08);
   overflow:hidden;
@@ -1407,6 +1417,16 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
 .modal-overlay.open{display:flex}
 /* Modal container with shadow and rounded corners */
 .modal{background:var(--surface);border-radius:16px;padding:26px;width:480px;max-width:100%;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
+/* Opt-in wider variant (Modal's `wide` prop) for modals showing a data
+   table with several columns — e.g. ScanMultiVerifyModal's item review
+   table — where the base 480px (sized for simple stacked form fields)
+   squeezes every column into an unreadably narrow, character-wrapping
+   mess. Every other modal is unaffected since this only applies with
+   the explicit .modal-wide class. Still capped by max-width:100% and
+   overridden by the mobile-width rules below exactly like the base
+   .modal is, so it collapses to full-width on small screens same as
+   any other modal. */
+.modal.modal-wide{width:760px}
 /* Modal header with title and close button */
 .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .modal-header h3{font-size:16px;font-weight:700}
@@ -5981,6 +6001,55 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   transform: rotate(180deg);
 }
 
+/* FIX: admin/staff (whose grouped nav uses .always-expanded — see the
+   comment on that class up around line 720) were still showing their
+   "OVERVIEW" / "ADMINISTRATION" / etc. section-header labels as clipped,
+   half-cut-off text whenever the sidebar was collapsed to the icon-only
+   rail — never fully invisible the way the individual nav-item labels
+   (Dashboard, Patients, etc.) correctly go.
+   Root cause: .always-expanded's own rules (line ~728 onward) force
+   .nav-section-label to `display:block` and the sidebar container to
+   full width, intending to opt admin/staff OUT of the collapse behavior
+   entirely — but the later "DESKTOP COLLAPSED" block further down this
+   file (~line 5651) also sets `.sidebar.collapsed{width:...!important}`,
+   which — purely because it appears LATER in this file, not because of
+   any actual specificity difference — wins the fight over the
+   container's width. The label text visibility rule never lost its own
+   fight, so it stayed visible; the container width lost its fight, so it
+   shrank anyway. Together: visible label text with no room left to show
+   it, i.e. exactly the clipped/truncated look reported.
+   This targets the one compound state that actually reaches that broken
+   look — .always-expanded (admin/staff) AND .collapsed AT ONCE — and
+   forces the label fully out of layout with display:none, which cannot
+   be partially overridden by opacity/max-height tricks the way the
+   earlier competing rules were. Placed after every other rule in this
+   file that touches .nav-section-label or .sidebar.collapsed (checked —
+   nothing later in the file touches either), so file-order cascade
+   works in our favor this time instead of against it. */
+.sidebar.always-expanded.collapsed .nav-section-label {
+  display: none !important;
+}
+
+/* The actual, definitive fix: regardless of which class combination
+   produced it (turned out NOT to always be .collapsed — inspecting the
+   live page showed the sidebar rendering narrow with ONLY
+   .always-expanded present, no .collapsed class at all, from some other
+   competing width rule elsewhere in this file), this hides the
+   section-header label the moment the sidebar's OWN rendered width
+   actually drops below a threshold comfortably between the icon-only
+   rail width (~76px, --sidebar-collapsed-w) and the smallest real
+   expanded width (200px, --sidebar-w at the narrowest responsive
+   breakpoint) — see the container-type:inline-size on .sidebar above.
+   This can't be fooled by class-based cascade conflicts the way the
+   rule right above it can, because it isn't reading a class at all —
+   it's measuring the real, final, already-resolved width of the
+   sidebar itself. */
+@container sidebar (max-width: 120px) {
+  .nav-section-label {
+    display: none !important;
+  }
+}
+
 /* Sidebar needs overflow:visible so the tab peeks out */
 @media (min-width: 769px) {
   .sidebar {
@@ -6633,11 +6702,10 @@ td {
     max-height: 62vh !important;
   }
 
-  .table-wrap {
+    .table-wrap {
     width: 100%;
     max-width: 100%;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
   .table-wrap table {

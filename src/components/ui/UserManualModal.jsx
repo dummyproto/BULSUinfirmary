@@ -14,6 +14,7 @@ import {
   ChatbotIcon,
   PeopleIcon,
   UserIcon,
+  HistoryIcon,
 } from '@components/ui/icons'
 
 // Mirrors routes/navItems.js's NAV_ITEMS exactly, so "every tab" here
@@ -45,7 +46,7 @@ const SECTIONS = [
         <p>
           After 5 wrong attempts, the sign-in form locks for 60 seconds. After the cooldown, you get 10 more attempts before the
           account is automatically disabled for security. A disabled account shows <em>"Your account is disabled — contact
-          admin"</em> — only staff can re-enable it (Maintenance → User Management), even if you later enter the
+          admin"</em> — only staff can re-enable it (System Management → User Management), even if you later enter the
           correct password.
         </p>
         <h4>Emergency Alert (SOS)</h4>
@@ -68,6 +69,14 @@ const SECTIONS = [
         <h4>Mobile view</h4>
         <p>
           On phones, use the bottom navigation bar to access the main features and pages. A floating up-arrow button appears in the bottom-right corner once you've scrolled down a page — tap it to jump back to the top instantly.
+        </p>
+        <h4>If you lose your internet connection</h4>
+        <p>
+          A banner appears at the bottom of the screen the moment you go offline. Most actions need a live connection and
+          simply won't save until it's back — but Inventory's <strong>Release</strong> and <strong>Add Stock</strong>, and
+          saving a <strong>Consultation</strong>, are queued automatically instead of failing: keep working, and a small
+          "pending" pill appears in the bottom corner showing what's waiting to sync. It syncs by itself the instant your
+          connection returns, or tap the pill any time to sync manually or see exactly what's queued.
         </p>
         <h4>If you're suddenly signed out</h4>
         <p>
@@ -108,7 +117,11 @@ const SECTIONS = [
     key: 'patients',
     label: 'Patients',
     Icon: PeopleIcon,
-    roles: ['admin', 'staff'],
+    // Staff-only — admin's equivalent is the separate User Presence
+    // Monitoring page below, which covers patient, staff, AND admin
+    // accounts (not patients only), so it's kept as its own section
+    // rather than folded into this one.
+    roles: ['staff'],
     content: (
       <>
         <p>Search and open any patient's profile to review their health record and consultation history.</p>
@@ -121,22 +134,37 @@ const SECTIONS = [
     ),
   },
   {
-    key: 'doc-requests',
-    label: 'Document Requests',
-    Icon: DocumentIcon,
-    roles: ['admin', 'staff'],
+    key: 'consultation',
+    label: 'Consultation / Walk-in',
+    Icon: ConsultationIcon,
+    roles: ['staff'],
     content: (
       <>
-        <p>Review and process every document request patients submit (medical certificates, clearances, etc.).</p>
+        <p>Has five sub-tabs covering recording a visit and reviewing past ones:</p>
         <ul>
           <li>
-            Filter by status — <strong>Pending</strong> (just submitted), <strong>Processing</strong> (you're working on it),{' '}
-            <strong>Approved</strong> (ready for pickup), <strong>Claimed</strong>, or <strong>Declined</strong>.
+            <strong>New Consultation</strong> — search for the registered patient (or use the{' '}
+            <strong>Unregistered</strong> tab's own entry for a guest/walk-in with no account), fill in chief complaint,
+            vitals, diagnosis, and any medicine/dosage given, and add follow-up instructions if they need to come back.{' '}
+            <strong>Save to Health Records + Deduct Inventory</strong> does both at once — writes the consultation to the
+            record AND reduces the medicine's stock, so you don't need to separately update Inventory. If you're offline
+            when you save, it's queued instead of lost — see "If you lose your internet connection" in Getting Started.
           </li>
-          <li>Open a request to view what the patient submitted, then move it forward with the action buttons.</li>
           <li>
-            Declining or approving lets you attach a note — this shows up directly in the patient's own request list, so be
-            specific (e.g. why something was declined) since that's the only explanation they'll see.
+            <strong>Health Records</strong> — every past consultation for registered patients, searchable, with{' '}
+            <strong>View</strong> opening the full visit detail (vitals, diagnosis, medicines given, and who attended).
+          </li>
+          <li>
+            <strong>Unregistered</strong> — the same record view, filtered to visits logged for someone without a patient
+            account (a guest or walk-in).
+          </li>
+          <li>
+            <strong>Case Listing</strong> — every consultation in one filterable table (by date range, visit type, or
+            diagnosis) for a quick clinic-wide overview rather than searching per patient.
+          </li>
+          <li>
+            <strong>Analytics</strong> — visit-type breakdowns (Walk-in vs. Emergency) and the most common
+            diagnoses/medicines given.
           </li>
         </ul>
       </>
@@ -177,22 +205,23 @@ const SECTIONS = [
     ),
   },
   {
-    key: 'consultation',
-    label: 'Consultation / Walk-in',
-    Icon: ConsultationIcon,
-    roles: ['staff'],
+    key: 'doc-requests',
+    label: 'Document Requests',
+    Icon: DocumentIcon,
+    roles: ['admin', 'staff'],
     content: (
       <>
-        <p>Record a walk-in or scheduled consultation and, if medicine is given, deduct it from inventory in the same step.</p>
+        <p>Review and process every document request patients submit (medical certificates, clearances, etc.).</p>
         <ul>
-          <li>Search for the patient (or record it as a non-patient/guest visit if applicable).</li>
-          <li>Fill in chief complaint, vitals, diagnosis, and any medicine/dosage given.</li>
-          <li>Add follow-up instructions if the patient needs to come back.</li>
           <li>
-            <strong>Save to Health Records + Deduct Inventory</strong> does both at once — it writes the consultation to the
-            patient's record AND reduces the medicine's stock count, so you don't need to also go update Inventory separately.
+            Filter by status — <strong>Pending</strong> (just submitted), <strong>Processing</strong> (you're working on it),{' '}
+            <strong>Approved</strong> (ready for pickup), <strong>Claimed</strong>, or <strong>Declined</strong>.
           </li>
-          <li>The Analytics sub-tab shows visit-type breakdowns (Walk-in vs. Emergency) and common diagnoses/medicines.</li>
+          <li>Open a request to view what the patient submitted, then move it forward with the action buttons.</li>
+          <li>
+            Declining or approving lets you attach a note — this shows up directly in the patient's own request list, so be
+            specific (e.g. why something was declined) since that's the only explanation they'll see.
+          </li>
         </ul>
       </>
     ),
@@ -207,30 +236,35 @@ const SECTIONS = [
         <p>Inventory has several sub-tabs, each covering a different part of stock management:</p>
         <ul>
           <li>
-            <strong>Items</strong> — the main stock list, grouped into Non-Expired, Expired, and Needs Maintenance sections.
-            Use Category/Status/Search to filter, and <strong>Clear Filters</strong> to reset all three at once. Add Item
-            creates new stock; Release deducts stock (e.g. dispensed to a patient); Edit changes an item's details.
+            <strong>Dashboard</strong> — an at-a-glance overview: stock alert cards (Expiring in 90/30/7 Days, Expired
+            Items, Damaged Inventory — tap any card to jump straight to that filtered view), Recently Received and
+            Recently Released activity, a monthly movement chart, and the most-used medicines over the last 30 days.
           </li>
           <li>
-            <strong>Batches</strong> — every batch is tracked separately (a new delivery is always a new batch, never merged
-            into an existing one), grouped by medicine. This is how expiry dates and FIFO (first-expiring-first-out) dispensing
-            work correctly even when the same medicine has multiple batches on hand. A batch can also be marked
-            <strong> Damaged</strong> (removes a quantity from usable stock) or <strong>Archived</strong> (removed from active
-            stock but kept for history) — archived batches can be restored later.
+            <strong>Items</strong> — the main stock list, grouped into Non-Expired, Expired, and Needs Maintenance
+            sections. Use Category/Status/Search to filter, and <strong>Clear Filters</strong> to reset all three at once.
+            Add Item creates new stock; Release deducts stock (e.g. dispensed to a patient); Edit changes an item's
+            details. A pill toggle at the top switches this same tab to <strong>Batches</strong>: every batch tracked
+            separately (a new delivery is always a new batch, never merged into an existing one), grouped by medicine —
+            this is how expiry dates and FIFO (first-expiring-first-out) dispensing work correctly even when the same
+            medicine has multiple batches on hand. A batch can also be marked <strong>Damaged</strong> (removes a quantity
+            from usable stock) or <strong>Archived</strong> (removed from active stock but kept for history) — archived
+            batches can be restored later. If you're offline when you Release or Add Stock, it's queued instead of
+            failing — see "If you lose your internet connection" in Getting Started.
           </li>
           <li>
             <strong>Suppliers</strong> — your supplier directory. A supplier that's linked to any batch can't be deleted until
             those batches are reassigned or archived.
           </li>
           <li>
-            <strong>QR Scanner</strong> — scan a batch's QR code (printed from Batches → QR) to quickly look it up or verify it
-            during receiving/dispensing. No code to scan? <strong>Upload an image</strong> instead (iPhone photos convert
-            automatically), or use <strong>Read Text</strong> to pull text off a handwritten label for you to review before
-            typing it in — either way, nothing is saved until you confirm it on the verification screen.
+            <strong>QR Scanner</strong> — scan a batch's QR code (printed from the Batches view → QR) to quickly look it up
+            or verify it during receiving/dispensing. No code to scan? <strong>Upload an image</strong> instead (iPhone
+            photos convert automatically), or use <strong>Read Text</strong> to pull text off a handwritten label for you to
+            review before typing it in — either way, nothing is saved until you confirm it on the verification screen.
           </li>
           <li>
             <strong>Log</strong> — a full audit trail of every stock movement (additions, releases, adjustments) with who did
-            it and when. Staff with the delete permission (granted from Maintenance → Staff Permissions) can remove entries
+            it and when. Staff with the delete permission (granted from System Management → Staff Permissions) can remove entries
             individually or in bulk with the Delete button.
           </li>
           <li>
@@ -250,10 +284,14 @@ const SECTIONS = [
       <>
         <p>Generate clinic reports — consultation summaries, inventory usage, document-request volume, and more.</p>
         <ul>
-          <li>Choose a report type and date range, then generate a preview before exporting.</li>
-          <li>Exported reports are formatted for printing/sharing (e.g. for monthly clinic summaries).</li>
+          <li>Choose a report type and date range, then <strong>Generate</strong> to preview it on screen first.</li>
           <li>
-            The <strong>Reset</strong> button clears the current report and filters — staff need it granted in Maintenance → Staff Permissions.
+            Once generated, <strong>Print</strong> opens a print-ready preview, or export it directly as{' '}
+            <strong>PDF</strong>, <strong>Excel</strong>, or <strong>CSV</strong> — pick whichever format fits how you need
+            to share or archive it.
+          </li>
+          <li>
+            The <strong>Reset</strong> button clears the current report and filters — staff need it granted in System Management → Staff Permissions.
           </li>
         </ul>
       </>
@@ -313,7 +351,7 @@ const SECTIONS = [
           <li>
             <strong>SMS Log</strong> and <strong>Alert Log</strong> keep a full history of everything sent — tap{' '}
             <strong>View</strong> on any entry to see the complete message. Staff specifically granted the
-            permission in Maintenance → Staff Permissions can delete entries individually or select several at once with the{' '}
+            permission in System Management → Staff Permissions can delete entries individually or select several at once with the{' '}
             <strong>Delete</strong> button.
           </li>
         </ul>
@@ -321,8 +359,31 @@ const SECTIONS = [
     ),
   },
   {
+    key: 'user-presence',
+    label: 'User Presence Monitoring',
+    Icon: PeopleIcon,
+    roles: ['admin'],
+    content: (
+      <>
+        <p>A directory of every account in the system — patients, staff, and other admins — in one table.</p>
+        <ul>
+          <li>Filter by role (All / Patients / Staff / Admins) and search by name, student number, or username.</li>
+          <li>
+            The <strong>Status</strong> column shows whether that person is <strong>Online</strong> right now — a live,
+            real-time signal (do they currently have the app open in a connected session), separate from whether their
+            account is enabled to sign in at all.
+          </li>
+          <li>
+            Opening a row shows the same record view as the Patients tab — consultation history and health record details
+            for patients; for staff/admin accounts it's mainly identifying info, since they don't have a clinical record.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
     key: 'maintenance',
-    label: 'System Maintenance',
+    label: 'System Management',
     Icon: SettingsIcon,
     roles: ['admin'],
     content: (
@@ -337,9 +398,57 @@ const SECTIONS = [
           </li>
           <li>
             <strong>Staff Permissions</strong> — grant individual staff accounts specific abilities beyond their default role:
-            printing inventory reports, document requests, or health records; deleting entries from the Alert Log, SMS Log, or
-            Inventory Transaction Log; and resetting the Reports page. These toggles are what actually control what a staff
+            printing inventory reports, document requests, or health records; resetting the Reports page; and deleting
+            entries — one toggle covers deletion across all of the Alert Log, SMS Log, Inventory Transaction Log, Inventory
+            Notifications, Scan History, and Document Requests. These toggles are what actually control what a staff
             account can do — an account without a toggle granted won't have that ability.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    key: 'audit-trail',
+    label: 'Audit Trail',
+    Icon: HistoryIcon,
+    roles: ['admin'],
+    content: (
+      <>
+        <p>
+          A complete, read-only history of who did what across the whole system — every tab lists date/time, the user, the
+          action, and any relevant detail, with search and an action-type filter on each.
+        </p>
+        <ul>
+          <li>
+            <strong>System Activity Log</strong> — everything, unfiltered. Every other tab below is this same data,
+            narrowed to one category.
+          </li>
+          <li>
+            <strong>User Management Logs</strong> — accounts created, edited, deleted, activated/deactivated, and
+            permission changes.
+          </li>
+          <li>
+            <strong>Inventory Logs</strong> — the same stock-movement history as Inventory → Log, shown here alongside
+            everything else for a full-system view.
+          </li>
+          <li>
+            <strong>Authentication Logs</strong> — every sign-in attempt (successful or failed), sign-outs, and password
+            changes/resets, filterable by role (Admin/Staff/Patient) as well as by action.
+          </li>
+          <li>
+            <strong>Document Requests Logs</strong> — every request submitted, approved, rejected, or completed, plus when
+            a resulting document was printed or downloaded.
+          </li>
+          <li>
+            <strong>System Configuration Logs</strong> — staff permission changes, and a record of every backup generated
+            (see Backup &amp; Export below).
+          </li>
+          <li>
+            <strong>Backup &amp; Export</strong> — the only tab here that isn't a log. <strong>Back Up Audit Log (CSV)</strong>{' '}
+            downloads the audit trail itself (up to the 500 most recent entries) as a spreadsheet-ready CSV. Below that,{' '}
+            <strong>Create System Backup</strong> downloads a full JSON snapshot of the system's core data — Users,
+            Document Requests, Consultations, Inventory, Inventory Logs, and Audit Logs, each capped at its usual list
+            limit (a snapshot of recent activity, not the entire historical database).
           </li>
         </ul>
       </>
@@ -445,7 +554,7 @@ const SECTIONS = [
           <li>
             <strong>Personal Information</strong> — your name (Surname, First Name, M.I., and a Jr./Sr./II/III extension
             dropdown), contact details, address, and (for patients) academic info. Staff accounts can view but not edit this
-            themselves — a staff member manages it via Maintenance.
+            themselves — a staff member manages it via System Management.
           </li>
           <li>
             <strong>Family Background</strong> (patients only) — father's, mother's, and guardian's contact information.

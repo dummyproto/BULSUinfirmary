@@ -18,7 +18,7 @@ const FOCUSABLE_SELECTOR =
  * the header) — `title` stays a plain string always, since it also feeds
  * `aria-label` on the dialog, which requires text, not a ReactNode.
  */
-export default function Modal({ isOpen, onClose, title, icon, children, actions }) {
+export default function Modal({ isOpen, onClose, title, icon, children, actions, wide }) {
   const dialogRef = useRef(null)
   const previouslyFocused = useRef(null)
   const { shouldRender, closing } = useDelayedUnmount(isOpen, EXIT_DURATION)
@@ -69,7 +69,7 @@ export default function Modal({ isOpen, onClose, title, icon, children, actions 
         if (e.target === e.currentTarget) onClose?.()
       }}
     >
-      <div className={`modal${closing ? ' closing' : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={dialogRef} tabIndex={-1}>
+      <div className={`modal${wide ? ' modal-wide' : ''}${closing ? ' closing' : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={dialogRef} tabIndex={-1}>
         <div className="modal-header">
           <h3 style={icon ? { display: 'flex', alignItems: 'center', gap: 8 } : undefined}>
             {icon}

@@ -23,6 +23,32 @@ import { supabase } from '@services/supabaseClient'
 //
 // `enabled` (default true) lets a caller skip subscribing entirely — e.g.
 // a page that only shows realtime data for admins/staff, not patients.
+
+// Wraps a call to the page's refresh function so a rejected promise
+// (most commonly: offline, a fetch failing) becomes a quiet console.warn
+// instead of an uncaught promise rejection. Every call site below that
+// invokes onChangeRef.current — the debounced realtime refresh, the
+// reconnect-after-drop retry, and the browser 'online' handler — was
+// calling it directly with no .catch() at all; none of them await this
+// hook's own effect, so a rejection had nowhere to be handled and
+// surfaced as raw "Uncaught (in promise)" console noise instead. The
+// app's own offline banner (see NetworkStatusContext) already tells the
+// person their connection is down; this only stops the SAME underlying
+// failure from also polluting the console on every single realtime
+// event that fires while offline.
+function safeRefresh(fn, tableKey) {
+  try {
+    Promise.resolve(fn?.()).catch((err) => {
+      console.warn(`[useRealtimeRefresh] refresh for "${tableKey}" failed (likely offline):`, err?.message || err)
+    })
+  } catch (err) {
+    // A refresh function that throws synchronously (rather than
+    // returning a rejected promise) would otherwise bypass the .catch()
+    // above entirely.
+    console.warn(`[useRealtimeRefresh] refresh for "${tableKey}" failed (likely offline):`, err?.message || err)
+  }
+}
+
 export function useRealtimeRefresh(tables, onChange, enabled = true) {
   // Stashed in a ref so a caller passing a fresh inline function every
   // render doesn't tear down and resubscribe the channel on every
@@ -52,7 +78,7 @@ export function useRealtimeRefresh(tables, onChange, enabled = true) {
       // row) into a single refetch, short enough that it still reads as
       // instant to a person watching the screen.
       debounceTimer = setTimeout(() => {
-        onChangeRef.current?.()
+        safeRefresh(onChangeRef.current, tableKey)
       }, 400)
     }
 
@@ -76,13 +102,13 @@ export function useRealtimeRefresh(tables, onChange, enabled = true) {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         clearTimeout(retryTimer)
         retryTimer = setTimeout(() => {
-          if (!cancelled) onChangeRef.current?.()
+          if (!cancelled) safeRefresh(onChangeRef.current, tableKey)
         }, 5000)
       }
     })
 
     function handleOnline() {
-      onChangeRef.current?.()
+      safeRefresh(onChangeRef.current, tableKey)
     }
     window.addEventListener('online', handleOnline)
 

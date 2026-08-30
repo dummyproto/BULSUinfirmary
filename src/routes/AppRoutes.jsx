@@ -17,6 +17,7 @@ const DashboardPage = lazy(() => import('@features/dashboard/DashboardPage'))
 const DocumentRequestsPage = lazy(() => import('@features/document-requests/DocumentRequestsPage'))
 const MyRequestsPage = lazy(() => import('@features/document-requests/MyRequestsPage'))
 const PatientsPage = lazy(() => import('@features/patients/PatientsPage'))
+const UserPresenceMonitoringPage = lazy(() => import('@features/patients/UserPresenceMonitoringPage'))
 const ConsultationPage = lazy(() => import('@features/consultations/ConsultationPage'))
 const InventoryPage = lazy(() => import('@features/inventory/InventoryPage'))
 const ReportsPage = lazy(() => import('@features/reports/ReportsPage'))
@@ -75,22 +76,27 @@ export default function AppRoutes() {
           <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
           <Route path="/profile" element={<LazyPage><ProfilePage /></LazyPage>} />
 
+          {/* Staff only — admin's equivalent view is now
+              /user-presence below (User Presence Monitoring, which
+              covers staff accounts too — see navItems.js's admin nav
+              entry), so this stays scoped to the role that still
+              actually uses it. */}
+          <Route element={<ProtectedRoute roles={['staff']} />}>
+            <Route path="/patients" element={<LazyPage><PatientsPage /></LazyPage>} />
+            <Route path="/consultation" element={<LazyPage><ConsultationPage /></LazyPage>} />
+          </Route>
+
           {/* Admin + Staff only */}
 <Route element={<ProtectedRoute roles={STAFF_ADMIN} />}>
-  <Route path="/patients" element={<LazyPage><PatientsPage /></LazyPage>} />
   <Route path="/document-requests" element={<LazyPage><DocumentRequestsPage /></LazyPage>} />
   <Route path="/inventory" element={<LazyPage><InventoryPage /></LazyPage>} />
   <Route path="/reports" element={<LazyPage><ReportsPage /></LazyPage>} />
   <Route path="/emergency-alerts" element={<LazyPage><EmergencyAlertsPage /></LazyPage>} />
 </Route>
 
-          {/* Staff only */}
-          <Route element={<ProtectedRoute roles={['staff']} />}>
-            <Route path="/consultation" element={<LazyPage><ConsultationPage /></LazyPage>} />
-          </Route>
-
                     {/* Admin only */}
           <Route element={<ProtectedRoute roles={['admin']} />}>
+            <Route path="/user-presence" element={<LazyPage><UserPresenceMonitoringPage /></LazyPage>} />
             <Route path="/maintenance" element={<LazyPage><MaintenancePage /></LazyPage>} />
             <Route path="/audit-trail" element={<LazyPage><AuditTrailPage /></LazyPage>} />
           </Route>

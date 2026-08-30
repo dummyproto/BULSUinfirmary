@@ -694,7 +694,7 @@ export async function togglePermission(userId, key, value) {
 }
 
 /**
- * Admin "change password" for any user (System Maintenance -> User
+ * Admin "change password" for any user (System Management -> User
  * Management). Same reasoning as deleteUser() above — public.users has
  * no password of its own to update (Supabase Auth owns that, in
  * auth.users), and the browser can never safely hold the service-role

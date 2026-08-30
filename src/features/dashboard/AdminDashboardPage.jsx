@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '@context/ToastContext'
+import { usePresence } from '@context/PresenceContext'
 import { formatDate } from '@lib/format'
 import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
@@ -30,7 +31,7 @@ const QUICK_LINKS = [
   { label: 'Document Requests', path: '/document-requests', color: 'var(--primary)', Icon: DocumentIcon },
   { label: 'Inventory', path: '/inventory', color: 'var(--warning)', Icon: InventoryIcon },
   { label: 'Reports', path: '/reports', color: 'var(--success)', Icon: ReportsIcon },
-  { label: 'Maintenance', path: '/maintenance', color: '#7C3AED', Icon: SettingsIcon },
+  { label: 'System Management', path: '/maintenance', color: '#7C3AED', Icon: SettingsIcon },
 ]
 
 const ROLE_COLOR = { admin: '#DC2626', staff: '#1E7B5E', patient: '#16A34A' }
@@ -38,6 +39,7 @@ const ROLE_COLOR = { admin: '#DC2626', staff: '#1E7B5E', patient: '#16A34A' }
 export default function AdminDashboardPage() {
   const navigate = useNavigate()
   const { show } = useToast()
+   const { isUserOnline } = usePresence()
 
   const [loading, setLoading] = useState(true)
   const [docs, setDocs] = useState([])
@@ -107,7 +109,15 @@ export default function AdminDashboardPage() {
   const recentCons = [...consultations].slice(0, 4)
 
   const totalUsers = users.length
-  const activeUsers = users.filter((u) => u.is_active).length
+  // "Active Users" now means "currently signed in right now" (live
+  // Presence, PresenceContext.jsx) rather than users.is_active — that
+  // column is the separate, admin-controlled "is this account allowed
+  // to sign in at all" flag (toggled from Maintenance -> User
+  // Management), which stays completely untouched by this. This updates
+  // live as people sign in/out — no refresh needed, no extra query
+  // against `users` for it (onlineUserIds already comes from the
+  // shared Presence channel every signed-in page joins).
+   const activeUsers = users.filter((u) => isUserOnline(u.user_id)).length
   const byRole = { admin: 0, staff: 0, patient: 0 }
   users.forEach((u) => {
     if (byRole[u.role] !== undefined) byRole[u.role]++
@@ -137,7 +147,7 @@ export default function AdminDashboardPage() {
         </div>
       )}
       {expiredInv.length > 0 && (
-        <div className="alert alert-danger" style={{ marginTop: activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-danger" style={{ marginTop: activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <AlertTriangleIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>
             {expiredInv.length} inventory item(s) expired: {expiredInv.map((i) => <strong key={itemKey(i)}>{i.name}</strong>).reduce((a, b) => [a, ', ', b])}
@@ -145,14 +155,14 @@ export default function AdminDashboardPage() {
         </div>
       )}
       {lowStockCount > 0 && (
-        <div className="alert alert-warning" style={{ marginTop: expiredInv.length || activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="alert alert-warning" style={{ marginTop: expiredInv.length || activeEmergencies.length || invNotifications.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <InventoryIcon width={16} height={16} style={{ flexShrink: 0 }} />
           <span>{lowStockCount} item(s) below minimum stock level.</span>
         </div>
       )}
 
       <div className="stats-row cols-4" style={{ marginTop: 14 }}>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/maintenance')}>
           <div className="stat-icon blue">
             <PeopleIcon width={18} height={18} />
           </div>
@@ -160,7 +170,7 @@ export default function AdminDashboardPage() {
           <div className="stat-label">Active Users</div>
           <div className="stat-delta neutral">{totalUsers} total registered</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/document-requests')}>
           <div className="stat-icon orange">
             <DocumentIcon width={18} height={18} />
           </div>
@@ -170,7 +180,7 @@ export default function AdminDashboardPage() {
             {pendingDocs} pending · {processingDocs} processing
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/inventory')}>
           <div className="stat-icon red">
             <InventoryIcon width={18} height={18} />
           </div>
@@ -178,13 +188,13 @@ export default function AdminDashboardPage() {
           <div className="stat-label">Inventory Alerts</div>
           <div className={`stat-delta ${lowInv > 0 ? 'down' : 'up'}`}>{lowInv > 0 ? 'Needs attention' : 'All stocked'}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <ConsultationIcon width={18} height={18} />
+                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/emergency-alerts')}>
+          <div className="stat-icon red">
+            <AlertOctagonIcon width={18} height={18} />
           </div>
-          <div className="stat-num">{consultations.length}</div>
-          <div className="stat-label">Total Health Records</div>
-          <div className="stat-delta neutral">Health records on file</div>
+          <div className="stat-num">{activeEmergencies.length}</div>
+          <div className="stat-label">Emergency Alerts</div>
+          <div className={`stat-delta ${activeEmergencies.length > 0 ? 'down' : 'up'}`}>{activeEmergencies.length > 0 ? 'Needs attention' : 'All clear'}</div>
         </div>
       </div>
 
@@ -217,7 +227,7 @@ export default function AdminDashboardPage() {
                   </tr>
                 )}
                 {activeDocs.map((d) => (
-                  <tr key={d.doc_request_id}>
+                  <tr key={d.doc_request_id} style={{ cursor: 'pointer' }} onClick={() => navigate('/document-requests')}>
                     <td>
                       <strong>{d.patient_name}</strong>
                     </td>
@@ -272,7 +282,7 @@ export default function AdminDashboardPage() {
               {Object.entries(byRole).map(([role, cnt]) => {
                 const pct = totalUsers ? Math.round((cnt / totalUsers) * 100) : 0
                 return (
-                  <div key={role} style={{ marginBottom: 10 }}>
+                  <div key={role} style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => navigate('/maintenance')}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
                       <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{role}</span>
                       <span style={{ color: 'var(--text-3)' }}>

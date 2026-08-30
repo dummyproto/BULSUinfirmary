@@ -18,7 +18,16 @@ export default function OfflineBanner() {
   return (
     <div className="offline-banner" role="status">
       <AlertTriangleIcon width={15} height={15} />
-      <span>You're offline — changes won't save until your connection comes back.</span>
+      {/* Phase 2/3 of offline support (Inventory Release/Replenish,
+         Consultation save) added actions that DO now queue and sync
+         automatically once reconnected — this used to say "changes
+         won't save" unconditionally, which is no longer accurate for
+         those specific actions. Everything else in the app still
+         behaves the old way (won't save at all while offline), so kept
+         as a general caution rather than claiming every action here is
+         covered — PendingSyncIndicator.jsx is what actually shows which
+         specific actions are queued and waiting. */}
+      <span>You're offline — most changes won't save until your connection comes back. Some actions (like Inventory updates and Consultations) are queued and will sync automatically once you're back online.</span>
     </div>
   )
 }
