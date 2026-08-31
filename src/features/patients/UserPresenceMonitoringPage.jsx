@@ -117,9 +117,9 @@ export default function UserPresenceMonitoringPage() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <select className="form-input" style={{ width: 150 }} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
               <option value="all">All Roles</option>
+              <option value="admin">Administrators</option>
               <option value="patient">Patients</option>
               <option value="staff">Staff</option>
-              <option value="admin">Administrators</option>
             </select>
             <SearchInput value={search} onChange={setSearch} placeholder="Search by name, course, or department…" width={240} />
           </div>

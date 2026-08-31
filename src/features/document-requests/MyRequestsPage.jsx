@@ -18,7 +18,7 @@ import { ClockIcon, CreditCardIcon, MapPinIcon, PlusIcon, DocumentIcon, InfoIcon
 import { useDefaultShowMore } from '@hooks/useDefaultShowMore'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
-const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Claimed', 'Declined', 'Cancelled']
+const TABS = ['All', 'Approved', 'Cancelled', 'Claimed', 'Declined', 'Pending', 'Processing']
 
 const INFO_CARDS = [
   [ClockIcon, 'Processing Time', '2–3 working days for standard documents'],

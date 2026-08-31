@@ -29,7 +29,13 @@ export default function NotificationCenterTab({ notifications, unreadCount, onMa
   const [typeFilter, setTypeFilter] = useState('All')
   const [unreadOnly, setUnreadOnly] = useState(false)
 
-  const types = useMemo(() => ['All', ...new Set(notifications.map((n) => n.notification_type))], [notifications])
+  const types = useMemo(() => {
+    const distinct = [...new Set(notifications.map((n) => n.notification_type))]
+    // Sorted by the LABEL shown in the dropdown (TYPE_LABELS), not the
+    // raw notification_type key — 'All' stays pinned first regardless.
+    distinct.sort((a, b) => (TYPE_LABELS[a] || a).localeCompare(TYPE_LABELS[b] || b))
+    return ['All', ...distinct]
+  }, [notifications])
   const filtered = notifications.filter((n) => (typeFilter === 'All' || n.notification_type === typeFilter) && (!unreadOnly || !n.is_read))
 
   return (

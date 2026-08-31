@@ -17,7 +17,7 @@ import { EyeIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, ChevronDownIcon, C
 import { defaultShowMore } from '@lib/viewport'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
-const TABS = ['All', 'Pending', 'Processing', 'Approved', 'Declined']
+const TABS = ['All', 'Approved', 'Declined', 'Pending', 'Processing']
 
 export default function DocumentRequestsPage() {
   const { profile } = useAuth()

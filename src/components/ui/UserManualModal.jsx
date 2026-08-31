@@ -70,14 +70,8 @@ const SECTIONS = [
         <p>
           On phones, use the bottom navigation bar to access the main features and pages. A floating up-arrow button appears in the bottom-right corner once you've scrolled down a page — tap it to jump back to the top instantly.
         </p>
-        <h4>If you lose your internet connection</h4>
-        <p>
-          A banner appears at the bottom of the screen the moment you go offline. Most actions need a live connection and
-          simply won't save until it's back — but Inventory's <strong>Release</strong> and <strong>Add Stock</strong>, and
-          saving a <strong>Consultation</strong>, are queued automatically instead of failing: keep working, and a small
-          "pending" pill appears in the bottom corner showing what's waiting to sync. It syncs by itself the instant your
-          connection returns, or tap the pill any time to sync manually or see exactly what's queued.
-        </p>
+        
+      
         <h4>If you're suddenly signed out</h4>
         <p>
           If a staff member deletes or deactivates your account while you're signed in, you'll be signed out immediately

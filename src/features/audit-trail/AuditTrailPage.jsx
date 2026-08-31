@@ -6,7 +6,7 @@ import Spinner from '@components/ui/Spinner'
 import Tabs from '@components/ui/Tabs'
 import { listAuditLogs, logConfigEvent } from '@services/auditLogsService'
 import { listInventoryLogs } from '@services/inventoryService'
-import { exportToCSV } from '@features/reports/lib/exportReport'
+import { exportMultiSectionCSV } from '@features/reports/lib/exportReport'
 import { formatDateTime } from '@lib/format'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 import { HistoryIcon, DownloadIcon } from '@components/ui/icons'
@@ -16,7 +16,7 @@ import { HistoryIcon, DownloadIcon } from '@components/ui/icons'
 // activity/record-keeping tools instead of mixed in with account
 // management. MaintenancePage.jsx no longer has a 'backup' tab at all.
 import BackupTab from '@features/maintenance/BackupTab'
-import { generateSystemBackup } from '@features/maintenance/lib/systemBackup'
+import { generateSystemBackup, SYSTEM_BACKUP_TABLES } from '@features/maintenance/lib/systemBackup'
 
 // Maps the fixed set of action codes this app actually writes (see
 // addAuditLog()/logAuthEvent() call sites across MaintenancePage.jsx,
@@ -175,8 +175,8 @@ const SYSTEM_CONFIG_DESCRIPTION =
 // "Clinic Personnel" wording ProfilePage.jsx uses for the role itself.
 const ROLE_FILTER_OPTIONS = [
   { value: 'admin', label: 'Administrator' },
-  { value: 'staff', label: 'Staff' },
   { value: 'patient', label: 'Patient' },
+  { value: 'staff', label: 'Staff' },
 ]
 
 // inventory_logs (InventoryPage.jsx's addInventoryLog / medicineService's
@@ -228,7 +228,8 @@ export default function AuditTrailPage() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [tab, setTab] = useState('system')
   // Moved from MaintenancePage.jsx alongside the BackupTab import above.
-  const [backupGenerating, setBackupGenerating] = useState(false)
+   const [backupGenerating, setBackupGenerating] = useState(false)
+  const [exportingAll, setExportingAll] = useState(false)
 
   // Same sticky-header-while-scrolling treatment as Patients/Inventory —
   // see legacy.css's note above .inv-items-scroll for why this needs a
@@ -303,7 +304,17 @@ export default function AuditTrailPage() {
   // Same, for the Inventory Logs tab — any Replenish/Release/Edit/etc.
   // action anywhere in Inventory shows up here live too, not just after
   // a manual page reload.
-  useRealtimeRefresh('inventory_logs', refreshInventoryLogs)
+   useRealtimeRefresh('inventory_logs', refreshInventoryLogs)
+
+  // The one true "all logs, no exceptions" list — every audit_logs row
+  // plus every inventory_logs row (via normalizeInventoryLog), merged
+  // and re-sorted newest-first since the two source lists are each only
+  // sorted on their own. Shared by System Activity Log's tabLogs branch
+  // below AND handleBackup's CSV export further down, so there's one
+  // definition of "all logs" instead of two that can silently drift
+  // apart (which is exactly how the CSV export ended up missing every
+  // inventory entry before this).
+  const allLogsMerged = [...logs, ...inventoryLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
   // Scoped to the active tab, so switching tabs resets which actions the
   // "All Actions" dropdown even offers — picking "Failed Login" while on
@@ -329,15 +340,17 @@ export default function AuditTrailPage() {
       ? logs.filter((l) => DOCUMENT_ACTIONS.has(l.action))
       : tab === 'system-config'
       ? logs.filter((l) => SYSTEM_CONFIG_ACTIONS.has(l.action))
-      : tab === 'system'
-      ? [...logs, ...inventoryLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+     : tab === 'system'
+      ? allLogsMerged
       : logs
 
-  const actionOptions = Object.keys(ACTION_STYLES).filter((a) => tabLogs.some((l) => l.action === a))
+  const actionOptions = Object.keys(ACTION_STYLES)
+    .filter((a) => tabLogs.some((l) => l.action === a))
+    .sort((a, b) => actionLabel(a).localeCompare(actionLabel(b)))
   // Covers any action code this page's static list hasn't been updated
   // for yet, so the filter dropdown never silently hides real log
   // entries just because ACTION_STYLES doesn't recognize them.
-  const otherActions = [...new Set(tabLogs.map((l) => l.action))].filter((a) => !ACTION_STYLES[a])
+  const otherActions = [...new Set(tabLogs.map((l) => l.action))].filter((a) => !ACTION_STYLES[a]).sort((a, b) => actionLabel(a).localeCompare(actionLabel(b)))
 
   const q = search.toLowerCase()
   const filtered = tabLogs.filter((l) => {
@@ -351,34 +364,88 @@ export default function AuditTrailPage() {
     )
   })
 
-  // Only reachable from the Backup & Export tab now (the button used to
-  // sit in the page header on every OTHER tab too, exporting whichever
-  // one was active with its filters applied — moved here so it's a
-  // single, consolidated CSV export button instead). Since the
-  // role/action/search filters live on the OTHER tabs' own card header
-  // and this tab has none of those controls, this always exports the
-  // full, unfiltered audit trail — up to the 500 most recent entries.
-  // Distinct from this same tab's generateSystemBackup() below, which
-  // bundles every core table (not just audit_logs) into one JSON file —
-  // this is audit-trail-specific and CSV, immediately opens in
-  // Excel/Sheets rather than needing to be parsed.
-  const backupExportLabel = 'System Activity Log (Full Export)'
-  function handleBackup() {
-    if (filtered.length === 0) {
-      show('Nothing to back up — no rows match the current filters.', 'warning')
-      return
+     // Builds ONE combined CSV covering every core table — Users &
+  // Profiles, Document Requests, Consultations, Inventory Items,
+  // Inventory Logs, and Audit Logs — as one labeled section per table in
+  // a single downloadable file, rather than six separate exports.
+  // Reuses the exact same fetch functions the JSON System Backup below
+  // already uses (SYSTEM_BACKUP_TABLES), so both draw from identical
+  // data and the same per-table row limits; this just reshapes each
+  // table's raw rows into readable CSV columns (skipping large/internal
+  // fields like base64 photo data or raw QR payload strings) instead of
+  // dumping every raw field, and combines all six into one file via
+  // exportMultiSectionCSV.
+  async function handleExportAllCSV() {
+    setExportingAll(true)
+    try {
+      const results = await Promise.all(SYSTEM_BACKUP_TABLES.map(async ({ key, label, fetch }) => ({ key, label, rows: await fetch() })))
+
+      const sections = results.map(({ key, label, rows }) => {
+        switch (key) {
+          case 'users':
+            return {
+              label,
+              headers: ['Name', 'Username', 'Email', 'Role', 'Phone', 'Status', 'Student/Staff No.', 'Department/Course', 'Position/Year Level'],
+              rows: rows.map((u) => [
+                u.name || '',
+                u.username || '',
+                u.email || '',
+                u.role || '',
+                u.phone || '',
+                u.active ? 'Active' : 'Inactive',
+                u.student_number || u.staff_id_number || '',
+                u.department || u.course || '',
+                u.position || u.year_level || '',
+              ]),
+            }
+          case 'document_requests':
+            return {
+              label,
+              headers: ['Date Requested', 'Patient', 'Student No.', 'Document Type', 'Status', 'Purpose', 'Processed By'],
+              rows: rows.map((d) => [formatDateTime(d.created_at), d.patient_name || '', d.student_number || '', d.doc_type || '', d.status || '', d.purpose || '', d.processed_by_name || '']),
+            }
+          case 'consultations':
+            return {
+              label,
+              headers: ['Visit Date', 'Patient', 'Student No.', 'Visit Type', 'Diagnosis', 'Assessment', 'Medications'],
+              rows: rows.map((c) => [c.visit_date || '', c.patient_name || '', c.student_number || '', c.visit_type || '', c.diagnosis || '', c.assessment || '', c.medications || '']),
+            }
+          case 'inventory':
+            return {
+              label,
+              headers: ['Item Name', 'Category', 'Quantity', 'Unit', 'Min. Stock', 'Supplier', 'Expiry'],
+              rows: rows.map((i) => [i.name || '', i.category || '', i.quantity ?? '', i.unit || '', i.min_stock ?? '', i.supplier || '', i.expiration_date || '']),
+            }
+          case 'inventory_logs':
+            return {
+              label,
+              headers: ['Date & Time', 'Item', 'Action', 'Quantity Change', 'Staff', 'Notes'],
+              rows: rows.map((l) => [formatDateTime(l.created_at), l.item_name || '', l.action_type || '', l.quantity_change ?? '', l.staff_name || '', l.notes || '']),
+            }
+          case 'audit_logs':
+          default:
+            return {
+              label,
+              headers: ['Date & Time', 'User', 'Role', 'Action', 'Details'],
+              rows: rows.map((l) => [formatDateTime(l.created_at), l.user_name || 'Unknown user', l.user_role || '—', actionLabel(l.action), l.details || '']),
+            }
+        }
+      })
+
+      exportMultiSectionCSV({ title: 'BulSU Infirmary - Full Records Export', sections })
+
+      const summary = results.map((r) => `${r.label}: ${r.rows.length}`).join(', ')
+      logConfigEvent({
+        userId: profile?.user_id ?? null,
+        action: 'AUDIT_TRAIL_BACKUP',
+        details: `${profile?.name || 'Admin'} exported all records as one combined CSV — ${summary}`,
+      })
+      show('All records exported as one CSV file', 'success')
+    } catch (err) {
+      show(`Failed to export records: ${err.message}`, 'error')
+    } finally {
+      setExportingAll(false)
     }
-    exportToCSV({
-      title: `Audit Trail - ${backupExportLabel}`,
-      headers: ['Date & Time', 'User', 'Role', 'Action', 'Details'],
-      rows: filtered.map((l) => [formatDateTime(l.created_at), l.user_name || 'Unknown user', l.user_role || '—', actionLabel(l.action), l.details || '']),
-    })
-    logConfigEvent({
-      userId: profile?.user_id ?? null,
-      action: 'AUDIT_TRAIL_BACKUP',
-      details: `${profile?.name || 'Admin'} backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} from "${backupExportLabel}"`,
-    })
-    show(`Backed up ${filtered.length} record${filtered.length === 1 ? '' : 's'} as CSV`, 'success')
   }
 
   // Moved here from MaintenancePage.jsx's BackupTab wiring — same
@@ -439,13 +506,14 @@ export default function AuditTrailPage() {
 
       {tab === 'backup' ? (
         <>
-          {/* Moved here from the page header above, where it used to sit
+                    {/* Moved here from the page header above, where it used to sit
               on every OTHER tab as a page-level action — now scoped to
               this tab specifically, alongside the full-system JSON
-              backup below. Distinct from that one: this is a CSV of the
-              audit log itself (all 500 most recent entries, unfiltered,
-              since the role/action/search controls live on the other
-              tabs' own card header, not here), not every core table. */}
+              backup below. Now exports every core table (Users &
+              Profiles, Document Requests, Consultations, Inventory
+              Items, Inventory Logs, Audit Logs), each as its own
+              section within ONE combined CSV file — previously this
+              only ever covered the audit log itself. */}
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -454,11 +522,19 @@ export default function AuditTrailPage() {
             </div>
             <div style={{ padding: 18 }}>
               <div className="alert alert-info" style={{ marginBottom: 14 }}>
-                Downloads the audit trail itself — up to the 500 most recent recorded actions across every tab — as a
-                CSV file that opens directly in Excel or Sheets.
+                Downloads Users &amp; Profiles, Document Requests, Consultations, Inventory Items, Inventory Logs, and
+                Audit Logs — each as its own labeled section — combined into one CSV file that opens directly in
+                Excel or Sheets.
               </div>
-              <button type="button" className="btn btn-blue" onClick={handleBackup}>
-                <DownloadIcon width={14} height={14} /> Back Up Audit Log (CSV)
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                {SYSTEM_BACKUP_TABLES.map((t) => (
+                  <span key={t.key} className="badge badge-no-dot badge-gray">
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+              <button type="button" className="btn btn-blue" onClick={handleExportAllCSV} disabled={exportingAll}>
+                <DownloadIcon width={14} height={14} /> {exportingAll ? 'Preparing export…' : 'Export All Records (CSV)'}
               </button>
             </div>
           </div>

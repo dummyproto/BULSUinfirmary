@@ -2211,6 +2211,23 @@ label{font-size:11.5px;font-weight:600;color:#2E2420}
   background:linear-gradient(135deg,rgba(210,195,178,.15) 0%,rgba(36,28,18,.15) 50%,rgba(12,8,4,.22) 100%);
   -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
 }
+/* Sits outside .login-card on purpose (a sibling in AuthLayout.jsx, not
+   nested inside it) — .login-card has backdrop-filter, which creates a
+   new containing block for any position:fixed descendant, so a fixed
+   button placed INSIDE it would be trapped to the card's own bounds
+   instead of anchoring to the actual viewport corner like this needs. */
+.login-help-btn{
+  position:fixed;left:20px;bottom:20px;z-index:5;
+  width:44px;height:44px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(50,40,28,.55);border:1px solid rgba(255,245,230,.3);
+  color:#F5EFE6;cursor:pointer;
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  box-shadow:0 8px 20px rgba(0,0,0,.35);
+  transition:transform .15s ease,background .15s ease;
+}
+.login-help-btn:hover{background:rgba(50,40,28,.75);transform:translateY(-2px)}
+.login-help-btn:active{transform:translateY(0)}
 .login-card{
   background:linear-gradient(180deg,rgba(50,40,28,.38) 0%,rgba(14,10,6,.42) 60%);
   border:1px solid rgba(255,245,230,.26);
@@ -6992,8 +7009,38 @@ td {
 .manual-content li{font-size:13.5px;line-height:1.7;color:var(--text-2);margin-bottom:6px}
 .manual-content strong{color:var(--text);font-weight:700}
 
+/* LoginHelpModal.jsx — one card per topic instead of a flat run of
+   h4/p pairs (which had no spacing at all: .modal-body resets padding
+   to 0 and nothing filled the gap back in, so every section ran
+   straight into the next with zero visual separation). No extra outer
+   padding here — .modal already applies 26px on all sides, so this
+   just needs the gap between cards; adding more would indent the list
+   past the "Login Help" title above it instead of lining up with it. */
+.login-help-list{display:flex;flex-direction:column;gap:14px}
+.login-help-item{
+  display:flex;gap:14px;padding:16px;border-radius:12px;
+  background:var(--surface2);border:1px solid var(--border);
+}
+.login-help-item-icon{
+  flex-shrink:0;width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--primary-light);color:var(--primary);
+}
+.login-help-item.accent{background:rgba(220,38,38,.08);border-color:rgba(220,38,38,.25)}
+.login-help-item.accent .login-help-item-icon{background:rgba(220,38,38,.15);color:#DC2626}
+.login-help-item-body{min-width:0}
+.login-help-item-body h4{font-size:14px;font-weight:700;color:var(--text);margin:0 0 6px}
+.login-help-item.accent .login-help-item-body h4{color:#DC2626}
+.login-help-item-body p{font-size:13px;line-height:1.65;color:var(--text-2);margin:0}
+.login-help-item-body strong{color:var(--text);font-weight:700}
+
 @media(max-width:768px){
-  .manual-box{width:100%;height:100%;max-height:100%;border-radius:0}
+  /* Was width:100%;height:100%;border-radius:0 — filled the entire
+     screen edge-to-edge on mobile. Now sized down to a normal contained
+     dialog with margin on every side (from .manual-overlay's own
+     padding:24px, unchanged above) and its rounded corners kept,
+     instead of taking over the whole viewport. */
+ .manual-box{width:100%;max-width:100%;height:62vh;max-height:62vh;border-radius:16px}
   .manual-body{flex-direction:column}
   .manual-nav{
     width:100%;flex-direction:row;overflow-x:auto;overflow-y:visible;

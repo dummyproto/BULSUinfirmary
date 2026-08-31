@@ -19,10 +19,10 @@ export default function BackupTab({ onGenerateBackup, generating }) {
       </div>
       <div style={{ padding: 18 }}>
         <div className="alert alert-info" style={{ marginBottom: 14 }}>
-          Downloads a single JSON file containing the clinic's core records — Users, Document Requests, Consultations,
-          Inventory, Inventory Logs, and Audit Logs. Each table is capped at its usual page-list limit (300–500 most
-          recent rows), same as everywhere else in the app, so this is a snapshot of recent activity rather than the
-          full historical database.
+          Downloads a multi-sheet Excel (.xlsx) workbook — a Backup Info cover sheet, then one sheet per table: Users,
+          Document Requests, Consultations, Inventory, Inventory Logs, and Audit Logs. Each table is capped at its
+          usual page-list limit (300–500 most recent rows), same as everywhere else in the app, so this is a snapshot
+          of recent activity rather than the full historical database.
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>

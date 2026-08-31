@@ -7,8 +7,8 @@ import { BatchesBody } from './BatchesTab'
 import { InventoryIcon, FolderIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
 
-const CATEGORIES = ['All', 'Medicine', 'Supply', 'Equipment']
-const STATUSES = ['All', 'Available', 'Low Stock', 'Critical Stock', 'Out of Stock', 'Near Expiry', 'Expired', 'Damaged', 'Archived', 'Needs Maintenance']
+const CATEGORIES = ['All', 'Equipment', 'Medicine', 'Supply']
+const STATUSES = ['All', 'Archived', 'Available', 'Critical Stock', 'Damaged', 'Expired', 'Low Stock', 'Near Expiry', 'Needs Maintenance', 'Out of Stock']
 
 // Flattens sections into a render-ready row list: section headers, category
 // sub-headers (inserted whenever the category changes within a section),

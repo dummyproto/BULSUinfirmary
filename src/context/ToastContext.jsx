@@ -1,11 +1,11 @@
-import { createContext, useContext, useCallback, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useMemo, useRef, useState } from 'react'
 
 const ToastContext = createContext(undefined)
 
 // Matches .toast.leaving's animation duration in legacy.css — the toast is
 // marked "leaving" (to play its exit animation) before it's actually
 // removed from state, instead of vanishing mid-transition.
-const EXIT_DURATION = 200
+export const EXIT_DURATION = 200
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
@@ -32,13 +32,12 @@ export function ToastProvider({ children }) {
     [dismiss]
   )
 
-  return (
-    <ToastContext.Provider value={{ toasts, show, dismiss }}>
-      {children}
-    </ToastContext.Provider>
-  )
+    const value = useMemo(() => ({ toasts, show, dismiss }), [toasts, show, dismiss])
+
+  return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast() {
   const ctx = useContext(ToastContext)
   if (ctx === undefined) throw new Error('useToast must be used within a ToastProvider')

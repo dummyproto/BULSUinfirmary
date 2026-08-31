@@ -59,3 +59,29 @@ export function exportToCSV({ title, headers, rows }) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// Combines multiple differently-shaped tables into ONE downloadable CSV
+// file — used by Audit Trail's "Export All Records (CSV)" (see
+// AuditTrailPage.jsx's handleExportAllCSV) to bundle Users & Profiles,
+// Document Requests, Consultations, Inventory Items, Inventory Logs, and
+// Audit Logs into a single file rather than six separate downloads. CSV
+// is inherently a flat, single-table format — this uses the same
+// convention any spreadsheet tool (Excel, Sheets) already opens fine:
+// each table gets its own titled section (with its own row count), its
+// own header row directly below that, then its data rows, with a blank
+// line separating it from the next section. Reuses csvEscape so every
+// value anywhere in the file is escaped exactly the same way the
+// existing single-table exportToCSV above already does.
+export function exportMultiSectionCSV({ title, sections }) {
+  const blocks = sections.map(({ label, headers, rows }) => {
+    const lines = [[`${label} (${rows.length} record${rows.length === 1 ? '' : 's'})`], headers, ...rows]
+    return lines.map((row) => row.map(csvEscape).join(',')).join('\n')
+  })
+  const blob = new Blob([blocks.join('\n\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filenameFor(title)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}

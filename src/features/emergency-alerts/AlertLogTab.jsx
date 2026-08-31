@@ -4,7 +4,7 @@ import StatusBadge from '@components/ui/StatusBadge'
 import { formatDateTime } from '@lib/format'
 import { ClipboardIcon, DownloadIcon, MapPinIcon, EyeIcon, TrashIcon } from '@components/ui/icons'
 
-const STATUSES = ['All', 'Active', 'Acknowledged', 'Resolved']
+const STATUSES = ['All', 'Acknowledged', 'Active', 'Resolved']
 
 function exportAlertsCsv(alerts) {
   const header = ['Date', 'Subject', 'Patient #', 'Location', 'Status', 'Description']
