@@ -1513,6 +1513,7 @@ export default function InventoryPage() {
         onSaveAll={handleSaveAllStaged}
         onError={(msg) => show(msg, 'error')}
         suppliers={suppliers}
+        inventory={inventory}
         initialData={pendingItemPrefill}
       />
 

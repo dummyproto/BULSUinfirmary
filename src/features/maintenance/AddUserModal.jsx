@@ -5,6 +5,7 @@ import { COURSES, YEAR_LEVELS } from './data/formOptions'
 import { validatePassword, initialsFor } from './lib/userHelpers'
 import { buildFullName } from '@features/profile/lib/profileHelpers'
 import { PlusIcon } from '@components/ui/icons'
+import { capitalizeWords } from '@lib/format'
 
 // Same format as registration (RegisterModal.jsx) and EditUserModal.jsx
 // — 4-3-3 digit groups, e.g. "2023-000-000". The underlying form state
@@ -126,11 +127,11 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
           <>
             <div className="form-group">
               <label>SURNAME *</label>
-              <input className="form-input" placeholder="e.g., Dela Cruz" value={form.surname} onChange={(e) => setField('surname')(e.target.value)} />
+              <input className="form-input" placeholder="e.g., Dela Cruz" value={form.surname} onChange={(e) => setField('surname')(capitalizeWords(e.target.value))} />
             </div>
             <div className="form-group">
               <label>FIRST NAME *</label>
-              <input className="form-input" placeholder="e.g., Juan" value={form.givenName} onChange={(e) => setField('givenName')(e.target.value)} />
+              <input className="form-input" placeholder="e.g., Juan" value={form.givenName} onChange={(e) => setField('givenName')(capitalizeWords(e.target.value))} />
             </div>
           </>
         ) : (

@@ -4,6 +4,7 @@ import Modal from '@components/ui/Modal'
 import { COURSES, YEAR_LEVELS } from './data/formOptions'
 import { buildFullName } from '@features/profile/lib/profileHelpers'
 import { EditIcon, DownloadIcon } from '@components/ui/icons'
+import { capitalizeWords } from '@lib/format'
 
 // Same format as registration (RegisterModal.jsx) — 4-3-3 digit groups,
 // e.g. "2030-000-000". The underlying state is always plain digits
@@ -156,11 +157,11 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }) {
           <>
             <div className="form-group">
               <label>SURNAME</label>
-              <input className="form-input" value={form.surname} onChange={(e) => setField('surname')(e.target.value)} />
+              <input className="form-input" value={form.surname} onChange={(e) => setField('surname')(capitalizeWords(e.target.value))} />
             </div>
             <div className="form-group">
               <label>FIRST NAME</label>
-              <input className="form-input" value={form.givenName} onChange={(e) => setField('givenName')(e.target.value)} />
+              <input className="form-input" value={form.givenName} onChange={(e) => setField('givenName')(capitalizeWords(e.target.value))} />
             </div>
           </>
         ) : (

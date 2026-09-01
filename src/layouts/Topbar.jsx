@@ -21,6 +21,8 @@ import {
 import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmModal'
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
 import { stopEmergencySiren } from '@lib/emergencySound'
+import { playNotificationSound } from '@lib/notificationSound'
+import { supabase } from '@services/supabaseClient'
 
 // Lazy — this is global chrome loaded on every route, but the full report
 // form (with its patient search) is only ever needed if a patient actually
@@ -84,15 +86,28 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
     : profile?.name
   const location = useLocation()
 
-  const [unread, setUnread] = useState(0)
+    const [unread, setUnread] = useState(0)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [notifLoading, setNotifLoading] = useState(false)
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   const [emgFormOpen, setEmgFormOpen] = useState(false)
   const [emgSuccess, setEmgSuccess] = useState(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [qrModalOpen, setQrModalOpen] = useState(false)
   const profileMenuRef = useRef(null)
+  // Tracks notifOpen's CURRENT value for the realtime listener below —
+  // that effect only re-runs when userId/role/includesInventory change,
+  // not on every open/close of the panel, so reading notifOpen directly
+  // inside its callback would read whatever it was at mount time
+  // forever (a stale closure). Updated via a plain effect rather than
+  // read fresh each render, since the ref only needs to be correct by
+  // the time an async realtime event actually fires, not synchronously
+  // during render.
+  const notifOpenRef = useRef(false)
+  useEffect(() => {
+    notifOpenRef.current = notifOpen
+  }, [notifOpen])
 
   const userId = profile?.user_id ?? null
   const includesInventory = role === 'staff' || role === 'admin'
@@ -113,10 +128,28 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
     return listForUser(userId, role)
   }
 
+  // Monotonically-increasing sequence number, bumped by every call to
+  // refreshUnreadCount()/silentRefresh()/openNotifications() below. Two
+  // independent things can trigger these — a person marking something
+  // read (NotificationsModal calls onRefresh right after) and this
+  // file's own realtime listener further down reacting to an unrelated
+  // new notification arriving — and their underlying network requests
+  // can resolve in EITHER order, not necessarily the order they were
+  // issued in. Without this guard, whichever response simply arrived
+  // LAST overwrote state, even if it was actually the OLDER of the two
+  // — which is exactly what made a just-marked-read notification appear
+  // to "come back" as unread when a new one happened to arrive around
+  // the same time. Each function below captures its own sequence number
+  // at the moment it starts and only calls setState if no NEWER call
+  // has been issued since.
+  const refreshSeqRef = useRef(0)
+
   async function refreshUnreadCount() {
     if (!userId || !role) return
+    const seq = ++refreshSeqRef.current
     try {
-      setUnread(await combinedUnreadCount())
+      const n = await combinedUnreadCount()
+      if (seq === refreshSeqRef.current) setUnread(n)
     } catch {
       // Non-critical — the bell just won't show a badge if this fails.
     }
@@ -124,49 +157,162 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
 
   // Badge count freshness: the count was previously fetched once on mount
   // and never again, so it went stale the moment any new notification
-  // arrived later in the session. Refreshing on every route change covers
+    // arrived later in the session. Refreshing on every route change covers
   // the common case (navigating is a natural moment to re-check); the
   // 60s interval is a safety net for someone sitting on one page a while.
+  // Inlined with its own .then() (rather than calling refreshUnreadCount()
+  // bare, which — despite being async and only setting state once its
+  // promise resolves — react-hooks/set-state-in-effect still flags as a
+  // direct call from an effect's synchronous body) while still sharing
+  // refreshSeqRef so this participates in the same sequencing guard.
   useEffect(() => {
     if (!userId || !role) return undefined
-    let cancelled = false
+    const seq = ++refreshSeqRef.current
     combinedUnreadCount()
       .then((n) => {
-        if (!cancelled) setUnread(n)
+        if (seq === refreshSeqRef.current) setUnread(n)
       })
       .catch(() => {})
-    return () => {
-      cancelled = true
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role, location.pathname])
 
   useEffect(() => {
     if (!userId || !role) return undefined
     const interval = setInterval(() => {
+      const seq = ++refreshSeqRef.current
       combinedUnreadCount()
-        .then(setUnread)
+        .then((n) => {
+          if (seq === refreshSeqRef.current) setUnread(n)
+        })
         .catch(() => {})
     }, 60000)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role])
 
-  async function openNotifications() {
+  // Sound + instant badge update the moment a new notification actually
+  // arrives, instead of waiting on the 60s poll above (which still stays
+  // as a safety net for a dropped/reconnecting connection). Same
+  // subscribe-with-reconnect-on-drop pattern as EmergencyAlertListener.jsx
+  // — this component is mounted once in AppShell.jsx alongside it and
+  // never unmounts on navigation, so this fires regardless of which page
+  // someone's actually on.
+  //
+  // notifications rows target EITHER a specific person (user_id) OR an
+  // entire role (target_role) — see notificationsService.js's
+  // userOrRoleFilter(), which this mirrors. Supabase Realtime's
+  // postgres_changes `filter` option only supports a single column
+  // comparison, not an OR across two columns, so this subscribes
+  // unfiltered and does that "is this actually for me" check client-side
+  // in the callback instead — matching the exact same "belongs to this
+  // user or this role" logic the REST fetch already uses, just applied
+  // to the live INSERT payload rather than a query result.
+  //
+  // inventory_notifications has no recipient column at all (see its
+  // schema — genuinely system-wide, the same as
+  // listInventoryNotifications({ unreadOnly: false }) already fetches
+  // unfiltered), so that one subscribes with no client-side check needed
+  // — every staff/admin sees the same alerts.
+  useEffect(() => {
+    if (!userId || !role) return undefined
+
+    function isForThisPerson(row) {
+      return row?.user_id === userId || row?.target_role === role
+    }
+
+    function handleNewNotification() {
+      playNotificationSound()
+      // If the panel's already open, refresh what's actually showing
+      // too (silentRefresh does both list + count together) — otherwise
+      // just the badge count, since there's no open list to go stale.
+      if (notifOpenRef.current) {
+        silentRefresh()
+      } else {
+        refreshUnreadCount()
+      }
+    }
+
+    let channel = null
+    let retryTimer = null
+    let cancelled = false
+
+    function subscribe() {
+      if (cancelled) return
+      let ch = supabase.channel('topbar-notifications-live')
+      ch = ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        if (isForThisPerson(payload.new)) handleNewNotification()
+      })
+      if (includesInventory) {
+        ch = ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inventory_notifications' }, () => {
+          handleNewNotification()
+        })
+      }
+      channel = ch.subscribe((status) => {
+        if (cancelled) return
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          clearTimeout(retryTimer)
+          retryTimer = setTimeout(() => {
+            if (channel) supabase.removeChannel(channel)
+            subscribe()
+          }, 5000)
+        }
+      })
+    }
+
+    function handleOnline() {
+      clearTimeout(retryTimer)
+      if (channel) supabase.removeChannel(channel)
+      subscribe()
+    }
+
+    subscribe()
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      cancelled = true
+      clearTimeout(retryTimer)
+      window.removeEventListener('online', handleOnline)
+      if (channel) supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, role, includesInventory])
+
+    async function openNotifications() {
     if (!userId || !role) return
+    // Opens immediately, showing whatever's already in `notifications`
+    // (kept reasonably fresh in the background already — see
+    // silentRefresh()/the realtime listener above) instead of waiting
+    // for a fresh network round-trip before the panel even appears at
+    // all. That wait was the actual cause of "click the bell -> nothing
+    // happens for a moment -> panel finally opens" — the panel opening
+    // was gated entirely behind the fetch completing. The fetch below
+    // still runs, silently updating the list in place once it resolves,
+    // so anything that changed since the last background refresh still
+    // shows up correctly — just without blocking the initial open on it.
+    setNotifOpen(true)
+    if (notifications.length === 0) setNotifLoading(true)
+    const seq = ++refreshSeqRef.current
     try {
-      setNotifications(await combinedList())
-      setNotifOpen(true)
+      const list = await combinedList()
+      if (seq === refreshSeqRef.current) {
+        setNotifications(list)
+      }
     } catch (err) {
       show(`Failed to load notifications: ${err.message}`, 'error')
+    } finally {
+      if (seq === refreshSeqRef.current) setNotifLoading(false)
     }
   }
 
   async function silentRefresh() {
     if (!userId || !role) return
+    const seq = ++refreshSeqRef.current
     try {
-      const [list] = await Promise.all([combinedList(), refreshUnreadCount()])
-      setNotifications(list)
+      const [list, n] = await Promise.all([combinedList(), combinedUnreadCount()])
+      if (seq === refreshSeqRef.current) {
+        setNotifications(list)
+        setUnread(n)
+      }
     } catch {
       // Non-critical.
     }
@@ -383,10 +529,11 @@ export default function Topbar({ title, subtitle, onToggleSidebar }) {
 
       <MyQrCodeModal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} profile={profile} />
 
-      <NotificationsModal
+            <NotificationsModal
         isOpen={notifOpen}
         onClose={() => setNotifOpen(false)}
         notifications={notifications}
+        loading={notifLoading}
         onMarkRead={handleMarkRead}
         onMarkAllRead={handleMarkAllRead}
         onDelete={handleDelete}

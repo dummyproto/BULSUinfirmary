@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail, checkEmailHasPin, resendConfirmationEmail } from '@services/usersService'
-import { setRememberMe as persistRememberMeChoice } from '@services/supabaseClient'
+import { setRememberMe as persistRememberMeChoice, getRememberMe } from '@services/supabaseClient'
 import { logAuthEvent } from '@services/auditLogsService'
 import PasswordInput from '@components/ui/PasswordInput'
 import PinInput from '@components/ui/PinInput'
@@ -11,6 +11,7 @@ import EmergencyConfirmModal from '@features/emergency-alerts/EmergencyConfirmMo
 import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccessOverlay'
 import logo from '@/assets/logo.png'
 import { MailIcon, CreditCardIcon, AlertTriangleIcon, CheckCircleIcon, ShieldIcon, UserIcon } from '@components/ui/icons'
+import { prefetchOnIdle } from '@routes/prefetchRoutes'
 
 // Mirrors the `roles` restrictions declared per-route in AppRoutes.jsx —
 // duplicated here (rather than imported) because AppRoutes.jsx isn't a
@@ -110,6 +111,10 @@ export default function LoginPage() {
   const { isAuthenticated, role, signIn, signInWithPin, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    prefetchOnIdle([() => import('./QrLoginScan'), () => import('./ForgotPasswordModal'), () => import('@features/emergency-alerts/EmergencyReportModal')])
+  }, [])
   const [mode, setMode] = useState('password') // 'password' | 'scan' | 'pin'
   // Seeded directly from router state (not via an Effect) when arriving
   // here right after a successful sign-up on the separate /register route
@@ -122,7 +127,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [pin, setPin] = useState('')
   const [pinSubmitting, setPinSubmitting] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+const [rememberMe, setRememberMe] = useState(getRememberMe)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(() => location.state?.registeredMessage || '')
   // Captured on the very first render, same lazy-initializer pattern as

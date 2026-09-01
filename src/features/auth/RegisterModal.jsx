@@ -8,6 +8,8 @@ import { notify } from '@services/notificationsService'
 import { supabase } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
 import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icons'
+import { capitalizeWords } from '@lib/format'
+import { prefetchOnIdle } from '@routes/prefetchRoutes'
 
 import { formatUserNumber } from '@lib/format'
 
@@ -94,6 +96,19 @@ function clearDraft() {
   }
 }
 
+// Exposed so AuthContext.jsx's signOut() can wipe any abandoned
+// registration draft on logout — otherwise this survives (by design,
+// for surviving an accidental refresh/close mid-registration) all the
+// way through an entirely unrelated login/logout cycle, resurfacing
+// stale half-filled data long after it should have been forgotten. Kept
+// as a thin re-export of the same private clearDraft() this file
+// already uses internally, so there's only one place that knows the
+// actual storage key.
+// eslint-disable-next-line react-refresh/only-export-components
+export function clearRegistrationDraft() {
+  clearDraft()
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', clearDraft)
 }
@@ -145,7 +160,11 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   // User Number, etc.) before the account actually gets created. Cancel
   // just flips it back off (nothing is discarded); Confirm calls the
   // actual submission.
-  const [reviewing, setReviewing] = useState(false)
+   const [reviewing, setReviewing] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) prefetchOnIdle([() => import('./RegisterQrScan')])
+  }, [isOpen])
   // Deliberately its own local state, NOT part of `form` — `form` gets
   // persisted to a localStorage draft on every change (see the effect
   // just below), and a PIN has no business sitting in plaintext in
@@ -583,7 +602,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                       placeholder="Firstname"
                       maxLength={20}
                       value={form.firstName}
-                      onChange={(e) => setField('firstName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20))}
+                      onChange={(e) => setField('firstName')(capitalizeWords(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '')).slice(0, 20))}
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
                       <span style={{ fontSize: 11, color: form.firstName.length >= 20 ? '#EF4444' : 'var(--text-3)' }}>{form.firstName.length}/20</span>
@@ -599,7 +618,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                       placeholder="Lastname"
                       maxLength={20}
                       value={form.lastName}
-                      onChange={(e) => setField('lastName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 20))}
+                      onChange={(e) => setField('lastName')(capitalizeWords(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '')).slice(0, 20))}
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
                       <span style={{ fontSize: 11, color: form.lastName.length >= 20 ? '#EF4444' : 'var(--text-3)' }}>{form.lastName.length}/20</span>

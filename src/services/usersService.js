@@ -444,20 +444,26 @@ function flattenUser(row) {
     // reads, so they reverted to blank on the very next load/refresh —
     // indistinguishable from "the edit didn't save" to anyone testing
     // it, even though the database had the right value the whole time.
-    middle_initial: patient_profiles?.middle_initial ?? null,
+        middle_initial: patient_profiles?.middle_initial ?? null,
     suffix: patient_profiles?.suffix ?? null,
-    date_of_birth: patient_profiles?.date_of_birth ?? null,
-    birth_place: patient_profiles?.birth_place ?? null,
-    gender: patient_profiles?.gender ?? null,
-    civil_status: patient_profiles?.civil_status ?? null,
-    religion: patient_profiles?.religion ?? null,
-    nationality: patient_profiles?.nationality ?? null,
-    blood_type: patient_profiles?.blood_type ?? null,
-    addr_region: patient_profiles?.addr_region ?? null,
-    addr_province: patient_profiles?.addr_province ?? null,
-    addr_city: patient_profiles?.addr_city ?? null,
-    addr_barangay: patient_profiles?.addr_barangay ?? null,
-    addr_zip: patient_profiles?.addr_zip ?? null,
+    // Falls back to staff_profiles for these 12 — added there in
+    // migration 051 so staff/admin accounts can carry the same kind of
+    // Personal Details / Address info a patient already can (see
+    // EditProfileModal.jsx's non-patient branch). A given row is either
+    // a patient (patient_profiles set) or staff/admin (staff_profiles
+    // set), never both, so this fallback chain is always unambiguous.
+    date_of_birth: patient_profiles?.date_of_birth ?? staff_profiles?.date_of_birth ?? null,
+    birth_place: patient_profiles?.birth_place ?? staff_profiles?.birth_place ?? null,
+    gender: patient_profiles?.gender ?? staff_profiles?.gender ?? null,
+    civil_status: patient_profiles?.civil_status ?? staff_profiles?.civil_status ?? null,
+    religion: patient_profiles?.religion ?? staff_profiles?.religion ?? null,
+    nationality: patient_profiles?.nationality ?? staff_profiles?.nationality ?? null,
+    blood_type: patient_profiles?.blood_type ?? staff_profiles?.blood_type ?? null,
+    addr_region: patient_profiles?.addr_region ?? staff_profiles?.addr_region ?? null,
+    addr_province: patient_profiles?.addr_province ?? staff_profiles?.addr_province ?? null,
+    addr_city: patient_profiles?.addr_city ?? staff_profiles?.addr_city ?? null,
+    addr_barangay: patient_profiles?.addr_barangay ?? staff_profiles?.addr_barangay ?? null,
+    addr_zip: patient_profiles?.addr_zip ?? staff_profiles?.addr_zip ?? null,
     // Phase Q: surfaced so ProfilePage can show the "finish your profile"
     // banner. `?? false` (not `?? null`) — the column is NOT NULL with a
     // default, so `false` is the only meaningful "no row / not set" value.

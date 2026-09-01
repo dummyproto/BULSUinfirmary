@@ -338,18 +338,19 @@
 [data-theme="dark"] .patient-item-name        { color: var(--text); }
 [data-theme="dark"] .patient-item-sub         { color: var(--text-3); }
 [data-theme="dark"] .patient-dropdown-item:hover { background: var(--primary-light); }
-/* The hover rule above lightens the row to a pale mint
-   (var(--primary-light)) — but .patient-item-name/-sub just above force
-   light text UNCONDITIONALLY (var(--text)/var(--text-3), both light
-   colors in dark mode), matching the item's normal dark-background
-   look. On hover, those combine into light text on a pale mint
-   background — nearly unreadable. This affects every SearchableSelect
-   dropdown app-wide in dark mode (patient pickers, diagnosis search,
-   etc.), not just one screen — needs its own dark-text override for
-   the hovered state specifically, since the background actually flips
-   light there. */
-[data-theme="dark"] .patient-dropdown-item:hover .patient-item-name { color: #1A1310; }
-[data-theme="dark"] .patient-dropdown-item:hover .patient-item-sub { color: #2E2420; }
+/* Was forcing near-black text (#1A1310/#2E2420) here, on the mistaken
+   assumption that --primary-light renders as a pale, light background
+   in dark mode the way it does in light mode (#E3F4EF there). In dark
+   mode it's actually defined as rgba(61,191,150,.14) — a subtle,
+   mostly-transparent tint over an already-dark row, not a light
+   background at all. Dark text on that combination was nearly
+   invisible. Simply removing that override (nothing replaces it) lets
+   hover fall back to the same light var(--text)/var(--text-3) colors
+   .patient-item-name/-sub already use normally in dark mode — still
+   correct and readable, since the background never actually became
+   light to begin with. This affected every SearchableSelect dropdown
+   app-wide in dark mode (patient pickers, diagnosis search, etc.), not
+   just one screen. */
 
 /* ── DARK MODE: SVG icons inside buttons/nav inherit light color ── */
 [data-theme="dark"] .icon-btn svg,
@@ -3670,16 +3671,21 @@ select.emg-input optgroup{background:#0F172A;color:#94A3B8;font-size:11px}
 .reg-dropdown-dark{background:rgba(22,18,14,.98)!important;border-color:var(--primary)!important;max-height:380px!important}
 .reg-dropdown-dark .patient-item-name{color:#F1F5F9!important}
 .reg-dropdown-dark .patient-item-sub{color:#A0988E!important}
-.reg-dropdown-dark .patient-dropdown-item:hover{background:var(--primary-light)!important}
-/* The hover rule above lightens the row's background to a pale mint
-   (var(--primary-light)) — but .patient-item-name/-sub just above force
-   near-white text UNCONDITIONALLY, matching the item's normal dark-
-   background look. On hover those two rules combine into white text on
-   a pale mint background — nearly invisible, exactly the bug reported.
-   Needs its own explicit dark-text override for the hovered state
-   specifically, since the background actually flips light there. */
-.reg-dropdown-dark .patient-dropdown-item:hover .patient-item-name{color:#1A1310!important}
-.reg-dropdown-dark .patient-dropdown-item:hover .patient-item-sub{color:#2E2420!important}
+/* Fixed (not var(--primary-light)) on purpose — .reg-dropdown-dark is a
+   permanently dark-styled box regardless of the app's own light/dark
+   theme setting, but --primary-light itself IS theme-dependent (a
+   genuinely pale mint in light theme, only a 14%-opacity tint over an
+   already-dark background in dark theme). Using it here meant this row
+   only actually turned light while the app happened to be in light
+   theme; in dark theme it stayed effectively dark, and the near-black
+   text below was unreadable against it — the same underlying bug as
+   the main SearchableSelect dropdown elsewhere in this file, not
+   actually fixed by the forced-dark-text override that was here
+   despite the comment claiming otherwise. A fixed, stronger tint here
+   always contrasts correctly with this dropdown's own fixed light text
+   colors above, in either app theme — so hover no longer needs (or
+   gets) an separate text-color override at all. */
+.reg-dropdown-dark .patient-dropdown-item:hover{background:rgba(61,191,150,.3)!important}
 .reg-box .search-input{background:rgba(255,255,255,.06)!important;color:#F1F5F9!important;border-color:rgba(255,255,255,.1)!important}
 
 /* Password wrap */

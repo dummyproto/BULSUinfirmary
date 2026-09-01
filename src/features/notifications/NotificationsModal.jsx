@@ -7,7 +7,7 @@ import { InfoIcon, AlertTriangleIcon, AlertOctagonIcon, CheckCircleIcon, BellIco
 
 const ICONS = { info: InfoIcon, warning: AlertTriangleIcon, danger: AlertOctagonIcon, success: CheckCircleIcon }
 
-export default function NotificationsModal({ isOpen, onClose, notifications, onMarkRead, onMarkAllRead, onDelete, onRefresh, onError }) {
+export default function NotificationsModal({ isOpen, onClose, notifications, loading, onMarkRead, onMarkAllRead, onDelete, onRefresh, onError }) {
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [selected, setSelected] = useState([])
@@ -95,8 +95,17 @@ export default function NotificationsModal({ isOpen, onClose, notifications, onM
       }
     >
       <div style={{ maxHeight: 420, overflowY: 'auto', margin: '-4px -4px -16px' }}>
-        {notifications.length === 0 ? (
-          <div className="empty-state">No notifications</div>
+                {notifications.length === 0 ? (
+          // `loading` distinguishes "genuinely no notifications" from
+          // "the panel just opened and the very first fetch hasn't
+          // resolved yet" (Topbar.jsx's openNotifications() now opens
+          // the panel immediately rather than waiting on that fetch, to
+          // fix a separate "click the bell -> pause -> panel opens"
+          // delay) — without this, that brief in-between moment would
+          // otherwise flash a false "No notifications" that then
+          // immediately gets replaced once the real list arrives, which
+          // reads as a bug/flicker rather than normal loading.
+          <div className="empty-state">{loading ? 'Loading notifications…' : 'No notifications'}</div>
         ) : (
           <>
             {selectionMode && (

@@ -256,7 +256,22 @@ export default function ProfilePage() {
           profile_incomplete: profileIncomplete,
         })
       } else {
-        await updateStaffProfile(authProfile.user_id, { department: updates.department || null, position: updates.position || null })
+        await updateStaffProfile(authProfile.user_id, {
+          department: updates.department || null,
+          position: updates.position || null,
+          date_of_birth: updates.dateOfBirth || null,
+          birth_place: updates.birthPlace || null,
+          gender: updates.gender || null,
+          civil_status: updates.civilStatus || null,
+          religion: updates.religion || null,
+          nationality: updates.nationality || null,
+          blood_type: updates.bloodType || null,
+          addr_region: updates.addrRegion || null,
+          addr_province: updates.addrProvince || null,
+          addr_city: updates.addrCity || null,
+          addr_barangay: updates.addrBarangay || null,
+          addr_zip: updates.addrZip || null,
+        })
       }
       setUser((u) => ({ ...u, ...updates, profileIncomplete }))
       setEditOpen(false)
@@ -483,43 +498,71 @@ export default function ProfilePage() {
                   </div>
                 </>
               ) : (
-                <div className="card">
-                  <div className="card-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <UserIcon width={15} height={15} />
-                      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Account Information</h3>
-                    </div>
-                    {/* Staff accounts are provisioned and maintained by an
-                        admin (Maintenance -> User Management) — a staff
-                        member editing their own name/email/department/
-                        position here would bypass that oversight. Admins
-                        viewing their OWN profile still get full self-edit,
-                        same as before; this only removes the button for
-                        role === 'staff'. */}
-                    {role === 'admin' && (
-                      <button type="button" className="btn btn-sm btn-blue" onClick={() => setEditOpen(true)}>
-                        <EditIcon width={13} height={13} /> Edit
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ padding: '14px 18px' }}>
-                    <DetailRow label="User ID" value={authProfile?.user_id ? `STAFF-${String(authProfile.user_id).padStart(4, '0')}` : '—'} />
-                    <DetailRow label="Full Name" value={user.name} />
-                    <DetailRow label="Email" value={user.email} />
-                    <DetailRow label="Phone" value={user.phone} />
-                    <DetailRow label="Department" value={user.department} />
-                    <DetailRow label="Position" value={user.position} />
-                    {role === 'staff' && (
-                      <div
-                        className="alert"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11.5, marginTop: 12, padding: '8px 12px', borderRadius: 6 }}
-                      >
-                        <LockIcon width={12} height={12} style={{ flexShrink: 0 }} />
-                        This information is managed by an administrator. Contact an admin to request changes.
+                <>
+                  <div className="profile-info-row-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                    <div className="card">
+                      <div className="card-header" style={{ justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <UserIcon width={15} height={15} />
+                          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Account Information</h3>
+                        </div>
+                        {/* Previously admin-only — staff accounts used to be
+                            entirely managed by an admin (Maintenance -> User
+                            Management), with no self-edit at all. Staff can
+                            now edit their own info here too, the same as
+                            admin already could, so the personal-info fields
+                            below aren't stuck admin-only-editable while
+                            being staff-visible-only. An admin can still
+                            separately edit any staff member's info via
+                            Maintenance regardless. */}
+                        <button type="button" className="btn btn-sm btn-blue" onClick={() => setEditOpen(true)}>
+                          <EditIcon width={13} height={13} /> Edit
+                        </button>
                       </div>
-                    )}
+                      <div style={{ padding: '14px 18px' }}>
+                        <DetailRow label="User ID" value={authProfile?.user_id ? `STAFF-${String(authProfile.user_id).padStart(4, '0')}` : '—'} />
+                        <DetailRow label="Full Name" value={user.name} />
+                        <DetailRow label="Email" value={user.email} />
+                        <DetailRow label="Phone" value={user.phone} />
+                        <DetailRow label="Department" value={user.department} />
+                        <DetailRow label="Position" value={user.position} />
+                      </div>
+                    </div>
+                    <div className="card">
+                      <div className="card-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <CreditCardIcon width={15} height={15} />
+                          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Personal Details</h3>
+                        </div>
+                      </div>
+                      <div style={{ padding: '14px 18px' }}>
+                        <DetailRow label="Date of Birth" value={user.dateOfBirth} />
+                        <DetailRow label="Age" value={calcAge(user.dateOfBirth)} />
+                        <DetailRow label="Place of Birth" value={user.birthPlace} />
+                        <DetailRow label="Gender" value={user.gender} />
+                        <DetailRow label="Civil Status" value={user.civilStatus} />
+                        <DetailRow label="Religion" value={user.religion} />
+                        <DetailRow label="Nationality" value={user.nationality} />
+                        <DetailRow label="Blood Type" value={user.bloodType} />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                  <div className="card">
+                    <div className="card-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <MapPinIcon width={15} height={15} />
+                        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Address</h3>
+                      </div>
+                    </div>
+                    <div style={{ padding: '14px 18px' }}>
+                      <DetailRow label="Region" value={user.addrRegion} />
+                      <DetailRow label="Province" value={user.addrProvince} />
+                      <DetailRow label="City / Municipality" value={user.addrCity} />
+                      <DetailRow label="Barangay" value={user.addrBarangay} />
+                      <DetailRow label="ZIP Code" value={user.addrZip} />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>

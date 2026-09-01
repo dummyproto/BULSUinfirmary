@@ -1,3 +1,15 @@
+// Auto-capitalizes name-like fields as the person types — Surname, First
+// Name, and Place of Birth across RegisterModal, EditProfileModal, and
+// Maintenance's Add/Edit User forms. Capitalizes the letter right after
+// the start of the string, a space, or a hyphen (so "dela cruz" ->
+// "Dela Cruz" and "mary-jane" -> "Mary-Jane") and otherwise leaves every
+// other character exactly as typed — deliberately does NOT lowercase the
+// rest of each word, since doing that would fight a legitimately
+// mixed-case name like "McDonald" every time a letter is typed.
+export function capitalizeWords(str) {
+  return String(str || '').replace(/(^|[\s-])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase())
+}
+
 // Display-only formatting for a User Number field — the underlying stored
 // value stays plain alphanumeric characters (no dashes); this only formats
 // what's rendered in an input or read-only display. Two shapes supported:

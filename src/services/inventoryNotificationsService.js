@@ -226,13 +226,29 @@ export async function createInventoryNotification({ notificationType, medicineId
   // separate alerts, not one that silently "already exists"), otherwise
   // medicine-level (stock alerts, which are a per-medicine aggregate
   // concept with no single batch to key off).
+  //
+  // Deliberately checks for ANY existing row of this type — read or
+  // unread — not just unread ones. This used to filter to is_read=false
+  // only, which meant: mark a "Low Stock: X" alert read, then have ANY
+  // OTHER unrelated inventory action fire (checkStockLevelAlert runs on
+  // every quantity-changing action, for whichever item was touched) —
+  // if X was still sitting at the exact same stock tier (a very common,
+  // completely unremarkable state — nothing about X actually changed),
+  // the dedup check found no UNREAD row and created a brand-new
+  // duplicate for the same still-unresolved condition. From the user's
+  // side that's indistinguishable from "the notification I already read
+  // came back as unread" — a fresh row with the identical title/message
+  // reappearing in the unread list right after marking everything read.
+  // The underlying condition hasn't changed, so nothing new should be
+  // created at all; checking read state was never actually relevant to
+  // "does this alert already exist," only to "has someone seen it,"
+  // which isn't what this check is for.
   if (batchId) {
     const { data: existing, error: findError } = await supabase
       .from('inventory_notifications')
       .select('id')
       .eq('batch_id', batchId)
       .eq('notification_type', notificationType)
-      .eq('is_read', false)
       .limit(1)
     if (findError) throw findError
     if (existing && existing.length > 0) return null
@@ -242,7 +258,6 @@ export async function createInventoryNotification({ notificationType, medicineId
       .select('id')
       .eq('medicine_id', medicineId)
       .eq('notification_type', notificationType)
-      .eq('is_read', false)
       .limit(1)
     if (findError) throw findError
     if (existing && existing.length > 0) return null
@@ -276,13 +291,16 @@ export async function createInventoryNotification({ notificationType, medicineId
 }
 
 /**
- * Auto-clear (Phase 3/4 requirement) — deletes any unread alert(s) of the
+ * Auto-clear (Phase 3/4 requirement) — deletes any alert(s) of the
  * given type(s) for a medicine once the condition that triggered them no
- * longer applies (e.g. stock replenished past the reorder point). These
- * are transient operational alerts, not the permanent audit trail
- * (inventory_logs already is that) — clearing a resolved alert by
- * removing the row is the correct behavior here, not something that
- * needs its own "resolved" column.
+ * longer applies (e.g. stock replenished past the reorder point).
+ * Deletes regardless of read state (not just unread ones) — a stale
+ * READ row left behind here would otherwise block createInventoryNotification's
+ * dedup check from ever creating a fresh alert if the exact same
+ * condition genuinely recurs later. These are transient operational alerts,
+ * not the permanent audit trail (inventory_logs already is that) — clearing
+ * a resolved alert by removing the row is the correct behavior here, not
+ * something that needs its own "resolved" column.
  */
 /**
  * Auto-clear (Phase 3/4 requirement). Pass batchId for batch-specific
@@ -290,7 +308,7 @@ export async function createInventoryNotification({ notificationType, medicineId
  * keying distinction as createInventoryNotification's dedup check above.
  */
 export async function clearInventoryNotifications(medicineId, notificationTypes, batchId = null) {
-  let query = supabase.from('inventory_notifications').delete().in('notification_type', notificationTypes).eq('is_read', false)
+  let query = supabase.from('inventory_notifications').delete().in('notification_type', notificationTypes)
   query = batchId ? query.eq('batch_id', batchId) : query.eq('medicine_id', medicineId)
   const { error } = await query
   if (error) throw error

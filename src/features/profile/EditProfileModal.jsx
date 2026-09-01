@@ -5,6 +5,7 @@ import { normalizeSchoolIdCode } from '@lib/schoolId'
 import { getRegions, getProvinces, getCities, getBarangays } from '@lib/phAddress'
 import SchoolIdScanModal from './SchoolIdScanModal'
 import { EditIcon, SaveIcon, UserIcon, CreditCardIcon, PhoneIcon, MapPinIcon, GraduationCapIcon, BriefcaseIcon, QrCodeIcon } from '@components/ui/icons'
+import { capitalizeWords } from '@lib/format'
 
 // Youngest a patient can be. Enforced two ways below: the DATE OF BIRTH
 // input's `max` attribute stops the picker from even offering a too-recent
@@ -66,22 +67,19 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
   // address (e.g. addrRegion: "CALABARZON" from before this was a
   // dropdown) correctly populates Province/City/Barangay with the
   // right options instead of starting empty.
-  useEffect(() => {
+   useEffect(() => {
     if (!isOpen) return
     getProvinces(form.addrRegion).then(setProvinceOptions)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, form.addrRegion])
 
-  useEffect(() => {
+    useEffect(() => {
     if (!isOpen) return
     getCities(form.addrProvince, form.addrRegion).then(setCityOptions)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, form.addrProvince, form.addrRegion])
 
-  useEffect(() => {
+    useEffect(() => {
     if (!isOpen) return
     getBarangays(form.addrCity, form.addrProvince).then(setBarangayOptions)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, form.addrCity, form.addrProvince])
 
   if (!isOpen) return null
@@ -126,7 +124,13 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
       onSave({ ...rest, email, username, name, schoolIdBarcode, religion })
     } else {
       const name = (form.name || '').trim() || profile.name
-      onSave({ ...form, email, name })
+      // Same "Other" swap the patient branch above does — see its own
+      // comment. Staff/admin now have the same RELIGION dropdown
+      // (migration 051 + this file's non-patient branch below), so the
+      // same handling applies here too.
+      const { religionOther, ...rest } = form
+      const religion = form.religion === 'Other' ? (religionOther || '').trim() : form.religion
+      onSave({ ...rest, email, name, religion })
     }
   }
 
@@ -158,7 +162,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
                   placeholder="Last name"
                   maxLength={50}
                   value={form.surname || ''}
-                  onChange={(e) => setField('surname')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                  onChange={(e) => setField('surname')(capitalizeWords(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '')).slice(0, 50))}
                 />
               </div>
               <div className="form-group">
@@ -168,7 +172,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
                   placeholder="First name"
                   maxLength={50}
                   value={form.givenName || ''}
-                  onChange={(e) => setField('givenName')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                  onChange={(e) => setField('givenName')(capitalizeWords(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '')).slice(0, 50))}
                 />
               </div>
               <div className="form-group">
@@ -178,7 +182,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
                   placeholder="e.g. BC"
                   maxLength={2}
                   value={form.mi || ''}
-                  onChange={(e) => setField('mi')(e.target.value.replace(/[^a-zA-Z]/g, '').slice(0, 2))}
+                  onChange={(e) => setField('mi')(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2))}
                 />
               </div>
               <SelectField label="EXT. (Jr. / Sr.)" value={form.ext} options={EXTENSIONS} onChange={setField('ext')} />
@@ -210,7 +214,7 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               </div>
               <div className="form-group">
                 <label>PLACE OF BIRTH</label>
-                <input className="form-input" placeholder="City/Municipality" value={form.birthPlace || ''} onChange={(e) => setField('birthPlace')(e.target.value)} />
+                <input className="form-input" placeholder="City/Municipality" value={form.birthPlace || ''} onChange={(e) => setField('birthPlace')(capitalizeWords(e.target.value))} />
               </div>
               <SelectField label="GENDER" value={form.gender} options={GENDERS} onChange={setField('gender')} />
               <SelectField label="CIVIL STATUS" value={form.civilStatus} options={CIVIL_STATUSES} onChange={setField('civilStatus')} />
@@ -353,6 +357,71 @@ export default function EditProfileModal({ isOpen, role, profile, onClose, onSav
               <div className="form-group">
                 <label>POSITION</label>
                 <input className="form-input" value={form.position || ''} onChange={(e) => setField('position')(e.target.value)} />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection Icon={CreditCardIcon} title="Personal Details">
+            <div className="form-grid" style={{ gap: 10 }}>
+              <div className="form-group">
+                <label>DATE OF BIRTH</label>
+                <input
+                  className="form-input"
+                  type="date"
+                  max={maxDobForMinAge(MIN_AGE)}
+                  value={form.dateOfBirth || ''}
+                  onChange={(e) => setField('dateOfBirth')(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>PLACE OF BIRTH</label>
+                <input className="form-input" placeholder="City/Municipality" value={form.birthPlace || ''} onChange={(e) => setField('birthPlace')(e.target.value)} />
+              </div>
+              <SelectField label="GENDER" value={form.gender} options={GENDERS} onChange={setField('gender')} />
+              <SelectField label="CIVIL STATUS" value={form.civilStatus} options={CIVIL_STATUSES} onChange={setField('civilStatus')} />
+              <SelectField label="RELIGION" value={form.religion} options={RELIGIONS} onChange={setField('religion')} />
+              {form.religion === 'Other' && (
+                <div className="form-group">
+                  <label>SPECIFY RELIGION</label>
+                  <input
+                    className="form-input"
+                    placeholder="Enter your religion"
+                    maxLength={50}
+                    value={form.religionOther || ''}
+                    onChange={(e) => setField('religionOther')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                  />
+                </div>
+              )}
+              <div className="form-group">
+                <label>NATIONALITY</label>
+                <input
+                  className="form-input"
+                  placeholder="e.g. Filipino"
+                  maxLength={50}
+                  value={form.nationality || 'Filipino'}
+                  onChange={(e) => setField('nationality')(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '').slice(0, 50))}
+                />
+              </div>
+              <SelectField label="BLOOD TYPE" value={form.bloodType} options={BLOOD_TYPES} onChange={setField('bloodType')} />
+            </div>
+          </FormSection>
+
+          <FormSection Icon={MapPinIcon} title="Address">
+            <div className="form-grid" style={{ gap: 10 }}>
+              <SelectField label="REGION" value={form.addrRegion} options={regionOptions} onChange={setRegion} />
+              <SelectField label="PROVINCE" value={form.addrProvince} options={provinceOptions} onChange={setProvince} />
+              <SelectField label="CITY / MUNICIPALITY" value={form.addrCity} options={cityOptions} onChange={setCity} />
+              <SelectField label="BARANGAY" value={form.addrBarangay} options={barangayOptions} onChange={setField('addrBarangay')} />
+              <div className="form-group">
+                <label>ZIP CODE</label>
+                <input
+                  className="form-input"
+                  placeholder="e.g. 1101"
+                  maxLength={4}
+                  inputMode="numeric"
+                  value={form.addrZip || ''}
+                  onChange={(e) => setField('addrZip')(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                />
               </div>
             </div>
           </FormSection>

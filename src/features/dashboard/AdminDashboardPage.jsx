@@ -162,7 +162,7 @@ export default function AdminDashboardPage() {
       )}
 
       <div className="stats-row cols-4" style={{ marginTop: 14 }}>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/maintenance')}>
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/user-presence')}>
           <div className="stat-icon blue">
             <PeopleIcon width={18} height={18} />
           </div>

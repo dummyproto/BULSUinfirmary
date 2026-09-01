@@ -81,17 +81,17 @@ export default function UserPresenceMonitoringPage() {
         (p.role === 'patient' && isPersonnelNumber(p.student_number) ? 'personnel' : '').includes(q) ||
         (p.role === 'patient' ? 'student' : p.role === 'admin' ? 'administrator admin' : 'staff').includes(q)
     )
-    // Grouped by role first — administrators, then staff, then patients
-    // — with online people surfacing to the top WITHIN each group as a
-    // secondary tiebreaker (still the most useful ordering for spotting
-    // who's active right now, just now scoped inside each role's own
-    // block instead of mixing everyone together), and name as the final
-    // tiebreaker.
+    // Online people float to the top of the WHOLE list first — that's
+    // the actual point of a presence monitor, seeing who's active right
+    // now at a glance, rather than having to scan through every role
+    // group separately to find them. Role (admin, then staff, then
+    // patient) and name are just tiebreakers within each online/offline
+    // half.
     .sort((a, b) => {
-      const roleDelta = ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role]
-      if (roleDelta !== 0) return roleDelta
       const onlineDelta = Number(isUserOnline(b.user_id)) - Number(isUserOnline(a.user_id))
-      return onlineDelta !== 0 ? onlineDelta : a.name.localeCompare(b.name)
+      if (onlineDelta !== 0) return onlineDelta
+      const roleDelta = ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role]
+      return roleDelta !== 0 ? roleDelta : a.name.localeCompare(b.name)
     })
 
   const onlineCount = people.filter((p) => isUserOnline(p.user_id)).length

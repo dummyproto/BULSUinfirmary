@@ -39,6 +39,22 @@ function getActiveStorage() {
   return localStorage.getItem(REMEMBER_ME_KEY) === '0' ? sessionStorage : localStorage
 }
 
+// Read-side counterpart to setRememberMe() above, for LoginPage's
+// checkbox to initialize itself FROM on mount — the same '0' check
+// getActiveStorage() itself uses, so the checkbox's default state and
+// which storage a login actually lands in never disagree. Without this,
+// the checkbox always started unchecked regardless of what was
+// previously saved, so a session that WAS remembered (flag='1' in
+// localStorage) still showed an unchecked box on the next visit to this
+// page — and logging in again from there silently wrote the flag back
+// to '0', downgrading a working "remembered" account back to
+// session-only without the person ever having unchecked anything
+// themselves. That's what made Remember Me look like it "forgot" the
+// account over repeated visits.
+export function getRememberMe() {
+  return localStorage.getItem(REMEMBER_ME_KEY) !== '0'
+}
+
 // Read/write always re-check the flag rather than capturing it once, so
 // a value written under one choice stays reachable under that same
 // choice on every later read too (the flag itself always lives in

@@ -4,6 +4,7 @@ import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegi
 import { logAuthEvent } from '@services/auditLogsService'
 import { useToast } from '@context/ToastContext'
 import { getAppUrl } from '@lib/appUrl'
+import { clearRegistrationDraft } from '@features/auth/RegisterModal'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext(undefined)
@@ -180,6 +181,11 @@ export function AuthProvider({ children }) {
   const signOut = useCallback(async () => {
     await logAuthEvent({ userId: profile?.user_id, action: 'LOGOUT', details: profile?.email ? `${profile.email} signed out` : 'User signed out' })
     await supabase.auth.signOut()
+    // Wipes any abandoned registration draft (RegisterModal.jsx) so it
+    // can never resurface for whoever uses this browser next — that
+    // draft is meant to survive an accidental refresh mid-registration,
+    // not an entire login/logout cycle.
+    clearRegistrationDraft()
   }, [profile])
 
   const verifyCurrentPassword = useCallback(

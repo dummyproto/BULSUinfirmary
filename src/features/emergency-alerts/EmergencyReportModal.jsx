@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import Modal from '@components/ui/Modal'
 import EmergencyPatientPicker from './EmergencyPatientPicker'
 import { createEmergencyAlert, hasActiveEmergencyAlert } from '@services/emergencyAlertsService'
-import { searchPatientsPublic } from '@services/usersService'
-import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
 import { notify } from '@services/notificationsService'
 import { addAuditLog } from '@services/auditLogsService'
 import { playEmergencySiren } from '@lib/emergencySound'
@@ -51,27 +49,8 @@ function markSubmitted(reporterId) {
  * conversation. The person can still edit/clear it before submitting;
  * this never auto-submits anything.
  */
-// A User Number is only ever "complete" in one of these two shapes — the
-// same rule RegisterModal's Step 1 User Number field validates against.
-// Verification is deliberately gated on this: an incomplete/partial number
-// must never be sent to search_patients_public at all, since that RPC's
-// own ILIKE '%query%' matching would otherwise return (and let someone
-// browse) OTHER registered patients' names/numbers off a partial digit
-// sequence — exactly the "no dropdown of other people" requirement below.
-function isCompleteUserNumber(raw) {
-  return /^\d{10}$/.test(raw) || isPersonnelNumber(raw)
-}
-
 export default function EmergencyReportModal({ isOpen, onClose, profile, onError, onSuccess, initialDescription = '' }) {
   const [reporter, setReporter] = useState(null) // { user_id, name, student_number } — only used pre-login
-  // Digits only now (see the input's onChange below) — this field is
-  // scoped to a patient's 10-digit student number. A personnel ID like
-  // "PID-0468" can no longer be typed here at all, since its letters get
-  // stripped before they ever reach state; isCompleteUserNumber()'s
-  // isPersonnelNumber() branch is left in place (still used/correct
-  // elsewhere) but is effectively unreachable from this particular input.
-  const [reporterNumber, setReporterNumber] = useState('') // raw digits — pre-login self-identify input
-  const [reporterLookup, setReporterLookup] = useState('idle') // idle | checking | notfound
   const [emgType, setEmgType] = useState('myself')
   const [affected, setAffected] = useState(null)
   const [location, setLocation] = useState('')
@@ -132,61 +111,12 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, reporterUser?.user_id])
 
-  // Pre-login self-identify: waits for a COMPLETE User Number (see
-  // isCompleteUserNumber above) before calling search_patients_public at
-  // all — never fires on a partial/in-progress number. Once complete, the
-  // result is filtered down to an EXACT (case-insensitive) match against
-  // what was actually typed, ignoring anything the RPC's own partial ILIKE
-  // matching might otherwise have surfaced. This means the only two
-  // outcomes are "recognized as exactly this one registered patient" or
-  // "not found" — there's never a list of other people's names/numbers to
-  // browse, and a partial number can never resolve to (or expose) someone
-  // else's record.
-  //
-  // All setReporterLookup() calls below happen inside the setTimeout
-  // callback (an async boundary), never synchronously in the effect body
-  // itself — required by react-hooks/set-state-in-effect. Whether the
-  // "Verifying…"/"not found" messages are actually shown is instead
-  // derived at render time from isCompleteUserNumber(reporterNumber), so
-  // backspacing out of a complete number instantly clears a stale
-  // "not found" message with no extra state/effect needed for that.
-  useEffect(() => {
-    if (profile) return undefined // logged-in case never uses this field
-    const raw = reporterNumber.trim().toUpperCase()
-    if (!isCompleteUserNumber(raw)) return undefined
-    let cancelled = false
-    const timer = setTimeout(async () => {
-      setReporterLookup('checking')
-      try {
-        const results = await searchPatientsPublic(raw)
-        if (cancelled) return
-        const exact = results.find((p) => String(p.student_number || '').trim().toUpperCase() === raw)
-        if (exact) {
-          setReporter({ user_id: exact.user_id, name: exact.name, student_number: exact.student_number })
-          setReporterLookup('idle')
-        } else {
-          setReporterLookup('notfound')
-        }
-      } catch {
-        if (!cancelled) setReporterLookup('notfound')
-      }
-    }, 350)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [reporterNumber, profile])
-
   function changeReporter() {
     setReporter(null)
-    setReporterNumber('')
-    setReporterLookup('idle')
   }
 
   function reset() {
     setReporter(null)
-    setReporterNumber('')
-    setReporterLookup('idle')
     setHasActiveAlert(false)
     setCheckingActiveAlert(false)
     setEmgType('myself')
@@ -347,29 +277,17 @@ export default function EmergencyReportModal({ isOpen, onClose, profile, onError
               </button>
             </div>
           ) : (
-            <div>
-              <input
-                type="text"
-                className="emg-input"
-                placeholder="Enter your 10-digit Student Number…"
-                autoComplete="off"
-                inputMode="numeric"
-                maxLength={10}
-                value={formatUserNumber(reporterNumber)}
-                onChange={(e) => setReporterNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              />
-              <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
-                Your 10-digit student number (e.g. 2023-400-000). The full number must be entered before you&apos;re recognized.
-              </span>
-              {isCompleteUserNumber(reporterNumber.trim().toUpperCase()) && reporterLookup === 'checking' && (
-                <span style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>Verifying…</span>
-              )}
-              {isCompleteUserNumber(reporterNumber.trim().toUpperCase()) && reporterLookup === 'notfound' && (
-                <span style={{ fontSize: 11, color: '#EF4444', marginTop: 4, display: 'block' }}>
-                  No registered patient matches that User Number. Please check and try again.
-                </span>
-              )}
-            </div>
+            // Same picker "For Another Person" below already uses — search
+            // by name or student number, whichever you remember. Used to
+            // require typing your exact 10-digit number with no name
+            // search at all, but "For Another Person" already lets anyone
+            // here (logged in or not) browse/search every registered
+            // patient by name, so restricting only the "myself" case to
+            // number-only wasn't protecting anything that flow doesn't
+            // already expose — it was just a worse experience for
+            // yourself specifically, in the one moment (an emergency)
+            // where that matters most.
+            <EmergencyPatientPicker selected={reporter} onSelect={setReporter} onClear={changeReporter} placeholder="Search by name or patient number…" />
           )}
         </div>
       )}
