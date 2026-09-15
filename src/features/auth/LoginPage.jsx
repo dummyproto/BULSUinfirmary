@@ -12,6 +12,7 @@ import EmergencySuccessOverlay from '@features/emergency-alerts/EmergencySuccess
 import logo from '@/assets/logo.png'
 import { MailIcon, CreditCardIcon, AlertTriangleIcon, CheckCircleIcon, ShieldIcon, UserIcon } from '@components/ui/icons'
 import { prefetchOnIdle } from '@routes/prefetchRoutes'
+import { useOnlineStatus } from '@hooks/useOnlineStatus'
 
 // Mirrors the `roles` restrictions declared per-route in AppRoutes.jsx —
 // duplicated here (rather than imported) because AppRoutes.jsx isn't a
@@ -108,7 +109,8 @@ const ForgotPasswordModal = lazy(() => import('./ForgotPasswordModal'))
 const EmergencyReportModal = lazy(() => import('@features/emergency-alerts/EmergencyReportModal'))
 
 export default function LoginPage() {
-  const { isAuthenticated, role, signIn, signInWithPin, signOut } = useAuth()
+    const { isAuthenticated, role, signIn, signInWithPin, signOut } = useAuth()
+  const isOnline = useOnlineStatus()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -287,28 +289,41 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     }
   }
 
-  async function handlePinSubmit(e) {
+    async function handlePinSubmit(e) {
     e.preventDefault()
     setError('')
     if (!/^[0-9]{4}$/.test(pin)) {
       setError('Enter your 4-digit PIN.')
       return
     }
+    if (!isOnline) {
+      setError('No internet connection. Please try again later.')
+      return
+    }
     setPinSubmitting(true)
     try {
       await signInWithPin(email, pin)
     } catch (err) {
-      setError(err.message || 'Incorrect PIN.')
-      setPin('')
+      if (err instanceof TypeError && /fetch/i.test(err.message || '')) {
+        setError('No internet connection. Please try again later.')
+      } else {
+        setError(err.message || 'Incorrect PIN.')
+        setPin('')
+      }
     } finally {
       setPinSubmitting(false)
     }
   }
 
-  const handleSubmit = async (e) => {
+    const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setUnconfirmedEmail('')
+
+    if (!isOnline) {
+      setError('No internet connection. Please try again later.')
+      return
+    }
 
     // Checked first, before anything else. An already-disabled account
     // must show this same message every time, no matter what password
@@ -355,8 +370,10 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
       await signIn(normalizedEmail, password)
       clearAttempts(email)
       setLockUntil(0)
-    } catch (err) {
-      if (err.message === 'ACCOUNT_DISABLED') {
+       } catch (err) {
+      if (err instanceof TypeError && /fetch/i.test(err.message || '')) {
+        setError('No internet connection. Please try again later.')
+      } else if (err.message === 'ACCOUNT_DISABLED') {
         clearAttempts(email)
         setLockUntil(0)
         setError('Invalid email or password. Your account is disabled — contact admin.')

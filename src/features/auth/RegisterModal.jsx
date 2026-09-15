@@ -768,12 +768,12 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   <input
                     type="text"
                     className="reg-input"
-                    placeholder="Choose a username"
+                    placeholder="Enter your username"
                     maxLength={50}
                     value={form.username}
                     onChange={(e) => setField('username')(e.target.value.replace(/[\s'"`]/g, '').slice(0, 50))}
                   />
-                  <span className="reg-hint-text">Letters, numbers, and special characters allowed (no spaces). This is what you'll sign in with, along with your password.</span>
+                  <span className="reg-hint-text">Letters, numbers, and special characters allowed (no spaces).</span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
