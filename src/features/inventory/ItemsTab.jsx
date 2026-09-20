@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
-import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil } from './lib/inventoryHelpers'
+import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil, MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
 import { BatchesBody } from './BatchesTab'
 import { InventoryIcon, FolderIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
@@ -93,7 +93,7 @@ export default function ItemsTab({
   onReportDamaged,
   onViewQR,
 }) {
-  const { search, category, status } = filters
+  const { search, category, status, medCategory } = filters
   const set = (patch) => onFiltersChange({ ...filters, ...patch })
 
   // Separate "View More" state from the Items sub-view's — the two
@@ -146,6 +146,7 @@ export default function ItemsTab({
   let filtered = inventory
   if (category !== 'All') filtered = filtered.filter((i) => i.category === category)
   if (status !== 'All') filtered = filtered.filter((i) => getInventoryStatus(i) === status)
+  if (medCategory && medCategory !== 'All') filtered = filtered.filter((i) => i.medicine_category === medCategory)
   if (search) {
     const q = search.toLowerCase()
     filtered = filtered.filter(
@@ -153,7 +154,8 @@ export default function ItemsTab({
         i.name.toLowerCase().includes(q) ||
         (i.batch_no || '').toLowerCase().includes(q) ||
         (i.supplier || '').toLowerCase().includes(q) ||
-        (i.category || '').toLowerCase().includes(q)
+        (i.category || '').toLowerCase().includes(q) ||
+        (i.medicine_category || '').toLowerCase().includes(q)
     )
   }
 
@@ -173,9 +175,9 @@ export default function ItemsTab({
   // "Showing X of Y" summary below — a filtered-down empty result looks
   // identical to a genuinely empty inventory otherwise, which is
   // confusing when it's really just an overly-narrow filter combination.
-  const filtersActive = category !== 'All' || status !== 'All' || !!search
+  const filtersActive = category !== 'All' || status !== 'All' || (medCategory && medCategory !== 'All') || !!search
   function clearFilters() {
-    onFiltersChange({ search: '', category: 'All', status: 'All' })
+    onFiltersChange({ search: '', category: 'All', status: 'All', medCategory: 'All' })
   }
 
   return (
@@ -204,6 +206,17 @@ export default function ItemsTab({
             ))}
           </select>
         </div>
+        {category === 'Medicine' && (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <label htmlFor="items-filter-medcategory" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Medicine Type</label>
+            <select id="items-filter-medcategory" name="medCategory" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={medCategory || 'All'} onChange={(e) => set({ medCategory: e.target.value })}>
+              <option>All</option>
+              {MEDICINE_CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <label htmlFor="items-filter-status" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Status</label>
           <select id="items-filter-status" name="status" className="form-select" style={{ fontSize: 12, padding: '5px 8px' }} value={status} onChange={(e) => set({ status: e.target.value })}>
@@ -418,6 +431,7 @@ function ItemListCard({ item: i, showMore, onEdit, onRelease, onRemove, onRestor
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontWeight: 700, fontSize: 16 }}>{i.name}</span>
             {i.is_fifo && i.category === 'Medicine' && <span className="fifo-tag">FIFO</span>}
+            {i.category === 'Medicine' && i.medicine_category && <span className="med-category-tag">{i.medicine_category}</span>}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-3)', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 5 }}>
             {i.batch_no && (
@@ -658,6 +672,7 @@ function ItemCard({ item: i, onEdit, onRelease, onRemove, onRestore, onReplenish
           </span>
         )}
         {i.is_fifo && i.category === 'Medicine' && <span className="fifo-tag">FIFO</span>}
+        {i.category === 'Medicine' && i.medicine_category && <span className="med-category-tag">{i.medicine_category}</span>}
       </div>
 
       <div className="inv-item-card-stock">

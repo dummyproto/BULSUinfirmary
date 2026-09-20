@@ -4,6 +4,7 @@ import { COURSES, YEAR_LEVELS } from '@features/maintenance/data/formOptions'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
 import { registerPatient, checkStudentNumberRegistered } from '@services/usersService'
+import { invokeEdgeFunction } from '@services/edgeFunctions'
 import { notify } from '@services/notificationsService'
 import { supabase } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
@@ -49,10 +50,17 @@ const EMPTY = {
   firstName: '',
   lastName: '',
   fullName: '',
+  idType: '', // 'student' | 'personnel' — chosen explicitly via the Step 1
+  // dropdown; the User Number field below is locked to whichever
+  // format this says until it's picked (see that field's onChange).
   userId: '',
   phone: '',
   course: '',
   year: '',
+  guardianName: '',
+  guardianRelation: '',
+  guardianPhone: '',
+  guardianAddress: '',
   email: '',
   username: '',
   password: '',
@@ -152,8 +160,9 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [entryMode, setEntryMode] = useState(() => loadDraft()?.entryMode || 'manual') // 'manual' | 'scan' — Step 1 only
-   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+      const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [duplicateBlocked, setDuplicateBlocked] = useState(false)
+  const [checkingEmailDomain, setCheckingEmailDomain] = useState(false)
   // Step 3's "Create Account" no longer submits immediately — it first
   // flips this on to show a read-only summary of everything typed across
   // all 3 steps, so the person can catch a typo (wrong email, mistyped
@@ -245,6 +254,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
       fullName: cleanFullName,
       firstName: sanitizeName(firstName),
       lastName: sanitizeName(lastName),
+      idType: 'student', // sanitizeId above always produces a digits-only
+      // student number — scan-to-register doesn't currently support a
+      // personnel-ID-formatted scan, so this keeps the dropdown/field
+      // lock consistent with what's actually in userId after a scan.
       userId: sanitizeId(studentNumber),
       course: matchOption(course, COURSES),
       year: matchOption(yearLevel, YEAR_LEVELS),
@@ -254,6 +267,19 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     setErr('')
     setEntryMode('manual')
     setStep(1)
+  }
+
+    // Applies to everyone — students and personnel alike — unlike course/
+  // year which only make sense for a student. An emergency/guardian
+  // contact is exactly as useful for a personnel patient as a student
+  // one, so this is checked from BOTH stepNext (student path) and
+  // stepSkip (personnel path, which only skips course/year — not this).
+  function validateGuardianFields() {
+    if (!form.guardianName.trim()) return 'Please enter a guardian/emergency contact name.'
+    if (!form.guardianPhone.trim() || !/^09\d{9}$/.test(form.guardianPhone.trim())) {
+      return 'Guardian/emergency contact phone must be in format 09XXXXXXXXX (11 digits).'
+    }
+    return null
   }
 
   async function stepNext() {
@@ -267,12 +293,16 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
         if (form.firstName.trim().length < 2) return setErr('First name must be at least 2 letters.')
         if (form.lastName.trim().length < 2) return setErr('Last name must be at least 2 letters.')
       }
+      if (!form.idType) return setErr('Please select whether you are registering as a Student or Personnel.')
       if (!form.userId.trim()) return setErr('User Number is required.')
       const rawUserId = form.userId.trim().toUpperCase()
       const isStudentNumber = /^\d{10}$/.test(rawUserId)
       const isPersonnelNumber = /^[A-Z]{2,6}\d{4,10}$/.test(rawUserId)
-      if (!isStudentNumber && !isPersonnelNumber) {
-        return setErr('User Number must be a 10-digit student number (2023-400-878) or a personnel ID like CMP-123456.')
+      if (form.idType === 'student' && !isStudentNumber) {
+        return setErr('User Number must be a 10-digit student number (2023-400-878).')
+      }
+      if (form.idType === 'personnel' && !isPersonnelNumber) {
+        return setErr('User Number must be a personnel ID like CMP-123456.')
       }
       if (form.phone.trim() && !/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
 
@@ -291,7 +321,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
         setCheckingDuplicate(false)
       }
 
-      setStep(2)
+            setStep(2)
     } else if (step === 2) {
       if (!form.course) return setErr('Please select your course.')
       const matched = COURSES.find((c) => c.toLowerCase() === form.course.trim().toLowerCase())
@@ -299,6 +329,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
       if (!form.year) return setErr('Please select your year level.')
       setForm((f) => ({ ...f, course: matched }))
       setStep(3)
+    } else if (step === 3) {
+      const guardianErr = validateGuardianFields()
+      if (guardianErr) return setErr(guardianErr)
+      setStep(4)
     }
   }
 
@@ -307,11 +341,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     if (step > 1) setStep(step - 1)
   }
 
-  // Step 2 (Academic Info) has no separate "Next" anymore — its one button
-  // always advances without requiring course/year, so instructors/campus
-  // personnel (who have neither) can get past it. profileIncomplete is only
-  // set when those fields are actually still empty, so a student who did
-  // fill them in isn't wrongly flagged incomplete just for using this button.
+  // Personnel-only shortcut off Step 2 (Academic Info) — course/year
+  // don't apply to them, but Guardian Info (Step 3) still does, for
+  // students and personnel alike, so this always continues there rather
+  // than skipping straight to Account Setup.
   function stepSkip() {
     setErr('')
     setForm((f) => ({ ...f, profileIncomplete: !f.course.trim() || !f.year.trim() }))
@@ -320,12 +353,37 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
 
     // Runs Step 3's field validation (same checks as before) and, if
   // everything's valid, shows the review summary instead of submitting
-  // right away. Nothing is sent to the server here.
-  function handleReviewClick() {
+  // right away. Nothing is created on the server here — the email
+  // domain check below is read-only (a DNS lookup), same as
+  // checkStudentNumberRegistered on Step 1.
+  async function handleReviewClick() {
     setErr('')
     const email = form.email.trim().toLowerCase()
     if (!email) return setErr('Email address is required.')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setErr('Please enter a valid email address.')
+
+    // Catches a typo'd/nonexistent domain (gmial.com, yaho.com, a
+    // mistyped company domain, etc.) before a confirmation email is even
+    // sent to it. This confirms the DOMAIN can receive mail — it can't
+    // and doesn't confirm this exact address is a real, in-use mailbox;
+    // that's still only ever confirmed by actually clicking the
+    // confirmation link this app already sends. See
+    // verify-email-domain/index.ts's own comment for the full
+    // explanation of that distinction. Fails open (never blocks
+    // registration) on a network hiccup or the check itself being
+    // unavailable.
+    setCheckingEmailDomain(true)
+    try {
+      const { valid, checked } = await invokeEdgeFunction('verify-email-domain', { email })
+      if (checked && !valid) {
+        return setErr("We couldn't find a mail server for that email's domain — please double-check it for typos.")
+      }
+    } catch (err) {
+      console.error('verify-email-domain check failed, proceeding anyway:', err.message)
+    } finally {
+      setCheckingEmailDomain(false)
+    }
+
     const username = form.username.trim().toLowerCase()
     if (!username) return setErr('Username is required.')
     if (username.length < 3) return setErr('Username must be at least 3 characters.')
@@ -371,6 +429,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
         studentNumber: form.userId.trim(),
         course: form.course,
         yearLevel: form.year,
+        guardianName: form.guardianName.trim(),
+        guardianRelation: form.guardianRelation.trim(),
+        guardianPhone: form.guardianPhone.trim(),
+        guardianAddress: form.guardianAddress.trim(),
         qrCode: form.qrCode || undefined,
         profileIncomplete: form.profileIncomplete,
       })
@@ -459,10 +521,11 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
 
   const strength = strengthOf(form.password)
   const passwordCheck = validatePassword(form.password)
-  // Same pattern stepNext() uses to validate the User Number at Step 1 —
-  // recomputed here (not stored in state) so Step 2 always reflects the
-  // current value of form.userId without an extra effect to keep in sync.
-  const isPersonnel = /^[A-Z]{2,6}\d{4,10}$/.test(form.userId.trim().toUpperCase())
+  // Reads the explicit Step 1 dropdown choice now, rather than
+  // re-detecting the pattern from form.userId — that regex-sniffing
+  // was the old auto-detect behavior this whole dropdown replaces, and
+  // is no longer the source of truth for which kind of ID this is.
+  const isPersonnel = form.idType === 'personnel'
 
   return createPortal(
     <div className="reg-overlay open" onMouseDown={(e) => e.target === e.currentTarget && handleClose()}>
@@ -494,7 +557,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
 
         {!success && (
           <>
-            {!duplicateBlocked && (
+                        {!duplicateBlocked && (
               <div className="reg-steps">
                 <div className={`reg-step${step >= 1 ? ' active' : ''}${step > 1 ? ' done' : ''}`}>
                   <span>1</span>
@@ -506,8 +569,13 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   <p>Academic Info</p>
                 </div>
                 <div className="reg-step-line" />
-                <div className={`reg-step${step >= 3 ? ' active' : ''}`}>
+                <div className={`reg-step${step >= 3 ? ' active' : ''}${step > 3 ? ' done' : ''}`}>
                   <span>3</span>
+                  <p>Guardian Info</p>
+                </div>
+                <div className="reg-step-line" />
+                <div className={`reg-step${step >= 4 ? ' active' : ''}`}>
+                  <span>4</span>
                   <p>Account Setup</p>
                 </div>
               </div>
@@ -626,6 +694,29 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   </div>
                 </div>
                     )}
+                <div className="reg-field">
+                  <label>
+                    Register as <span className="reg-req">*</span>
+                  </label>
+                    <select
+                    className="reg-input reg-select"
+                    value={form.idType}
+                    onChange={(e) => {
+                      const idType = e.target.value
+                      // Switching type clears whatever was already typed —
+                      // a half-typed student number left in the box while
+                      // switched to Personnel would just be a stale,
+                      // wrong-format value sitting there rather than
+                      // something worth keeping.
+                      setForm((f) => ({ ...f, idType, userId: '' }))
+                      setDuplicateBlocked(false)
+                    }}
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="student">Student</option>
+                    <option value="personnel">Personnel / Faculty</option>
+                  </select>
+                </div>
                 <div className="reg-form-row">
                   <div className="reg-field">
                     <label>
@@ -634,33 +725,37 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     <input
                       type="text"
                       className="reg-input"
-                      placeholder="2023-000-000 or PID-0498"
+                      placeholder={form.idType === 'personnel' ? 'PID-0498' : form.idType === 'student' ? '2023-000-000' : 'Select Student or Personnel above first'}
                       autoComplete="off"
-                      maxLength={13}
+                      disabled={!form.idType}
+                      maxLength={form.idType === 'personnel' ? 16 : 10}
                       value={formatUserNumber(form.userId)}
                       onChange={(e) => {
                         setDuplicateBlocked(false)
                         const raw = e.target.value.toUpperCase()
-                        // Mode is read fresh from the first character typed,
-                        // not stored anywhere — a digit start means a
-                        // student number attempt (digits only, matching
-                        // stepNext()'s own 10-digit check below), a letter
-                        // start means a personnel ID attempt (letters +
-                        // digits, matching the CMP-123456 pattern) — same
-                        // two formats stepNext() already validates against.
-                        // Recomputing from e.target.value on every keystroke
-                        // (instead of caching which mode was picked) means
-                        // clearing the field back to empty and starting over
-                        // with the other kind of ID just works, with no
-                        // extra state to keep in sync.
-                        const isDigitStart = /^[0-9]/.test(raw)
-                        const cleaned = isDigitStart ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
-                        setField('userId')(cleaned.slice(0, 10))
+                        // Driven entirely by the idType dropdown above now —
+                        // no more guessing the format from whichever
+                        // character was typed first. Student is digits
+                        // only (matching stepNext()'s 10-digit check);
+                        // Personnel is letters+digits (matching the
+                        // CMP-123456 pattern) capped at 16 chars (the
+                        // regex's own max: up to 6 letters + up to 10
+                        // digits) rather than the old hardcoded 10, which
+                        // would have silently truncated a valid longer
+                        // personnel ID before it could ever pass
+                        // validation.
+                        const cleaned = form.idType === 'student' ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
+                        const cap = form.idType === 'personnel' ? 16 : 10
+                        setField('userId')(cleaned.slice(0, cap))
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Student number or personnel ID</span>
-                      <span style={{ fontSize: 11, color: form.userId.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>{form.userId.length}/10</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        {form.idType === 'personnel' ? 'Personnel ID, e.g. PID-0498' : form.idType === 'student' ? 'Student ID, e.g. 2023-000-000 ' : 'Select Student or Personnel above'}
+                      </span>
+                      <span style={{ fontSize: 11, color: form.userId.length >= (form.idType === 'personnel' ? 16 : 10) ? '#EF4444' : 'var(--text-3)' }}>
+                        {form.userId.length}/{form.idType === 'personnel' ? 16 : 10}
+                      </span>
                     </div>
                   </div>
                   <div className="reg-field">
@@ -697,7 +792,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
               </div>
             )}
 
-            {step === 2 && (
+                        {step === 2 && (
               <div className="reg-step-content">
                 {isPersonnel && (
                   <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
@@ -744,7 +839,60 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
               </div>
             )}
 
-                        {step === 3 && !reviewing && (
+            {step === 3 && (
+              <div className="reg-step-content">
+                <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)', marginBottom: 14 }}>
+                  Guardian / Emergency Contact — used to reach someone on your behalf in an emergency (see Emergency
+                  Alerts). Required for every patient, student or personnel.
+                </p>
+                <div className="reg-field" style={{ marginBottom: 14 }}>
+                  <label>
+                    Guardian Name <span className="reg-req">*</span>
+                  </label>
+                  <input
+                    className="reg-input"
+                    type="text"
+                    value={form.guardianName}
+                    onChange={(e) => setField('guardianName')(capitalizeWords(e.target.value.replace(/[^A-Za-z\u00C0-\u00FF '-]/g, '')))}
+                    placeholder="Full name of parent/guardian"
+                  />
+                </div>
+                <div className="reg-field" style={{ marginBottom: 14 }}>
+                  <label>Relationship to You</label>
+                  <input
+                    className="reg-input"
+                    type="text"
+                    value={form.guardianRelation}
+                    onChange={(e) => setField('guardianRelation')(e.target.value.replace(/[^A-Za-z '-]/g, ''))}
+                    placeholder="e.g. Mother, Father, Guardian"
+                  />
+                </div>
+                <div className="reg-field" style={{ marginBottom: 14 }}>
+                  <label>
+                    Guardian Phone Number <span className="reg-req">*</span>
+                  </label>
+                  <input
+                    className="reg-input"
+                    type="tel"
+                    value={form.guardianPhone}
+                    onChange={(e) => setField('guardianPhone')(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+                    placeholder="09XXXXXXXXX"
+                  />
+                </div>
+                <div className="reg-field">
+                  <label>Guardian Address</label>
+                  <input
+                    className="reg-input"
+                    type="text"
+                    value={form.guardianAddress}
+                    onChange={(e) => setField('guardianAddress')(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+              </div>
+            )}
+
+               {step === 4 && !reviewing && (
               <div className="reg-step-content">
                 <div className="reg-field" style={{ marginBottom: 14 }}>
                   <label>
@@ -860,7 +1008,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
               </div>
             )}
 
-            {step === 3 && reviewing && (
+             {step === 4 && reviewing && (
               <div className="reg-step-content">
                 <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
                   Please review your details below. Click "Confirm & Create Account" if everything is correct, or "Cancel" to go back and fix anything.
@@ -872,10 +1020,14 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                       : [['First Name', form.firstName], ['Last Name', form.lastName]]),
                     ['User Number', formatUserNumber(form.userId)],
                     ['Phone Number', form.phone || '—'],
-                    ...(isPersonnel ? [] : [
+                                        ...(isPersonnel ? [] : [
                       ['Course / Program', form.course || '—'],
                       ['Year Level', form.year || '—'],
                     ]),
+                    ['Guardian Name', form.guardianName || '—'],
+                    ['Relationship', form.guardianRelation || '—'],
+                    ['Guardian Phone', form.guardianPhone || '—'],
+                    ['Guardian Address', form.guardianAddress || '—'],
                     ['Email Address', form.email.trim()],
                     ['Username', form.username.trim()],
                     ...(form.prefilledFromQr ? [['Quick-Login PIN', pin ? 'Will be set up' : 'Skipped — set up later in Account Settings']] : []),
@@ -899,13 +1051,13 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
               </div>
             )}
 
-                        <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 3 ? ' reg-nav-final' : ''}`}>
+            <div className={`reg-nav${step === 2 ? ' reg-nav-split' : step === 4 ? ' reg-nav-final' : ''}`}>
               {step > 1 && !duplicateBlocked && !reviewing && (
                 <button type="button" className="btn btn-outline" onClick={stepBack}>
                   Back
                 </button>
               )}
-              {step < 3 && !(step === 1 && entryMode === 'scan') && !duplicateBlocked && (
+                            {step < 4 && !(step === 1 && entryMode === 'scan') && !duplicateBlocked && (
                 <button
                   type="button"
                   className="reg-next-btn"
@@ -925,16 +1077,16 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   : 'Next'}
                 </button>
               )}
-              {step === 3 && !reviewing && (
-                <button type="button" className="reg-submit-btn" onClick={handleReviewClick} disabled={submitting}>
+                {step === 4 && !reviewing && (
+                <button type="button" className="reg-submit-btn" onClick={handleReviewClick} disabled={submitting || checkingEmailDomain}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                     <circle cx="12" cy="7" r="4" />
                   </svg>
-                  Create Account
+                  {checkingEmailDomain ? 'Verifying email…' : 'Create Account'}
                 </button>
               )}
-              {step === 3 && reviewing && (
+                {step === 4 && reviewing && (
                 <>
                   <button type="button" className="btn btn-outline" onClick={() => setReviewing(false)} disabled={submitting}>
                     Cancel

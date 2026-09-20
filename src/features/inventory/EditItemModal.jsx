@@ -3,12 +3,14 @@ import Modal from '@components/ui/Modal'
 import { EditIcon } from '@components/ui/icons'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import ItemPhotoUpload from './ItemPhotoUpload'
+import { MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
 
 function buildForm(item, suppliers) {
   const matched = item.supplier ? suppliers.find((s) => s.supplier_name === item.supplier) : null
   return {
     name: item.name,
     category: item.category,
+    medCategory: item.medicine_category || '',
     unit: item.unit,
     minStock: String(item.min_stock),
     batchNo: item.batch_no || '',
@@ -69,17 +71,30 @@ export default function EditItemModal({ isOpen, item, onClose, onSave, suppliers
         </div>
 
         {isMedicine ? (
-          // Medicine's quantity/batch/expiration/supplier all live on its
-          // batches, not the medicine record itself — Edit Batch is where
-          // those actually get changed. Showing them here would look
-          // editable but be silently discarded on save (found during the
-          // Phase 4c audit — handleEditSave's medicine branch only ever
-          // reads name/unit/minStock from this form), so they're not
-          // shown at all for a medicine item, rather than shown and lied
-          // about.
-          <div className="form-group full" style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
-            This is a Medicine item — quantity, batch details, expiration, and supplier are managed per-batch on the Batches tab, not here.
-          </div>
+          <>
+            {/* Medicine's quantity/batch/expiration/supplier all live on its
+                batches, not the medicine record itself — Edit Batch is where
+                those actually get changed. Showing them here would look
+                editable but be silently discarded on save (found during the
+                Phase 4c audit — handleEditSave's medicine branch only ever
+                reads name/unit/minStock from this form), so they're not
+                shown at all for a medicine item, rather than shown and lied
+                about. Medicine Category is different — it lives directly on
+                the medicine record (medicines.category), so it's a real,
+                working field here, not one of the batch-level ones above. */}
+            <div className="form-group full" style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
+              This is a Medicine item — quantity, batch details, expiration, and supplier are managed per-batch on the Batches tab, not here.
+            </div>
+            <div className="form-group">
+              <label>MEDICINE CATEGORY</label>
+              <select className="form-select" value={form.medCategory} onChange={(e) => setField('medCategory')(e.target.value)}>
+                <option value="">-- Optional --</option>
+                {MEDICINE_CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </>
         ) : (
           <div className="form-group">
             <label>CATEGORY</label>

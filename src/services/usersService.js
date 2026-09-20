@@ -176,7 +176,7 @@ export async function checkStudentNumberRegistered(studentNumber) {
  * - `profileIncomplete`: set when the person used Step 2's "Skip for now"
  *   path. Written to `patient_profiles.profile_incomplete`.
  */
-export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, qrCode, profileIncomplete }) {
+export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, guardianName, guardianRelation, guardianPhone, guardianAddress, qrCode, profileIncomplete }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -213,6 +213,10 @@ export async function registerPatient({ email, password, username, name, surname
         student_number: studentNumber,
         course,
         year_level: yearLevel,
+        guardian_name: guardianName || null,
+        guardian_relation: guardianRelation || null,
+        guardian_phone: guardianPhone || null,
+        guardian_address: guardianAddress || null,
         qr_code: qrCode || null,
         profile_incomplete: !!profileIncomplete,
       },
@@ -332,7 +336,7 @@ export async function finalizeSelfRegistration(authUser) {
     if (!isUsernameCollision || attempt === maxUsernameAttempts) throw error
   }
 
-  const { error: ppError } = await supabase.from('patient_profiles').insert({
+    const { error: ppError } = await supabase.from('patient_profiles').insert({
     user_id: user.user_id,
     student_number: m.student_number,
     surname: m.surname,
@@ -340,6 +344,11 @@ export async function finalizeSelfRegistration(authUser) {
     course: m.course || null,
     year_level: m.year_level || null,
     profile_incomplete: !!m.profile_incomplete,
+    patient_type: isPersonnelNumber(m.student_number) ? 'personnel' : 'student',
+    parent_name: m.guardian_name || null,
+    parent_relation: m.guardian_relation || null,
+    parent_phone: m.guardian_phone || null,
+    guardian_address: m.guardian_address || null,
   })
   if (ppError) {
     // Half-registered is worse than not-registered: the `users` row we
@@ -468,6 +477,7 @@ function flattenUser(row) {
     // banner. `?? false` (not `?? null`) — the column is NOT NULL with a
     // default, so `false` is the only meaningful "no row / not set" value.
     profile_incomplete: patient_profiles?.profile_incomplete ?? false,
+    patient_type: patient_profiles?.patient_type ?? null,
     parent_name: patient_profiles?.parent_name ?? null,
     parent_phone: patient_profiles?.parent_phone ?? null,
     parent_phone2: patient_profiles?.parent_phone_2 ?? null,
@@ -614,10 +624,11 @@ export async function createUserProfile({ username, email, role, name, surname, 
       // any other caller that still passes just `name`, so it degrades
       // gracefully rather than breaking, but is no longer how this gets
       // populated from the actual Add User form.
-      surname: surname || name.split(' ').slice(-1)[0],
+       surname: surname || name.split(' ').slice(-1)[0],
       given_name: givenName || name.split(' ').slice(0, -1).join(' ') || name,
       course: course || null,
       year_level: yearLevel || null,
+      patient_type: isPersonnelNumber(studentNumber) ? 'personnel' : 'student',
     })
     if (ppError) throw ppError
   } else {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import SearchableSelect from '@components/ui/SearchableSelect'
-import { maskBloodPressure, maskTemperature, capPulse, capO2Sat } from '@lib/vitals'
+import { maskBloodPressure, maskTemperature, capPulse, capO2Sat, VITAL_STATUS_FNS } from '@lib/vitals'
 import { getInventoryStatus } from '@features/inventory/lib/inventoryHelpers'
 import { getDiagnosisCategory } from '@services/diagnosesService'
 import MedRow from './MedRow'
@@ -121,7 +121,7 @@ export default function NewConsultationTab({
     setForm((f) => ({ ...f, diagnosis: value }))
   }
 
-  function handleSubmit() {
+   function handleSubmit() {
   if (form.isUnregistered) {
     if (!form.unregisteredName.trim()) return onError('Please enter the unregistered patient\u2019s name')
   } else if (!form.patientId) {
@@ -129,6 +129,15 @@ export default function NewConsultationTab({
   }
   if (!form.complaint.trim()) return onError('Please enter main complaint')
     if (!form.diagnosis) return onError('Please select a diagnosis')
+    // Vital signs stay optional (a blank field is fine, same as before
+    // this feature existed) — but a FILLED-IN value that's invalid
+    // (malformed, or exceeds its absolute maximum) must block Save.
+    // A 'warning' tier (High BP, Fever, etc. — abnormal but medically
+    // plausible) is deliberately NOT blocked here; only 'invalid' is.
+    for (const field of Object.keys(VITAL_STATUS_FNS)) {
+      const status = VITAL_STATUS_FNS[field](form[field])
+      if (status.tier === 'invalid') return onError(status.remark)
+    }
     const diagnosis =
       form.diagnosis === 'Others' ? form.diagnosisOther.trim() || 'Others' : form.diagnosis
     if (!form.assessment.trim()) return onError('Please enter assessment/notes')
@@ -253,25 +262,45 @@ export default function NewConsultationTab({
             <BarChartIcon width={13} height={13} style={{ verticalAlign: -2, marginRight: 5 }} />Vital Signs
           </div>
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
-            <div className="vitals-grid">
+                        <div className="vitals-grid">
               {[
-              ['bp', 'Blood Pressure', '120/10', maskBloodPressure],
+              ['bp', 'Blood Pressure', '120/80', maskBloodPressure],
               ['temp', 'Temp (°C)', '36.5', maskTemperature],
               ['pulse', 'Pulse Rate', '72', capPulse],
               ['o2sat', 'O₂ Sat (%)', '98', capO2Sat],
-            ].map(([field, label, ph, maskFn]) => (
+            ].map(([field, label, ph, maskFn]) => {
+              const status = VITAL_STATUS_FNS[field](form[field])
+              const isAbnormal = status.tier === 'warning' || status.tier === 'invalid'
+              return (
               <div className="vital-box" key={field}>
                 <input
                   className="form-input"
                   placeholder={ph}
                   inputMode="decimal"
-                  style={{ textAlign: 'center' }}
+                  style={{
+                    textAlign: 'center',
+                    borderColor: isAbnormal ? 'var(--danger)' : undefined,
+                    background: isAbnormal ? 'rgba(239, 68, 68, 0.06)' : undefined,
+                  }}
                   value={form[field]}
                   onChange={(e) => setField(field)(maskFn(e.target.value))}
                 />
                 <div className="vlbl">{label}</div>
+                {status.remark && (
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      marginTop: 3,
+                      color: status.tier === 'normal' ? 'var(--success)' : 'var(--danger)',
+                    }}
+                  >
+                    {status.remark}
+                  </div>
+                )}
               </div>
-            ))}
+              )
+            })}
             </div>
           </div>
 

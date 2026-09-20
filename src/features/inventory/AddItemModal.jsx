@@ -3,7 +3,7 @@ import Modal from '@components/ui/Modal'
 import Toggle from '@components/ui/Toggle'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import ItemPhotoUpload from './ItemPhotoUpload'
-import { findInventoryItemsByName, itemIdentity } from './lib/inventoryHelpers'
+import { findInventoryItemsByName, itemIdentity, MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
 import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon, AlertTriangleIcon } from '@components/ui/icons'
 
 const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
@@ -11,6 +11,7 @@ const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'R
 const EMPTY_FORM = {
   name: '',
   category: '',
+  medCategory: '',
   unit: '',
   quantity: '',
   minStock: '',
@@ -220,13 +221,24 @@ function cancelDuplicatePrompt() {
             />
           </div>
           {form.category === 'Medicine' && (
-            <div className="form-group">
-              <label>FIFO TRACKING</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <Toggle checked={form.fifo} onChange={setField('fifo')} label="FIFO tracking" />
-                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>First-In-First-Out</span>
+            <>
+              <div className="form-group">
+                <label>MEDICINE CATEGORY</label>
+                <select className="form-select" value={form.medCategory} onChange={(e) => setField('medCategory')(e.target.value)}>
+                  <option value="">-- Optional --</option>
+                  {MEDICINE_CATEGORIES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
               </div>
-            </div>
+              <div className="form-group">
+                <label>FIFO TRACKING</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <Toggle checked={form.fifo} onChange={setField('fifo')} label="FIFO tracking" />
+                  <span style={{ fontSize: 12, color: 'var(--text-2)' }}>First-In-First-Out</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
@@ -265,7 +277,8 @@ function cancelDuplicatePrompt() {
                                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{it.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                    {it.category} · {it.quantity} {it.unit} · Min {it.minStock}
+                    {it.category}
+                    {it.medCategory ? ` (${it.medCategory})` : ''} · {it.quantity} {it.unit} · Min {it.minStock}
                     {it.batchNo ? ` · Batch: ${it.batchNo}` : ''}
                   </div>
                   {it._mergeIntoIdentity && (

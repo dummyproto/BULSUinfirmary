@@ -108,7 +108,7 @@ export default function InventoryPage() {
   const [staff, setStaff] = useState([])
   const [suppliers, setSuppliers] = useState([])
 
-  const [itemsFilters, setItemsFilters] = useState({ search: '', category: 'All', status: 'All' })
+  const [itemsFilters, setItemsFilters] = useState({ search: '', category: 'All', status: 'All', medCategory: 'All' })
   const [logSearch, setLogSearch] = useState('')
   const [batchSearch, setBatchSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
@@ -403,7 +403,7 @@ export default function InventoryPage() {
             })
             consolidated++
           } else {
-            const medicine = await createMedicine({ medicine_name: f.name, unit: f.unit, min_stock: f.minStock || 0, active: true, image_url: f.photoUrl || null })
+            const medicine = await createMedicine({ medicine_name: f.name, unit: f.unit, min_stock: f.minStock || 0, active: true, image_url: f.photoUrl || null, category: f.medCategory || null })
             if (f.quantity > 0) {
               await replenishMedicineAsNewBatch({
                 medicineId: medicine.medicine_id,
@@ -480,7 +480,7 @@ export default function InventoryPage() {
         // do — editing here only ever updates the medicine's own
         // permanent fields (name/unit/min_stock); quantity/expiry live on
         // its batches and are never touched by this form.
-        await updateMedicine(item._id, { medicine_name: form.name, unit: form.unit, min_stock: form.minStock, image_url: form.photoUrl || null })
+        await updateMedicine(item._id, { medicine_name: form.name, unit: form.unit, min_stock: form.minStock, image_url: form.photoUrl || null, category: form.medCategory || null })
         await addMedicineMovement({ medicineId: item._id, actionType: 'Edit', quantityChange: 0, previousQuantity: item.quantity, newQuantity: item.quantity, staffId: currentUserId, notes: `Item details updated (unit: ${form.unit}, minStock: ${form.minStock})` })
         show('Medicine updated successfully', 'success')
         await Promise.all([refreshInventory(), refreshLogs()])

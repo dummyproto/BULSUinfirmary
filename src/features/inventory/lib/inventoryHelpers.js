@@ -204,3 +204,28 @@ export function timeAgo(dateStr) {
   if (h < 24) return `${h} ${h > 1 ? 'hours' : 'hour'} ago`
   return new Date(dateStr).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+
+// Therapeutic classification for medicines specifically (e.g. "we're low
+// on antibiotics" / "what do we have for a fever") — a different, more
+// specific grouping than the Medicine/Supply/Equipment item-type
+// CATEGORIES elsewhere in this file, and only meaningful for Medicine
+// items (a Supply/Equipment item has no pharmacological class).
+//
+// A fixed, curated list rather than free text — the DB column itself
+// (medicines.category, see migration 007) has no CHECK constraint and
+// would accept anything, but an open text field here would accumulate
+// inconsistent one-off spellings ("Antibiotics" vs "antibiotic" vs
+// "ANTIBIOTIC") that a filter dropdown can't meaningfully group. "Other"
+// is the deliberate escape hatch for anything genuinely uncommon rather
+// than trying to enumerate every possible drug class up front.
+export const MEDICINE_CATEGORIES = [
+  'Analgesic / Antipyretic',
+  'Antibiotic',
+  'Antihistamine',
+  'Antitussive / Expectorant',
+  'Antacid / Antidiarrheal',
+  'Anti-inflammatory',
+  'Antiseptic / Topical',
+  'Vitamin / Supplement',
+  'Other',
+]
