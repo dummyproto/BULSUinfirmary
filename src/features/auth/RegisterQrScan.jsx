@@ -14,9 +14,8 @@ import { CreditCardIcon, CameraIcon, SearchIcon, SquareIcon, ZapIcon, MaximizeIc
 // seeding-gap note). `onScanned` (not `onIdentified`) keeps this distinct
 // from the login component's callback shape.
 export default function RegisterQrScan({ onScanned, onError }) {
-  const [cameraActive, setCameraActive] = useState(false)
+   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
-  const [manualCode, setManualCode] = useState('')
   const [scanStatus, setScanStatus] = useState('')
   const [torchOn, setTorchOn] = useState(false)
   const videoRef = useRef(null)

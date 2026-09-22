@@ -42,14 +42,29 @@
 // Until step 2 is done, Supabase keeps sending its own plain default email
 // (this function simply isn't called yet) — nothing breaks in the meantime.
 
-import QRCode from 'https://esm.sh/qrcode@1.5.4'
+import QRCode from 'qrcode'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const RESEND_FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL') || 'onboarding@resend.dev'
-const HOOK_SECRET = Deno.env.get('SEND_EMAIL_HOOK_SECRET') || ''
+// `Deno` is a global provided by the Deno runtime this function actually
+// executes in (see deno.enablePaths in .vscode/settings.json). Some editors'
+// default JS/TS language service doesn't know about Deno globals and flags
+// them as "Cannot find name 'Deno'" even though the code is correct and
+// Deno's own checker has no issue with it — @ts-ignore silences just that,
+// in exactly one place, rather than fighting editor config.
+function denoEnv(key: string): string | undefined {
+  // @ts-ignore -- Deno global, see note above
+  return Deno.env.get(key)
+}
 
-function jsonResponse(body, status = 200) {
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+const SUPABASE_URL = denoEnv('SUPABASE_URL')
+const RESEND_API_KEY = denoEnv('RESEND_API_KEY')
+const RESEND_FROM_EMAIL = denoEnv('RESEND_FROM_EMAIL') || 'onboarding@resend.dev'
+const HOOK_SECRET = denoEnv('SEND_EMAIL_HOOK_SECRET') || ''
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -71,19 +86,35 @@ function jsonResponse(body, status = 200) {
 //   signed content:    "<webhook-id>.<webhook-timestamp>.<raw-body>"
 //   signature header:  one or more space-separated "v1,<base64-signature>"
 //                       values — a match against ANY of them is valid.
-function secretToKeyBytes(secret) {
+function secretToKeyBytes(secret: string): Uint8Array {
   const withoutVersion = secret.startsWith('v1,') ? secret.slice(3) : secret
   const base64Part = withoutVersion.startsWith('whsec_') ? withoutVersion.slice(6) : withoutVersion
   return Uint8Array.from(atob(base64Part), (c) => c.charCodeAt(0))
 }
 
-function bytesToBase64(bytes) {
+function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary)
 }
 
-async function verifyStandardWebhook(payload, headers, secret) {
+interface EmailData {
+  token: string
+  token_hash: string
+  redirect_to: string
+  email_action_type: string
+}
+
+interface WebhookPayload {
+  user: { email: string; id?: string }
+  email_data: EmailData
+}
+
+async function verifyStandardWebhook(
+  payload: string,
+  headers: Record<string, string>,
+  secret: string,
+): Promise<WebhookPayload> {
   const id = headers['webhook-id']
   const timestamp = headers['webhook-timestamp']
   const signatureHeader = headers['webhook-signature']
@@ -116,7 +147,14 @@ async function verifyStandardWebhook(payload, headers, secret) {
     throw new Error('No matching signature found')
   }
 
-  return JSON.parse(payload)
+  return JSON.parse(payload) as WebhookPayload
+}
+
+interface EmailContent {
+  subject: string
+  heading: string
+  body: string
+  cta: string
 }
 
 // Per email_action_type copy — recovery is the odd one out: this app's
@@ -125,7 +163,7 @@ async function verifyStandardWebhook(payload, headers, secret) {
 // code has to be shown prominently in plain text too — the QR is a
 // secondary, optional "or scan to open the reset page" convenience there,
 // not the primary path like it is for signup.
-function contentFor(actionType, { confirmUrl, token }) {
+function contentFor(actionType: string, { confirmUrl, token }: { confirmUrl: string; token: string }): EmailContent {
   switch (actionType) {
     case 'signup':
       return {
@@ -144,8 +182,8 @@ function contentFor(actionType, { confirmUrl, token }) {
     case 'invite':
       return {
         subject: "You've been invited to BulSU Clinic",
-        heading: 'Accept your invitation',
-        body: `An administrator created an account for you on the BulSU Clinic Appointment & Patient System. Click the button below, or scan the QR code, to set your password and activate your account.`,
+        heading: "You've been invited",
+        body: `Input your email and the password given to you by Admin/Staff. Follow the link below to accept.`,
         cta: 'Accept Invite',
       }
     case 'email_change':
@@ -165,7 +203,17 @@ function contentFor(actionType, { confirmUrl, token }) {
   }
 }
 
-function buildEmailHtml({ heading, body, cta, confirmUrl }) {
+function buildEmailHtml({
+  heading,
+  body,
+  cta,
+  confirmUrl,
+}: {
+  heading: string
+  body: string
+  cta: string
+  confirmUrl: string
+}): string {
   return `
   <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
     <h2 style="margin: 0 0 16px; font-size: 20px;">${heading}</h2>
@@ -183,14 +231,16 @@ function buildEmailHtml({ heading, body, cta, confirmUrl }) {
   </div>`
 }
 
-Deno.serve(async (req) => {
+// @ts-ignore -- Deno global, see note above
+Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
   if (!RESEND_API_KEY) return jsonResponse({ error: { message: 'RESEND_API_KEY is not configured' } }, 500)
 
   const payload = await req.text()
-  const headers = Object.fromEntries(req.headers)
+  const headers = Object.fromEntries(req.headers) as Record<string, string>
 
-  let user, email_data
+  let user: WebhookPayload['user']
+  let email_data: EmailData
   try {
     if (!HOOK_SECRET) {
       throw new Error('SEND_EMAIL_HOOK_SECRET is empty/unset in this function\'s secrets')
@@ -214,8 +264,8 @@ Deno.serve(async (req) => {
     user = verified.user
     email_data = verified.email_data
   } catch (err) {
-    console.error('send-verification-email signature check failed:', err?.message || err)
-    return jsonResponse({ error: { message: `Invalid webhook signature: ${err?.message || err}` } }, 401)
+    console.error('send-verification-email signature check failed:', errorMessage(err))
+    return jsonResponse({ error: { message: `Invalid webhook signature: ${errorMessage(err)}` } }, 401)
   }
 
   try {
@@ -242,7 +292,7 @@ Deno.serve(async (req) => {
     // avoids that entirely; we just strip the "data:image/png;base64,"
     // prefix to get the same raw base64 payload Resend's attachment
     // `content` field expects.
-    const qrDataUrl = await QRCode.toDataURL(confirmUrl, {
+    const qrDataUrl: string = await QRCode.toDataURL(confirmUrl, {
       type: 'image/png',
       width: 440,
       margin: 2,
@@ -284,8 +334,8 @@ Deno.serve(async (req) => {
     // response rather than letting an unexpected throw crash the
     // function — Supabase Auth surfaces THIS response's content as the
     // reason the signup/reset call itself failed for the end user.
-    console.error('send-verification-email failed:', err)
-    return jsonResponse({ error: { http_code: 500, message: err?.message || String(err) } }, 500)
+    console.error('send-verification-email failed:', errorMessage(err))
+    return jsonResponse({ error: { http_code: 500, message: errorMessage(err) } }, 500)
   }
 
   return jsonResponse({})

@@ -26,12 +26,14 @@ import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
  * enforced server-side by the function itself (see its source for the
  * full explanation of why this can't be done directly from the browser).
  *
- * mode: 'invite' (default) emails the new user a set-password link and
- * never generates a password in this app at all. mode: 'password' lets an
- * admin set a temporary password directly, for projects without email
- * sending configured — pass `temporaryPassword` in that case.
+ * mode: 'password' (default) lets an admin set the new user's initial
+ * password directly (pass `temporaryPassword`) — they can change it later
+ * in Account Settings. mode: 'invite' skips issuing a password at all and
+ * has the new user set their own via an emailed link instead. EITHER WAY
+ * the account is created unconfirmed and can't log in until its
+ * verification email is confirmed — 'password' does not skip that step.
  */
-export async function provisionUser({ email, name, role, mode = 'invite', temporaryPassword }) {
+export async function provisionUser({ email, name, role, mode = 'password', temporaryPassword }) {
   // invokeEdgeFunction() (see edgeFunctions.js) reads the function's own
   // { error } response body and, separately, tells a network-level failure
   // apart from a real server rejection — a raw supabase.functions.invoke()
@@ -39,7 +41,11 @@ export async function provisionUser({ email, name, role, mode = 'invite', tempor
   // non-2xx status code", which is what was showing up as an unexplained
   // 400 in the console with no usable reason surfaced to the admin.
   const data = await invokeEdgeFunction('create-user', { email, name, role, mode, temporaryPassword })
-  return data.authUserId
+  // resendFailed is only ever set by mode: 'password' — the account was
+  // still created (authUserId is real), just without its verification
+  // email actually going out. Returned as an object (not just the UUID)
+  // so callers can warn the admin instead of assuming the email arrived.
+  return { authUserId: data.authUserId, resendFailed: data.resendFailed || null }
 }
 
 /**
@@ -323,6 +329,7 @@ export async function finalizeSelfRegistration(authUser) {
         is_active: true,
         auth_user_id: authUser.id,
         school_id_barcode: m.qr_code ? String(m.qr_code).slice(0, 50) : generateSchoolIdCode(),
+        registration_source: 'self',
       })
       .select()
       .single()
@@ -606,10 +613,10 @@ export async function linkAuthUserIfNeeded(row, authUserId) {
  * `auth.users` row (see the architecture note at the top of this file).
  * The new person can't sign in until that separate server-side step runs.
  */
-export async function createUserProfile({ username, email, role, name, surname, givenName, phone, department, position, studentNumber, course, yearLevel, authUserId, schoolIdBarcode, staffIdNumber }) {
+export async function createUserProfile({ username, email, role, name, surname, givenName, phone, department, position, studentNumber, course, yearLevel, authUserId, schoolIdBarcode, staffIdNumber, registrationSource = 'admin_added', guardianName, guardianRelation, guardianPhone }) {
   const { data: user, error } = await supabase
     .from('users')
-    .insert({ username, email, role, name, phone: phone || null, password_hash: 'MANAGED_BY_SUPABASE_AUTH', is_active: true, auth_user_id: authUserId ?? null, school_id_barcode: schoolIdBarcode ?? null })
+    .insert({ username, email, role, name, phone: phone || null, password_hash: 'MANAGED_BY_SUPABASE_AUTH', is_active: true, auth_user_id: authUserId ?? null, school_id_barcode: schoolIdBarcode ?? null, registration_source: registrationSource })
     .select()
     .single()
   if (error) throw error
@@ -618,17 +625,14 @@ export async function createUserProfile({ username, email, role, name, surname, 
     const { error: ppError } = await supabase.from('patient_profiles').insert({
       user_id: user.user_id,
       student_number: studentNumber,
-      // AddUserModal now collects these directly (Surname/First Name
-      // fields, not one freeform "Full Name" input) — prefer them when
-      // given. The name.split(' ') guess is kept only as a fallback for
-      // any other caller that still passes just `name`, so it degrades
-      // gracefully rather than breaking, but is no longer how this gets
-      // populated from the actual Add User form.
-       surname: surname || name.split(' ').slice(-1)[0],
+      surname: surname || name.split(' ').slice(-1)[0],
       given_name: givenName || name.split(' ').slice(0, -1).join(' ') || name,
       course: course || null,
       year_level: yearLevel || null,
       patient_type: isPersonnelNumber(studentNumber) ? 'personnel' : 'student',
+      parent_name: guardianName || null,
+      parent_relation: guardianRelation || null,
+      parent_phone: guardianPhone || null,
     })
     if (ppError) throw ppError
   } else {

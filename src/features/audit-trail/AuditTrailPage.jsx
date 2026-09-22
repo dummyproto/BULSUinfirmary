@@ -30,6 +30,7 @@ import { generateSystemBackup, SYSTEM_BACKUP_TABLES } from '@features/maintenanc
 // breaking.
 const ACTION_STYLES = {
   ADD_USER: { color: 'green', label: 'Added User' },
+  BULK_IMPORT_USERS: { color: 'green', label: 'Bulk CSV Import' },
   EDIT_USER: { color: 'blue', label: 'Edited User' },
   ACTIVATE_USER: { color: 'green', label: 'Activated User' },
   DEACTIVATE_USER: { color: 'orange', label: 'Deactivated User' },

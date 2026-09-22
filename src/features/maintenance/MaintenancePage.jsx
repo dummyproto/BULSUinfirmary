@@ -5,19 +5,22 @@ import { useConfirm } from '@context/ConfirmContext'
 import Spinner from '@components/ui/Spinner'
 import UserManagementTab from './UserManagementTab'
 import PermissionsTab from './PermissionsTab'
+import ActivePatientsTab from './ActivePatientsTab'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import ChangePasswordModal from './ChangePasswordModal'
+import BulkImportModal from './BulkImportModal'
 import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, resetUserPassword, togglePermission } from '@services/usersService'
 import { addAuditLog } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
 import { generateSchoolIdCode, generateStaffId } from '@lib/schoolId'
-import { PeopleIcon, ShieldIcon } from '@components/ui/icons'
+import { PeopleIcon, ShieldIcon, GraduationCapIcon } from '@components/ui/icons'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
 const TABS = [
   { key: 'users', label: 'User Management', Icon: PeopleIcon },
+  { key: 'active-patients', label: 'Active Students/Personnel', Icon: GraduationCapIcon },
   { key: 'perms', label: 'Staff Permissions', Icon: ShieldIcon },
 ]
 
@@ -31,7 +34,8 @@ export default function MaintenancePage() {
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
-  const [addOpen, setAddOpen] = useState(false)
+   const [addOpen, setAddOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [editId, setEditId] = useState(null)
   const [pwUserId, setPwUserId] = useState(null)
   const [pwSaving, setPwSaving] = useState(false)
@@ -73,20 +77,21 @@ export default function MaintenancePage() {
   async function handleAddUser(record) {
     const username = record.email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase()
 
-    // Try to provision a real, login-capable account via the server-side
-    // Edge Function first (see supabase/functions/create-user/). Using
-    // mode: 'password' — not the default 'invite' — because AddUserModal
-    // already collects a required password field from the admin; 'invite'
-    // silently discarded that password entirely and relied on the new
-    // user receiving a set-password email instead, which on a project
-    // without email sending configured (very possible for a school
-    // system) never arrives — leaving the account permanently unable to
-    // log in with no error surfaced anywhere. Passing the admin-entered
-    // password through here means the account works immediately, matching
-    // what the form actually asks for.
+    // Provision a real, login-capable account via the server-side Edge
+    // Function (see supabase/functions/create-user/), using mode:
+    // 'password' — the admin-entered password below becomes this user's
+    // initial password (they can change it later in Account Settings).
+    // The account is still created UNCONFIRMED — the Edge Function itself
+    // triggers a verification email (via Resend + the send-verification-
+    // email Auth Hook, now configured for this project), and the new user
+    // can't log in until they click it, same as 'invite' would, just with
+    // a known starting password instead of one they pick themselves.
     let authUserId = null
+    let resendFailed = null
     try {
-      authUserId = await provisionUser({ email: record.email, name: record.name, role: record.role, mode: 'password', temporaryPassword: record.password })
+      const result = await provisionUser({ email: record.email, name: record.name, role: record.role, mode: 'password', temporaryPassword: record.password })
+      authUserId = result.authUserId
+      resendFailed = result.resendFailed
     } catch (err) {
       show(`Couldn't provision a login (${err.message}) — creating the account record only. Deploy the "create-user" Edge Function to enable real logins.`, 'warning')
     }
@@ -114,13 +119,77 @@ export default function MaintenancePage() {
       setAddOpen(false)
       show(
         authUserId
-          ? `User ${record.name} added — they can log in now with the password you set.`
+          ? resendFailed
+            ? `User ${record.name} added, but the verification email couldn't be sent (${resendFailed}) — use "Resend Verification" once that's fixed.`
+            : `User ${record.name} added — a verification email was sent to ${record.email}. They must confirm it before they can log in (their password is the one you just set).`
           : `User ${record.name} added (profile only — no login yet).`,
-        'success'
+        authUserId && !resendFailed ? 'success' : 'warning'
       )
     } catch (err) {
       show(`Failed to add user: ${err.message}`, 'error')
     }
+  }
+
+    async function handleBulkImportUsers(validRows, onProgress) {
+    let createdCount = 0
+    const failedRows = []
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i]
+      const email = row.email.trim().toLowerCase()
+      const fullName = row.fullName.trim()
+      const username = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase()
+      const userId = row.userId.replace(/[\s-]/g, '').toUpperCase()
+
+      let authUserId = null
+      try {
+        // mode: 'password' — each row's own Password column becomes that
+        // patient's initial login password; the Edge Function still
+        // creates the account unconfirmed and fires off its verification
+        // email, so they can't log in until they confirm it. They can
+        // change this password later in Account Settings.
+        const result = await provisionUser({ email, name: fullName, role: 'patient', mode: 'password', temporaryPassword: row.password })
+        authUserId = result.authUserId
+      } catch {
+        // Non-fatal — profile still gets created below.
+      }
+
+      try {
+        await createUserProfile({
+          username,
+          email,
+          role: 'patient',
+          name: fullName,
+          studentNumber: userId,
+          course: row.course || null,
+          yearLevel: row.yearLevel || null,
+          authUserId,
+          schoolIdBarcode: null,
+          registrationSource: 'csv_import',
+          guardianName: row.guardianFullName || null,
+          guardianRelation: row.relationship || null,
+          guardianPhone: row.contactNumber || null,
+        })
+        createdCount++
+      } catch (err) {
+        failedRows.push({ rowNumber: row.rowNumber, email, reason: err.message })
+      }
+
+      onProgress(i + 1, validRows.length)
+    }
+
+    await addAuditLog({
+      userId: currentUserId,
+      action: 'BULK_IMPORT_USERS',
+      details: `CSV bulk patient import — ${validRows.length} valid record(s) submitted, ${createdCount} created, ${failedRows.length} failed.`,
+    })
+    await refreshUsers()
+    show(
+      `Bulk import complete — ${createdCount} of ${validRows.length} patient account(s) created. Each will receive a verification email at their CSV address and can't log in until they confirm it (their CSV password is their initial password).`,
+      failedRows.length === 0 ? 'success' : 'warning'
+    )
+
+    return { createdCount, failedRows }
   }
 
   async function handleEditSave(updates) {
@@ -251,21 +320,25 @@ export default function MaintenancePage() {
         ))}
       </div>
 
-      {tab === 'users' && (
+           {tab === 'users' && (
         <UserManagementTab
           users={users}
           search={search}
           onSearchChange={setSearch}
           onAddUser={() => setAddOpen(true)}
+          onBulkImport={() => setBulkOpen(true)}
           onEdit={setEditId}
           onToggleActive={handleToggleActive}
           onDelete={handleDelete}
           onChangePassword={setPwUserId}
         />
       )}
+      {tab === 'active-patients' && <ActivePatientsTab users={users} onView={setEditId} onToggleActive={handleToggleActive} />}
       {tab === 'perms' && <PermissionsTab users={users} onTogglePerm={handleTogglePerm} />}
 
       <AddUserModal isOpen={addOpen} existingUsers={users} onClose={() => setAddOpen(false)} onSave={handleAddUser} onError={(msg) => show(msg, 'error')} />
+
+      <BulkImportModal isOpen={bulkOpen} existingUsers={users} onClose={() => setBulkOpen(false)} onImport={handleBulkImportUsers} onError={(msg) => show(msg, 'error')} />
 
       <EditUserModal key={editId ?? 'edit-user-closed'} isOpen={editId !== null} user={editingUser} onClose={() => setEditId(null)} onSave={handleEditSave} />
 

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { COURSES, YEAR_LEVELS } from '@features/maintenance/data/formOptions'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import { validatePassword } from '@features/maintenance/lib/userHelpers'
-import { registerPatient, checkStudentNumberRegistered } from '@services/usersService'
+import { registerPatient, checkStudentNumberRegistered, checkEmailRegistered } from '@services/usersService'
 import { invokeEdgeFunction } from '@services/edgeFunctions'
 import { notify } from '@services/notificationsService'
 import { supabase } from '@services/supabaseClient'
@@ -295,14 +295,17 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
       }
       if (!form.idType) return setErr('Please select whether you are registering as a Student or Personnel.')
       if (!form.userId.trim()) return setErr('User Number is required.')
-      const rawUserId = form.userId.trim().toUpperCase()
+                    const rawUserId = form.userId.trim().toUpperCase()
       const isStudentNumber = /^\d{10}$/.test(rawUserId)
-      const isPersonnelNumber = /^[A-Z]{2,6}\d{4,10}$/.test(rawUserId)
+      // Personnel ID: letters only, or letters followed by numbers — no
+      // longer locked to the strict "exactly 3 letters + 7 numbers" shape,
+      // so a letters-only ID (e.g. "CMP") is accepted too.
+      const isPersonnelNumber = /^[A-Z]+[0-9]*$/.test(rawUserId)
       if (form.idType === 'student' && !isStudentNumber) {
         return setErr('User Number must be a 10-digit student number (2023-400-878).')
       }
       if (form.idType === 'personnel' && !isPersonnelNumber) {
-        return setErr('User Number must be a personnel ID like CMP-123456.')
+        return setErr('User Number must start with letters (numbers are optional), e.g. CMP or CMP1234567.')
       }
       if (form.phone.trim() && !/^09\d{9}$/.test(form.phone.trim())) return setErr('Phone must be in format 09XXXXXXXXX (11 digits).')
 
@@ -359,7 +362,30 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   async function handleReviewClick() {
     setErr('')
     const email = form.email.trim().toLowerCase()
-    if (!email) return setErr('Email address is required.')
+        if (!email) return setErr('Email address is required.')
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setErr('Please enter a valid email address.')
+
+    // Stop right here if this email already has an account — same idea as
+    // checkStudentNumberRegistered on Step 1: fail before the (slower)
+    // domain-DNS check below, and well before doRegister() ever tries to
+    // create anything server-side. Previously this was only ever caught
+    // AFTER attempting account creation, via the Postgres 23505
+    // duplicate-key error in doRegister()'s catch block — so registration
+    // didn't actually stop here; it let the person fill out the rest of
+    // the form, click Create Account, and only then got rejected.
+    setCheckingEmailDomain(true)
+    try {
+      const emailAlreadyRegistered = await checkEmailRegistered(email)
+      if (emailAlreadyRegistered) {
+        return setErr('An account with this email already exists. Please sign in instead, or use Forgot Password if you need to recover it.')
+      }
+    } catch (err) {
+      console.error('checkEmailRegistered failed, proceeding anyway:', err.message)
+    } finally {
+      setCheckingEmailDomain(false)
+    }
+
+    // Catches a typo'd/nonexistent domain (gmial.com, yaho.com, a
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setErr('Please enter a valid email address.')
 
     // Catches a typo'd/nonexistent domain (gmial.com, yaho.com, a
@@ -722,39 +748,45 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     <label>
                       User Number <span className="reg-req">*</span>
                     </label>
-                    <input
+                                        <input
                       type="text"
                       className="reg-input"
-                      placeholder={form.idType === 'personnel' ? 'PID-0498' : form.idType === 'student' ? '2023-000-000' : 'Select Student or Personnel above first'}
+                      placeholder={form.idType === 'personnel' ? 'CMP or CMP1234567' : form.idType === 'student' ? '2023-000-000' : 'Select Student or Personnel above first'}
                       autoComplete="off"
                       disabled={!form.idType}
-                      maxLength={form.idType === 'personnel' ? 16 : 10}
                       value={formatUserNumber(form.userId)}
                       onChange={(e) => {
                         setDuplicateBlocked(false)
                         const raw = e.target.value.toUpperCase()
-                        // Driven entirely by the idType dropdown above now —
+                                                // Driven entirely by the idType dropdown above now —
                         // no more guessing the format from whichever
                         // character was typed first. Student is digits
-                        // only (matching stepNext()'s 10-digit check);
-                        // Personnel is letters+digits (matching the
-                        // CMP-123456 pattern) capped at 16 chars (the
-                        // regex's own max: up to 6 letters + up to 10
-                        // digits) rather than the old hardcoded 10, which
-                        // would have silently truncated a valid longer
-                        // personnel ID before it could ever pass
-                        // validation.
+                        // only, capped at 10 (matching stepNext()'s
+                        // 10-digit check); Personnel is letters only, or
+                        // letters followed by numbers, capped at 10 raw
+                        // characters total (matching stepNext()'s
+                        // /^[A-Z]+[0-9]*$/ check). No native
+                        // maxLength attribute on the <input> anymore — it
+                        // used to cap the DASH-FORMATTED display value
+                        // (e.g. "2023-000-878", 12 characters) at 10
+                        // characters, which silently blocked the last ~2
+                        // real digits from ever being typed. This
+                        // cleaned.slice(0, cap) already correctly caps the
+                        // RAW character count on every keystroke, so the
+                        // native attribute was redundant and actively
+                        // wrong; formatUserNumber() re-adds the dashes for
+                        // display afterward.
                         const cleaned = form.idType === 'student' ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^A-Z0-9]/g, '')
-                        const cap = form.idType === 'personnel' ? 16 : 10
+                        const cap = 10
                         setField('userId')(cleaned.slice(0, cap))
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
                       <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                        {form.idType === 'personnel' ? 'Personnel ID, e.g. PID-0498' : form.idType === 'student' ? 'Student ID, e.g. 2023-000-000 ' : 'Select Student or Personnel above'}
+               {form.idType === 'personnel' ? 'Personnel ID: letters only, or letters + numbers, e.g. CMP or CMP1234567' : form.idType === 'student' ? 'Student ID, e.g. 2023-000-000 ' : 'Select Student or Personnel above'}
                       </span>
-                      <span style={{ fontSize: 11, color: form.userId.length >= (form.idType === 'personnel' ? 16 : 10) ? '#EF4444' : 'var(--text-3)' }}>
-                        {form.userId.length}/{form.idType === 'personnel' ? 16 : 10}
+                      <span style={{ fontSize: 11, color: form.userId.length >= 10 ? '#EF4444' : 'var(--text-3)' }}>
+                        {form.userId.length}/10
                       </span>
                     </div>
                   </div>

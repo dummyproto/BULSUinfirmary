@@ -4,7 +4,7 @@ import PasswordInput from '@components/ui/PasswordInput'
 import { COURSES, YEAR_LEVELS } from './data/formOptions'
 import { validatePassword, initialsFor } from './lib/userHelpers'
 import { buildFullName } from '@features/profile/lib/profileHelpers'
-import { PlusIcon } from '@components/ui/icons'
+import { PlusIcon, MailIcon } from '@components/ui/icons'
 import { capitalizeWords } from '@lib/format'
 
 // Same format as registration (RegisterModal.jsx) and EditUserModal.jsx
@@ -140,18 +140,22 @@ export default function AddUserModal({ isOpen, existingUsers, onClose, onSave, o
             <input className="form-input" placeholder="e.g., Juan dela Cruz" value={form.name} onChange={(e) => setField('name')(e.target.value)} />
           </div>
         )}
-        <div className="form-group">
+        <div className="form-group full">
           <label>EMAIL *</label>
-          <input className="form-input" type="email" placeholder="user@school.edu" value={form.email} onChange={(e) => setField('email')(e.target.value)} />
+          <input className="form-input" type="email" placeholder="user@gmail.com" value={form.email} onChange={(e) => setField('email')(e.target.value)} />
+          <span style={{ fontSize: 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <MailIcon width={11} height={11} /> A verification email is sent here — the account can't log in until this address is confirmed.
+          </span>
         </div>
         <div className="form-group">
           <label>PASSWORD *</label>
           <PasswordInput
-          placeholder="Min 8 characters"
-          value={form.password}
-          onChange={(e) => setField('password')(e.target.value)}
-          style={passwordValid === null ? undefined : { borderColor: passwordValid ? '#22C55E' : '#EF4444' }}
-        />
+            placeholder="Min 8 characters"
+            value={form.password}
+            onChange={(e) => setField('password')(e.target.value)}
+            style={passwordValid === null ? undefined : { borderColor: passwordValid ? '#22C55E' : '#EF4444' }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Their starting password — they can change it later in Account Settings.</span>
         </div>
         <div className="form-group">
           <label>ROLE *</label>

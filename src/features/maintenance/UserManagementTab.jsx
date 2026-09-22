@@ -4,12 +4,12 @@ import SearchInput from '@components/ui/SearchInput'
 import Toggle from '@components/ui/Toggle'
 import { roleBadgeInfo } from './lib/userHelpers'
 import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
-import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from '@components/ui/icons'
+import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, FileSpreadsheetIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
 
 const ROLE_ORDER = { admin: 0, staff: 1, patient: 2 }
 
-export default function UserManagementTab({ users, search, onSearchChange, onAddUser, onEdit, onToggleActive, onDelete, onChangePassword }) {
+export default function UserManagementTab({ users, search, onSearchChange, onAddUser, onBulkImport, onEdit, onToggleActive, onDelete, onChangePassword }) {
   const [showMore, setShowMore] = useState(defaultShowMore)
   const q = search.toLowerCase()
   const filtered = search
@@ -36,6 +36,9 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
           >
             {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
             <span>{showMore ? 'View Less' : 'View More'}</span>
+          </button>
+                    <button type="button" className="btn btn-xs btn-outline" onClick={onBulkImport} title="Add Users via CSV">
+            <FileSpreadsheetIcon width={13} height={13} /> Add Users via CSV
           </button>
           <button type="button" className="btn btn-xs btn-blue" onClick={onAddUser} title="Add User">
             <PlusIcon width={13} height={13} /> Add User
