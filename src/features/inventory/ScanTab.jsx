@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
-import { timeAgo } from './lib/inventoryHelpers'
-import { parseQRPayload } from './ScanVerifyModal'
+import { BarcodeFormat, DecodeHintType } from '@zxing/library'
+import jsQR from 'jsqr'
+import Modal from '@components/ui/Modal'
+import { formatDate, formatDateTime } from '@lib/format'
+import { timeAgo, findInventoryItemsByName } from './lib/inventoryHelpers'
+import { parseQRPayload, parseMultiQRPayload } from './ScanVerifyModal'
 import {
   RefreshCwIcon,
   SearchIcon,
@@ -9,7 +13,6 @@ import {
   CheckCircleIcon,
   CameraIcon,
   ImageIcon,
-  KeyboardIcon,
   SquareIcon,
   TrashIcon,
   ClipboardIcon,
@@ -19,17 +22,81 @@ import {
   MaximizeIcon,
   CheckIcon,
   FileTextIcon,
-  TagIcon,
   EyeIcon,
-  XIcon,
 } from '@components/ui/icons'
 
-const SAMPLE_QR = '{"name":"Vitamin B Complex","category":"Medicine","qty":150,"unit":"Tablets","batch":"VBC-2026-001","expiry":"2028-09-30","supplier":"HealthPlus","minStock":30}'
 const TEST_SCANS = [
   { label: 'Restock Existing', data: '{"name":"Paracetamol 500mg","category":"Medicine","qty":50,"unit":"Tablets","batch":"PCT-2026-002","expiry":"2028-06-30","supplier":"MedSupply","minStock":50}' },
 ]
 
 const STATUS_ICONS = { info: SearchIcon, success: CheckCircleIcon, error: AlertTriangleIcon }
+
+// ZXing reader tuned for real-world scans: TRY_HARDER makes it search the
+// whole frame (rotated/tilted/small codes) instead of a fast single pass,
+// and listing only the formats this app actually uses stops it from wasting
+// time (and console warnings) on formats it never needs.
+function createScanReader() {
+  const hints = new Map()
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.QR_CODE,
+    BarcodeFormat.CODE_128,
+    BarcodeFormat.CODE_39,
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,
+    BarcodeFormat.UPC_E,
+    BarcodeFormat.ITF,
+    BarcodeFormat.CODABAR,
+  ])
+  hints.set(DecodeHintType.TRY_HARDER, true)
+  return new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120, delayBetweenScanSuccess: 500 })
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Image failed to load'))
+    img.src = src
+  })
+}
+
+// Decodes an uploaded image the robust way. Large phone photos (3000-4000px)
+// often fail when handed to ZXing at full size, so this tries the image at
+// several sizes, and at each size tries ZXing first and then jsQR (the same
+// library the login/register QR scanners already use successfully) before
+// moving on. Returns the decoded text, or null if nothing could be read.
+async function decodeImageRobust(reader, src) {
+  const img = await loadImageElement(src)
+  const natW = img.naturalWidth || img.width
+  const natH = img.naturalHeight || img.height
+  const longest = Math.max(natW, natH)
+  const seen = new Set()
+  for (const maxSide of [Math.min(longest, 2000), 1400, 1000, 700, 450]) {
+    const scale = Math.min(1, maxSide / longest)
+    const w = Math.max(1, Math.round(natW * scale))
+    const h = Math.max(1, Math.round(natH * scale))
+    const key = `${w}x${h}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#fff' // transparent PNGs would otherwise decode as black
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(img, 0, 0, w, h)
+    try {
+      return reader.decodeFromCanvas(canvas).getText()
+    } catch {
+      // ZXing found nothing at this size — fall through to jsQR.
+    }
+    const frame = ctx.getImageData(0, 0, w, h)
+    const code = jsQR(frame.data, w, h, { inversionAttempts: 'attemptBoth' })
+    if (code?.data) return code.data
+  }
+  return null
+}
 
 function StatusIcon({ status }) {
   const Icon = STATUS_ICONS[status.kind] || SearchIcon
@@ -40,45 +107,59 @@ function StatusIcon({ status }) {
   )
 }
 
-// Best-effort parse of the most recent scan_history row into the fields
-// the "Scanned Item" panel wants (batch/expiry aren't columns on
-// scan_history itself — see services/inventoryService.addScanHistory —
-// so they're recovered from the same raw_data payload
-// parseQRPayload/ScanVerifyModal already knows how to read). Our own
-// printed batch QR codes (type:'batch') have a different shape with no
-// `name` field, so this falls back to scan_history's own item_name/
-// category/quantity columns whenever the raw payload doesn't parse into
-// something usable — the panel always shows *something* sensible
-// regardless of which kind of code was scanned.
-function summarizeLastScan(entry) {
+// Best-effort parse of ONE scan_history row into everything the "Scan
+// Details" window shows. batch/expiry/supplier/etc. aren't columns on
+// scan_history itself (see services/inventoryService.addScanHistory), so
+// they're recovered from the same raw_data payload parseQRPayload /
+// ScanVerifyModal already knows how to read. Our own printed batch QR
+// codes (type:'batch') have a different shape with no `name`, and a
+// whole-delivery code holds several items — so a payload only counts as
+// "usable" when it parses to a named item; otherwise the row's own
+// item_name / category / quantity columns are shown instead, so the
+// window always shows *something* sensible whichever code was scanned.
+function summarizeScan(entry) {
   if (!entry) return null
   let parsed = null
+  let multi = null
   try {
-    parsed = entry.raw_data ? parseQRPayload(entry.raw_data) : null
+    if (entry.raw_data) {
+      parsed = parseQRPayload(entry.raw_data)
+      if (!parsed) multi = parseMultiQRPayload(entry.raw_data)
+    }
   } catch {
-    // parsed stays null — already its initial value, nothing to reset.
+    // parsed/multi stay null — already their initial values, nothing to reset.
   }
+  const usable = parsed && parsed.name ? parsed : null
+  const qty = usable ? usable.qty : entry.quantity
   return {
-    name: parsed?.name || entry.item_name || 'Unknown item',
-    category: parsed?.category || entry.category || '—',
-    batch: parsed?.batch || '—',
-    expiry: parsed?.expiry || '—',
-    stock: parsed?.qty != null ? `${parsed.qty} ${parsed.unit || ''}`.trim() : entry.quantity != null ? String(entry.quantity) : '—',
+    name: usable?.name || entry.item_name || 'Unknown item',
+    category: usable?.category || entry.category || '—',
+    quantity: qty != null && qty !== '' ? `${qty} ${usable?.unit || ''}`.trim() : '—',
+    batch: usable?.batch || '—',
+    expiry: usable?.expiry || '',
+    supplier: usable?.supplier || '—',
+    minStock: usable?.minStock != null ? String(usable.minStock) : '—',
+    received: usable?.receivedDate || '',
     result: entry.result,
     scannedAt: entry.scanned_at,
+    rawData: entry.raw_data || '',
+    items: multi,
   }
 }
 
-export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete, scanPaused }) {
-  const [panel, setPanel] = useState(null) // 'manual' | 'upload' | null
-  const [manualValue, setManualValue] = useState('')
+export default function ScanTab({ scanHistory, inventory, onProcessRaw, canDelete, onDelete, onViewItem, scanPaused }) {
+  const [panel, setPanel] = useState(null) // 'upload' | null
   const [imagePreview, setImagePreview] = useState(null)
   const [imageFile, setImageFile] = useState(null)
   const [decodeStatus, setDecodeStatus] = useState({ text: '', kind: 'info' })
   const [decoding, setDecoding] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
-  const historyCardRef = useRef(null)
+  // Scan Details window. detailOpen and detailEntry are separate on
+  // purpose: Modal fades out for ~180ms after isOpen goes false, and
+  // keeping the entry around until then stops the content from going
+  // blank mid-fade.
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailEntry, setDetailEntry] = useState(null)
 
   // Same enter-selection-mode-first pattern as NotificationCenterTab.jsx
   // and the main Topbar notifications bell — checkboxes stay hidden
@@ -106,17 +187,11 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
     setHistorySelectionMode(false)
   }
 
-  // Below 768px, .qr-scan-layout collapses to a single column (see
-  // legacy.css), so the Scanned Item + Scan History panel ends up
-  // stacked far below the camera section instead of sitting beside it.
-  // Tapping "Scan History" DOES correctly toggle it open — but with no
-  // scroll, it opens off-screen below whatever the person is currently
-  // looking at, which reads as "the button didn't do anything" even
-  // though it worked. Scrolling it into view on open fixes that,
-  // without needing to change the layout itself.
-  useEffect(() => {
-    if (historyOpen) historyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [historyOpen])
+  function openScanDetails(entry) {
+    setDetailEntry(entry)
+    setDetailOpen(true)
+  }
+
   // OCR (read text/handwriting) — separate from decoding/decodeStatus
   // above (that's for QR/barcode). OCR runs on the SAME uploaded image
   // but through Tesseract.js instead of ZXing, and the result is never
@@ -154,7 +229,30 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
   // set up once in startCamera() and would otherwise see a stale,
   // captured-at-mount-time value of this if it were React state.
   const lastScanRef = useRef({ text: '', at: 0 })
-  if (codeReaderRef.current === null) codeReaderRef.current = new BrowserMultiFormatReader()
+  // jsQR fallback for the live camera: ZXing's callback also fires on frames
+  // where it found nothing, so those frames get a second chance with jsQR
+  // (throttled, on a downscaled copy of the frame, to stay cheap).
+  const fallbackCanvasRef = useRef(null)
+  const lastFallbackAtRef = useRef(0)
+  function readFrameWithJsQr(video) {
+    if (!video || !video.videoWidth) return null
+    const now = Date.now()
+    if (now - lastFallbackAtRef.current < 250) return null
+    lastFallbackAtRef.current = now
+    if (!fallbackCanvasRef.current) fallbackCanvasRef.current = document.createElement('canvas')
+    const canvas = fallbackCanvasRef.current
+    const scale = Math.min(1, 800 / Math.max(video.videoWidth, video.videoHeight))
+    const w = Math.round(video.videoWidth * scale)
+    const h = Math.round(video.videoHeight * scale)
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(video, 0, 0, w, h)
+    const frame = ctx.getImageData(0, 0, w, h)
+    const code = jsQR(frame.data, w, h, { inversionAttempts: 'attemptBoth' })
+    return code?.data || null
+  }
+  if (codeReaderRef.current === null) codeReaderRef.current = createScanReader()
   // Mirrors the `scanPaused` prop into a ref for the same reason
   // lastScanRef exists — the decode callback below is handed to ZXing
   // ONCE per startCamera() call and keeps firing on every frame after
@@ -168,11 +266,12 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
 
     useEffect(() => stopCamera, []) // stop the camera if the page is left while scanning
 
-  // scan_history is fetched newest-first (listScanHistory orders by
-  // scanned_at descending), so the most recent scan is simply index 0 —
-  // no need for the reverse()/slice() gymnastics the history list below
-  // uses for its own, separate display purposes.
-  const lastScan = summarizeLastScan(scanHistory[0])
+  // The scan history row currently open in the "Scanned Item Details"
+  // window, parsed into display fields (null until a row is clicked).
+  const detail = summarizeScan(detailEntry)
+  // The current inventory record for the scanned item (null for a whole-
+  // delivery scan, or if the item has since been removed from inventory).
+  const detailMatch = detail && !detail.items && inventory ? findInventoryItemsByName(inventory, detail.name)[0] || null : null
 
   function togglePanel(name) {
     setPanel((p) => (p === name ? null : name))
@@ -214,9 +313,9 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
       // read as many different items in a row as the person presents,
       // without ever needing to restart the camera in between.
       scanControlsRef.current = await codeReaderRef.current.decodeFromVideoElement(videoRef.current, (result) => {
-        if (!result) return
         if (scanPausedRef.current) return
-        const text = result.getText()
+        const text = result ? result.getText() : readFrameWithJsQr(videoRef.current)
+        if (!text) return
         const now = Date.now()
         if (text === lastScanRef.current.text && now - lastScanRef.current.at < 3000) return
         lastScanRef.current = { text, at: now }
@@ -229,7 +328,7 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
         err.name === 'NotAllowedError'
           ? 'Camera access denied. Please allow camera access in browser settings.'
           : err.name === 'NotFoundError'
-            ? 'No camera found. Use Manual Entry instead.'
+            ? 'No camera found. Use Upload Image instead.'
             : `Camera error: ${err.message}`
       setDecodeStatus({ text: msg, kind: 'error' })
     } finally {
@@ -273,12 +372,6 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
     } else {
       viewportRef.current?.requestFullscreen?.().catch(() => {})
     }
-  }
-
-  function handleManualSubmit() {
-    if (!manualValue.trim()) return
-    setPanel(null)
-    onProcessRaw(manualValue)
   }
 
   // iPhones save camera photos as HEIC by default — a format neither
@@ -343,11 +436,15 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
       // photos and unusual angles more robustly than the manual
       // multi-scale canvas loop this replaced, and now catches barcodes
       // (Code 128, EAN, UPC, etc.) in addition to QR codes.
-      const result = await codeReaderRef.current.decodeFromImageUrl(imagePreview)
+      const text = await decodeImageRobust(codeReaderRef.current, imagePreview)
       setDecoding(false)
+      if (!text) {
+        setDecodeStatus({ text: 'No QR code or barcode found. Use a clearer, well-lit image.', kind: 'error' })
+        return
+      }
       setDecodeStatus({ text: 'Code detected!', kind: 'success' })
       setPanel(null)
-      onProcessRaw(result.getText())
+      onProcessRaw(text)
     } catch {
       setDecoding(false)
       setDecodeStatus({ text: 'No QR code or barcode found. Use a clearer, well-lit image.', kind: 'error' })
@@ -564,46 +661,9 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
                   >
                     <ClipboardIcon width={12} height={12} /> Copy
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    onClick={() => {
-                      setManualValue(ocrText)
-                      setOcrText(null)
-                      setPanel('manual')
-                    }}
-                    title="Paste this text into Manual Entry so you can reformat it into the expected fields"
-                  >
-                    <KeyboardIcon width={12} height={12} /> Edit in Manual Entry
-                  </button>
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {panel === 'manual' && (
-          <div className="card scan-manual-wrap" style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '.05em' }}>PASTE QR DATA / BARCODE VALUE</label>
-            <textarea
-              className="form-input scan-manual-textarea"
-              rows={6}
-              value={manualValue}
-              onChange={(e) => setManualValue(e.target.value)}
-              placeholder={`Paste QR payload, e.g.: {"name":"Paracetamol 500mg","category":"Medicine","qty":100,"unit":"Tablets","batch":"PCT-2026-001","expiry":"2028-06-30","supplier":"PharmaCorp","minStock":50}\nor pipe format: Paracetamol 500mg|Medicine|100|Tablets|PCT-2026-001|2028-06-30|PharmaCorp|50`}
-              style={{ fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6, resize: 'vertical', marginTop: 8 }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button type="button" className="btn btn-blue" onClick={handleManualSubmit}>
-                <SearchIcon width={13} height={13} /> Process QR Data
-              </button>
-              <button type="button" className="btn btn-outline" onClick={() => setManualValue(SAMPLE_QR)}>
-                <ClipboardIcon width={13} height={13} /> Load Sample
-              </button>
-              <button type="button" className="btn btn-outline" onClick={() => setPanel(null)}>
-                Cancel
-              </button>
-            </div>
           </div>
         )}
 
@@ -618,58 +678,23 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
           </div>
         </div>
 
-        {/* Bottom action row — Scan History toggles the panel on the
-            right open on mobile (where it's stacked below instead of a
-            side column); Manual Entry mirrors the reference design's
-            bottom button pair. */}
+        {/* Bottom action row — Upload Image opens the image-upload panel
+            (replaces the old Manual Entry button). The Scan History
+            button that used to sit beside it is gone: Scan History is now
+            always visible in the side panel. */}
         <div className="qr-bottom-actions">
-          <button type="button" className="btn btn-outline" onClick={() => setHistoryOpen((v) => !v)}>
-            <HistoryIcon width={13} height={13} /> Scan History
-          </button>
-          <button type="button" className="btn btn-blue" onClick={() => togglePanel('manual')}>
-            <KeyboardIcon width={13} height={13} /> Manual Entry
+          <button type="button" className="btn btn-blue" onClick={() => togglePanel('upload')}>
+            <ImageIcon width={13} height={13} /> Upload Image
           </button>
         </div>
       </div>
 
-      {/* Right — last scanned item + history */}
-      <div className={`qr-side-panel${historyOpen ? ' history-open' : ''}`}>
-        <div className="card qr-scanned-item-card">
-          <div className="card-header">
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><TagIcon width={15} height={15} /> Scanned Item</h3>
-          </div>
-          {lastScan ? (
-            <div style={{ padding: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>{lastScan.name}</div>
-              <div className="detail-row">
-                <span className="detail-label">Category</span>
-                <span className="detail-value">{lastScan.category}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Batch Number</span>
-                <span className="detail-value">{lastScan.batch}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Expiry Date</span>
-                <span className="detail-value">{lastScan.expiry}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Stock</span>
-                <span className="detail-value">{lastScan.stock}</span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>Scanned {timeAgo(lastScan.scannedAt)}</div>
-              <button type="button" className="btn btn-blue" style={{ width: '100%', marginTop: 14 }} onClick={() => setHistoryOpen(true)}>
-                <EyeIcon width={13} height={13} /> View Item Details
-              </button>
-            </div>
-          ) : (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
-              Nothing scanned yet — start the camera or use Manual Entry to get started.
-            </div>
-          )}
-        </div>
-
-        <div className="card qr-history-card" ref={historyCardRef}>
+      {/* Right — Scan History (replaces the old "Scanned Item" card).
+          .qr-history-card is display:none unless its parent has the
+          .history-open class (legacy.css), so that class is always on
+          now — the history no longer has a toggle button. */}
+      <div className="qr-side-panel history-open">
+        <div className="card qr-history-card">
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 6 }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><HistoryIcon width={15} height={15} /> Scan History</h3>
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
@@ -683,9 +708,6 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
                   {historySelectionMode ? 'Cancel' : (<><TrashIcon width={12} height={12} /> Delete</>)}
                 </button>
               )}
-              <button type="button" className="qr-history-close-btn" onClick={() => setHistoryOpen(false)} aria-label="Close">
-                <XIcon width={14} height={14} />
-              </button>
             </div>
           </div>
           {canDelete && historySelectionMode && visibleHistory.length > 0 && (
@@ -699,12 +721,27 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
               <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>No scans yet</div>
             )}
             {visibleHistory.map((s) => (
-              <div className="scan-history-item" key={s.scan_id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div
+                className="scan-history-item"
+                key={s.scan_id}
+                role="button"
+                tabIndex={0}
+                title={historySelectionMode ? 'Select this scan' : 'View full details'}
+                onClick={() => (historySelectionMode ? toggleHistoryOne(s.scan_id) : openScanDetails(s))}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  if (historySelectionMode) toggleHistoryOne(s.scan_id)
+                  else openScanDetails(s)
+                }}
+                style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}
+              >
                 {historySelectionMode && (
                   <input
                     type="checkbox"
                     checked={historySelected.includes(s.scan_id)}
                     onChange={() => toggleHistoryOne(s.scan_id)}
+                    onClick={(e) => e.stopPropagation()}
                     style={{ marginTop: 3, flexShrink: 0 }}
                   />
                 )}
@@ -721,13 +758,115 @@ export default function ScanTab({ scanHistory, onProcessRaw, canDelete, onDelete
                   <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
                     Qty: {s.quantity} · {s.category}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{timeAgo(s.scanned_at)}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{timeAgo(s.scanned_at)}</span>
+                    {/* Icon-only view button. Decorative on purpose (the whole
+                        row is already the clickable control, and its title
+                        reads "View full details") — a real <button> in here
+                        would nest one interactive element inside another. */}
+                    {!historySelectionMode && (
+                      <span
+                        aria-hidden="true"
+                        style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--surface2)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                      >
+                        <EyeIcon width={13} height={13} />
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        title="Scanned Item Details"
+        icon={<EyeIcon width={16} height={16} />}
+        wide={!!detail?.items}
+        actions={
+          <>
+            <button type="button" className="btn btn-outline" onClick={() => setDetailOpen(false)}>
+              Close
+            </button>
+            {detailMatch && onViewItem && (
+              <button
+                type="button"
+                className="btn btn-blue"
+                onClick={() => {
+                  setDetailOpen(false)
+                  onViewItem(detailMatch)
+                }}
+              >
+                <EyeIcon width={13} height={13} /> View Inventory Item
+              </button>
+            )}
+          </>
+        }
+      >
+        {detail && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{detail.items ? `Delivery of ${detail.items.length} items` : detail.name}</div>
+              <span className={`badge ${detail.result === 'Saved' ? 'badge-green' : detail.result === 'Duplicate' ? 'badge-orange' : 'badge-red'} badge-no-dot`}>
+                {detail.result}
+              </span>
+            </div>
+
+            {detail.items ? (
+              <div className="table-wrap" style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
+                <table className="compact-table">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Quantity</th>
+                      <th>Batch</th>
+                      <th>Expiry</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.items.map((it, idx) => (
+                      <tr key={`${it.name}-${it.batch}-${idx}`}>
+                        <td style={{ fontSize: 12 }}>{it.name}</td>
+                        <td style={{ fontSize: 12 }}>{`${it.qty} ${it.unit || ''}`.trim()}</td>
+                        <td style={{ fontSize: 12 }}>{it.batch || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{it.expiry ? formatDate(it.expiry) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <>
+                <div className="detail-row"><span className="detail-label">Category</span><span className="detail-value">{detail.category}</span></div>
+                <div className="detail-row"><span className="detail-label">Quantity</span><span className="detail-value">{detail.quantity}</span></div>
+                <div className="detail-row"><span className="detail-label">Batch Number</span><span className="detail-value">{detail.batch}</span></div>
+                <div className="detail-row"><span className="detail-label">Expiry Date</span><span className="detail-value">{detail.expiry ? formatDate(detail.expiry) : '—'}</span></div>
+                <div className="detail-row"><span className="detail-label">Supplier</span><span className="detail-value">{detail.supplier}</span></div>
+                <div className="detail-row"><span className="detail-label">Minimum Stock</span><span className="detail-value">{detail.minStock}</span></div>
+                <div className="detail-row"><span className="detail-label">Date Received</span><span className="detail-value">{detail.received ? formatDate(detail.received) : '—'}</span></div>
+              </>
+            )}
+
+            <div className="detail-row"><span className="detail-label">Result</span><span className="detail-value">{detail.result}</span></div>
+            <div className="detail-row">
+              <span className="detail-label">Scanned</span>
+              <span className="detail-value">{formatDateTime(detail.scannedAt)} ({timeAgo(detail.scannedAt)})</span>
+            </div>
+
+            {detail.rawData && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 6 }}>RAW SCAN DATA</div>
+                <pre style={{ margin: 0, padding: 10, maxHeight: 140, overflow: 'auto', fontSize: 11, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {detail.rawData}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

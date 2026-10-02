@@ -24,8 +24,16 @@ import ReplenishModal from './ReplenishModal'
 import ReleaseModal from './ReleaseModal'
 import ReleasePickerModal from './ReleasePickerModal'
 import RestoreEquipmentModal from './RestoreEquipmentModal'
-import ScanVerifyModal, { parseQRPayload } from './ScanVerifyModal'
-import { getInventoryStatus, mergeDisplayExpirationDate, findInventoryItemMatch, itemKey, isPastISODate, batchKey } from './lib/inventoryHelpers'
+import ScanVerifyModal, { parseQRPayload, parseMultiQRPayload } from './ScanVerifyModal'
+import ScanMultiVerifyModal from './ScanMultiVerifyModal'
+import {
+  getInventoryStatus,
+  mergeDisplayExpirationDate,
+  itemKey,
+  isPastISODate,
+  batchKey,
+  findInventoryItemMatch,
+} from './lib/inventoryHelpers'
 import {
   listInventory,
   createInventoryItem,
@@ -129,6 +137,7 @@ export default function InventoryPage() {
   const [releasePickerOpen, setReleasePickerOpen] = useState(false)
   const [restoreItemId, setRestoreItemId] = useState(null)
   const [scanVerify, setScanVerify] = useState(null) // { rawData, matchedItem }
+  const [scanMultiVerify, setScanMultiVerify] = useState(null) // { rawData, items }
 
   const [addBatchOpen, setAddBatchOpen] = useState(false)
   const [editBatchId, setEditBatchId] = useState(null)
@@ -886,7 +895,7 @@ export default function InventoryPage() {
     setRestoreItemId(null)
   }
 
-  // ── SCAN ──
+    // ── SCAN ──
   async function handleProcessRaw(raw) {
     // Our own batch QR codes carry a `type: 'batch'` marker (see
     // BatchQRModal.buildBatchQRPayload) — a generic external/supplier QR
@@ -897,6 +906,17 @@ export default function InventoryPage() {
     let pendingItemPayload = null
     try {
       const obj = JSON.parse(raw.trim())
+
+      // A bare JSON array — a whole delivery encoded as one scan — is
+      // checked first and returns immediately: it can never also be a
+      // batch or pending-item payload (those are both single objects),
+      // so there's nothing below worth falling through to.
+      const multiItems = parseMultiQRPayload(raw)
+      if (multiItems) {
+        setScanMultiVerify({ rawData: raw, items: multiItems })
+        return
+      }
+
       if (obj && obj.type === 'batch' && obj.medicine_batch_id) batchPayload = obj
       // "Pending item" QR codes come from the standalone QR generator
       // tool — printed for an item that doesn't exist in inventory yet,
@@ -1027,7 +1047,94 @@ export default function InventoryPage() {
       show(`Failed to save scanned item: ${err.message}`, 'error')
     }
   }
+  // Save handler for ScanMultiVerifyModal — mirrors handleScanSave's
+  // per-item logic (medicine → new batch, everything else → merge or
+  // create) but loops over every row the person left checked, and logs
+  // one scan-history entry for the whole delivery rather than one per
+  // item.
+  async function handleMultiScanSave(items) {
+    let added = 0
+    let restocked = 0
+    try {
+      for (const it of items) {
+        const supplierRow = it.supplier ? suppliers.find((s) => s.supplier_name === it.supplier) : null
+        const match = findInventoryItemMatch(inventory, { name: it.name, category: it.category, unit: it.unit, supplier: supplierRow?.supplier_name || it.supplier || null })
 
+        if (it.category === 'Medicine') {
+          if (match && match._source === 'medicine') {
+            await replenishMedicineAsNewBatch({
+              medicineId: match._id,
+              quantity: it.qty,
+              expirationDate: it.expiry || null,
+              receivedDate: null,
+              supplierId: supplierRow?.supplier_id || null,
+              batchNumber: it.batch || null,
+              staffId: currentUserId,
+              notes: 'Multi-item QR scan stock-in',
+            })
+            restocked++
+          } else {
+            const medicine = await createMedicine({ medicine_name: it.name, unit: it.unit, min_stock: it.minStock || 0, active: true })
+            await replenishMedicineAsNewBatch({
+              medicineId: medicine.medicine_id,
+              quantity: it.qty,
+              expirationDate: it.expiry || null,
+              receivedDate: null,
+              supplierId: supplierRow?.supplier_id || null,
+              batchNumber: it.batch || null,
+              staffId: currentUserId,
+              notes: 'Multi-item QR scan — initial stock',
+            })
+            added++
+          }
+          continue
+        }
+
+        if (match) {
+          await mergeQuantityIntoItem(
+            match,
+            {
+              min_stock: it.minStock || match.min_stock,
+              expiration_date: mergeDisplayExpirationDate(match.expiration_date, it.expiry),
+              batch_no: it.batch || match.batch_no,
+              supplier: supplierRow?.supplier_name || match.supplier,
+            },
+            { quantity: it.qty, notes: 'Multi-item QR scan stock-in' }
+          )
+          restocked++
+        } else {
+          const created = await createInventoryItem({
+            name: it.name, category: it.category, quantity: it.qty, unit: it.unit, min_stock: it.minStock || 0,
+            expiration_date: it.expiry || null, batch_no: it.batch || null, received_date: null,
+            supplier: supplierRow?.supplier_name || it.supplier || null, is_fifo: false, needs_maintenance: false,
+          })
+          if (it.qty > 0) {
+            await addInventoryLog({ inventoryId: created.inventory_id, actionType: 'Replenish', quantityChange: it.qty, previousQuantity: 0, newQuantity: it.qty, staffId: currentUserId, notes: 'Multi-item QR scan — initial stock' })
+          }
+          added++
+        }
+      }
+
+      await addScanHistory({
+        scannedBy: currentUserId,
+        itemName: items.length === 1 ? items[0].name : `${items.length} items`,
+        category: items.length === 1 ? items[0].category : 'Multiple',
+        quantity: items.reduce((sum, it) => sum + (it.qty || 0), 0),
+        result: 'Saved',
+        rawData: scanMultiVerify?.rawData || '',
+      })
+      await Promise.all([refreshInventory(), refreshBatches(), refreshLogs()])
+      setScanHistory(await listScanHistory())
+      setScanMultiVerify(null)
+      setTab('items')
+      const parts = []
+      if (added > 0) parts.push(`${added} new item${added === 1 ? '' : 's'}`)
+      if (restocked > 0) parts.push(`${restocked} item${restocked === 1 ? '' : 's'} restocked`)
+      show(parts.join(', ') || 'Items processed', 'success')
+    } catch (err) {
+      show(`Failed to save scanned items: ${err.message}`, 'error')
+    }
+  }
   // ── BATCHES (Phase F — previously unreachable in the original nav, now a real feature; Phase 3 — Medicine batches route through the new normalized tables) ──
   async function handleAddBatch(form) {
     try {
@@ -1484,17 +1591,22 @@ export default function InventoryPage() {
           />
         </div>
       )}
-      {tab === 'scan' && (
-  <div>
-    <ScanTab
-      scanHistory={scanHistory}
-      onProcessRaw={handleProcessRaw}
-      canDelete={canDeleteLogs}
-      onDelete={handleDeleteScanHistory}
-      scanPaused={!!scanVerify || !!scanReplenishBatch || (addItemOpen && !!pendingItemPrefill)}
-    />
-  </div>
-)}
+              {tab === 'scan' && (
+        <div>
+          <ScanTab
+            scanHistory={scanHistory}
+            inventory={inventory}
+            onProcessRaw={handleProcessRaw}
+            canDelete={canDeleteLogs}
+            onDelete={handleDeleteScanHistory}
+            onViewItem={(item) => {
+              setTab('items')
+              setEditItemId(itemKey(item))
+            }}
+            scanPaused={!!scanVerify || !!scanMultiVerify || !!scanReplenishBatch || (addItemOpen && !!pendingItemPrefill)}
+          />
+        </div>
+      )}
       {tab === 'log' && <div><LogTab logs={logs} staff={staff} search={logSearch} onSearchChange={setLogSearch} canDelete={canDeleteLogs} onDelete={handleDeleteInventoryLogs} /></div>}
       {tab === 'alerts' && (
         <div>
@@ -1527,7 +1639,7 @@ export default function InventoryPage() {
 
       <RestoreEquipmentModal key={restoreItemId ?? 'restore-item-closed'} isOpen={restoreItemId !== null} item={restoringItem} onClose={() => setRestoreItemId(null)} onSubmit={handleRestoreSubmit} onError={(msg) => show(msg, 'error')} />
 
-      <ScanVerifyModal
+            <ScanVerifyModal
         key={scanVerify?.rawData ?? 'scan-verify-closed'}
         isOpen={scanVerify !== null}
         rawData={scanVerify?.rawData}
@@ -1535,6 +1647,15 @@ export default function InventoryPage() {
         onClose={() => setScanVerify(null)}
         onSave={handleScanSave}
         suppliers={suppliers}
+      />
+
+      <ScanMultiVerifyModal
+        key={scanMultiVerify?.rawData ?? 'scan-multi-closed'}
+        isOpen={scanMultiVerify !== null}
+        rawData={scanMultiVerify?.rawData}
+        items={scanMultiVerify?.items}
+        onClose={() => setScanMultiVerify(null)}
+        onSave={handleMultiScanSave}
       />
 
       <AddBatchModal isOpen={addBatchOpen} onClose={() => setAddBatchOpen(false)} onSubmit={handleAddBatch} onError={(msg) => show(msg, 'error')} inventory={inventory} suppliers={suppliers} />

@@ -166,7 +166,7 @@ export default function UserPresenceMonitoringPage() {
                       : [p.department, p.position].filter(Boolean).join(' · ') || '—'}
                   </td>
                   <td>
-                    <StatusBadge status={isUserOnline(p.user_id) ? 'Active' : 'Inactive'} color={isUserOnline(p.user_id) ? 'green' : 'gray'} />
+                    <StatusBadge status={isUserOnline(p.user_id) ? 'Online' : 'Offline'} color={isUserOnline(p.user_id) ? 'green' : 'gray'} />
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {/* Only patients have a detail record to open here

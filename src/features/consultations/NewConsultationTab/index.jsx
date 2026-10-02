@@ -127,8 +127,12 @@ export default function NewConsultationTab({
   } else if (!form.patientId) {
     return onError('Please select a patient')
   }
-  if (!form.complaint.trim()) return onError('Please enter main complaint')
-    if (!form.diagnosis) return onError('Please select a diagnosis')
+  if (!form.visitType) return onError('Please select a visit type')
+  if (!form.date) return onError('Please select a date')
+  if (form.date < new Date().toISOString().slice(0, 10)) return onError('Date cannot be in the past.')
+  if (!form.staffId) return onError('Please select who attended this consultation')
+  // Main complaint, vital signs, diagnosis, assessment, follow-up and
+  // medicines are all optional.
     // Vital signs stay optional (a blank field is fine, same as before
     // this feature existed) — but a FILLED-IN value that's invalid
     // (malformed, or exceeds its absolute maximum) must block Save.
@@ -140,10 +144,6 @@ export default function NewConsultationTab({
     }
     const diagnosis =
       form.diagnosis === 'Others' ? form.diagnosisOther.trim() || 'Others' : form.diagnosis
-    if (!form.assessment.trim()) return onError('Please enter assessment/notes')
-    if (!form.date) return onError('Please select a date')
-    if (form.date < new Date().toISOString().slice(0, 10)) return onError('Date cannot be in the past.')
-    if (!form.staffId) return onError('Please select who attended this consultation')
 
     const patient = patients.find((p) => String(p.user_id) === form.patientId)
     const prescribedMeds = medRows
@@ -156,13 +156,13 @@ export default function NewConsultationTab({
   visitType: form.visitType,
       date: form.date,
       staffId: form.staffId ? Number(form.staffId) : null,
-      complaint: form.complaint.trim(),
+      complaint: form.complaint.trim() || null,
       bp: form.bp.trim(),
       temp: form.temp.trim(),
       pulse: form.pulse.trim(),
       o2sat: form.o2sat.trim(),
       diagnosis,
-      assessment: form.assessment.trim(),
+      assessment: form.assessment.trim() || null,
       followUpDate: form.followUpDate || null,
       followUpNotes: form.followUpNotes || null,
       prescribedMeds,
@@ -183,6 +183,7 @@ export default function NewConsultationTab({
         </div>
         <div style={{ padding: 18 }}>
           <div className="cons-section-label" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><PeopleIcon width={13} height={13} /> Patient &amp; Visit Information</div>
+{/* Hidden per request — remove this comment wrapper (this line and the closing line below) to bring the "Registered Patient" / "Unregistered Patient" buttons back.
 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
   <button
     type="button"
@@ -199,6 +200,7 @@ export default function NewConsultationTab({
     Unregistered Patient
   </button>
 </div>
+*/}
 <div className="form-grid">
   <div className="form-group">
     <label>PATIENT *</label>
@@ -247,7 +249,7 @@ export default function NewConsultationTab({
             </select>
             </div>
             <div className="form-group full">
-              <label>MAIN COMPLAINT *</label>
+              <label>MAIN COMPLAINT</label>
               <textarea
                 className="form-textarea"
                 placeholder="Describe main complaint…"
@@ -307,7 +309,7 @@ export default function NewConsultationTab({
           <div className="cons-section-label" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><TagIcon width={13} height={13} /> Diagnosis</div>
           <div className="form-grid" style={{ marginBottom: 16 }}>
             <div className="form-group">
-              <label>PRIMARY DIAGNOSIS *</label>
+              <label>PRIMARY DIAGNOSIS</label>
               <SearchableSelect
                 options={diagnosisOptions}
                 value={form.diagnosis}
@@ -322,7 +324,7 @@ export default function NewConsultationTab({
             </div>
             {form.diagnosis === 'Others' && (
               <div className="form-group">
-                <label>SPECIFY DIAGNOSIS *</label>
+                <label>SPECIFY DIAGNOSIS</label>
                 <input
                   className="form-input"
                   placeholder="Enter custom diagnosis…"
@@ -332,7 +334,7 @@ export default function NewConsultationTab({
               </div>
             )}
             <div className="form-group full">
-              <label>ASSESSMENT / CLINICAL NOTES *</label>
+              <label>ASSESSMENT / CLINICAL NOTES</label>
               <textarea
                 className="form-textarea"
                 placeholder="Clinical findings, notes, and assessment…"

@@ -33,19 +33,23 @@ import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
  * the account is created unconfirmed and can't log in until its
  * verification email is confirmed — 'password' does not skip that step.
  */
-export async function provisionUser({ email, name, role, mode = 'password', temporaryPassword }) {
+export async function provisionUser({ email, name, role, mode = 'password', temporaryPassword, autoConfirm = false }) {
   // invokeEdgeFunction() (see edgeFunctions.js) reads the function's own
   // { error } response body and, separately, tells a network-level failure
   // apart from a real server rejection — a raw supabase.functions.invoke()
   // call collapses both into the same generic "Edge Function returned a
   // non-2xx status code", which is what was showing up as an unexplained
   // 400 in the console with no usable reason surfaced to the admin.
-  const data = await invokeEdgeFunction('create-user', { email, name, role, mode, temporaryPassword })
+  const data = await invokeEdgeFunction('create-user', { email, name, role, mode, temporaryPassword, autoConfirm })
   // resendFailed is only ever set by mode: 'password' — the account was
   // still created (authUserId is real), just without its verification
   // email actually going out. Returned as an object (not just the UUID)
   // so callers can warn the admin instead of assuming the email arrived.
-  return { authUserId: data.authUserId, resendFailed: data.resendFailed || null }
+  // autoConfirmed is true only when the (re)deployed create-user function
+  // actually created the account already verified — an older deployed
+  // version ignores autoConfirm, so callers must check this rather than
+  // assume.
+  return { authUserId: data.authUserId, resendFailed: data.resendFailed || null, autoConfirmed: data.autoConfirmed === true }
 }
 
 /**
@@ -183,6 +187,21 @@ export async function checkStudentNumberRegistered(studentNumber) {
  *   path. Written to `patient_profiles.profile_incomplete`.
  */
 export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, guardianName, guardianRelation, guardianPhone, guardianAddress, qrCode, profileIncomplete }) {
+  // If this address belonged to an account that was deleted from the app
+  // but whose Supabase Auth login was left behind, signUp() below would
+  // treat it as "already registered" and quietly send NO verification
+  // email. release_orphan_auth_email() (migration
+  // 20261001000000_release_orphan_auth_email.sql) removes such a leftover
+  // login — only when no public.users row uses the email — so signUp()
+  // creates a fresh account and sends a fresh email. Best-effort: if the
+  // function isn't installed yet or fails, registration carries on exactly
+  // as it did before.
+  try {
+    await supabase.rpc('release_orphan_auth_email', { p_email: email })
+  } catch {
+    // Non-fatal — see note above.
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -505,6 +524,40 @@ export async function listUsers() {
   return data.map(flattenUser)
 }
 
+/**
+ * Admin "Resend Verification" — always sends a brand-new email, whether or
+ * not the account is already verified and even if one was sent moments ago.
+ * Goes through the `resend-verification-email` Edge Function (not
+ * supabase.auth.resend(), which does nothing for verified accounts and is
+ * throttled to one email per address per minute). Resolves to
+ * { sent, alreadyVerified, email }.
+ */
+export async function resendVerificationEmailAsAdmin(userId) {
+  return invokeEdgeFunction('resend-verification-email', {
+    userId,
+    redirectTo: `${getAppUrl()}/login?confirmed=1`,
+  })
+}
+
+/**
+ * user_ids (public.users) whose Supabase Auth login hasn't confirmed its
+ * email yet — drives Maintenance's "Unverified" badge and "Resend
+ * Verification" button. Admin-only on the server (migration
+ * 20261001010000_list_unverified_user_ids.sql). Best-effort: if that
+ * function isn't installed or the call fails, returns an empty list so the
+ * User Management table still loads normally, just without the badges.
+ */
+export async function listUnverifiedUserIds() {
+  try {
+    const { data, error } = await supabase.rpc('list_unverified_user_ids')
+    if (error) throw error
+    return Array.isArray(data) ? data.map((v) => (typeof v === 'object' && v !== null ? Object.values(v)[0] : v)) : []
+  } catch (err) {
+    console.error('[LIST_UNVERIFIED_USERS_FAILED]', err?.message || err)
+    return []
+  }
+}
+
 export async function getUserByEmail(email) {
   // Case-insensitive on purpose: a casing mismatch between what Supabase
   // Auth hands back (authUser.email) and whatever case public.users.email
@@ -676,7 +729,7 @@ export async function deleteUser(userId) {
   // one of patient_id/unregistered_patient_name to stay non-null. Without
   // this, deleting any patient who has consultation history fails
   // outright with a constraint violation.
-  const { data: user } = await supabase.from('users').select('name, auth_user_id').eq('user_id', userId).single()
+  const { data: user } = await supabase.from('users').select('name, email, auth_user_id').eq('user_id', userId).single()
   if (user?.name) {
     await supabase
       .from('consultations')
@@ -694,7 +747,13 @@ export async function deleteUser(userId) {
   // that succeeds does the public.users row get removed, so a failure
   // here leaves both intact rather than deleting the profile while
   // leaving a live, now-orphaned login behind.
-  if (user?.auth_user_id) {
+  //
+  // Also runs when auth_user_id is empty but an email is on file: that
+  // account may still have an auth.users row (never linked back to this
+  // row), which kept holding the email after deletion and stopped the same
+  // address from getting a new verification email on re-registering. The
+  // function matches by email as well as by id to clear it.
+  if (user?.auth_user_id || user?.email) {
     // See provisionUser() above for why this goes through
     // invokeEdgeFunction() rather than calling supabase.functions.invoke()
     // directly — this specific call is the one that was showing up in the
@@ -702,7 +761,7 @@ export async function deleteUser(userId) {
     // explanation; this surfaces the function's actual reason (e.g. an
     // expired session after a connectivity drop, or "Forbidden") in the
     // toast instead.
-    await invokeEdgeFunction('delete-user', { authUserId: user.auth_user_id, userId })
+    await invokeEdgeFunction('delete-user', { authUserId: user.auth_user_id ?? null, userId, email: user.email ?? null })
   }
 
   const { error } = await supabase.from('users').delete().eq('user_id', userId)

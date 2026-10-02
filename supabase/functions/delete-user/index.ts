@@ -34,27 +34,42 @@
 //    profile (the failure mode this function exists to prevent, just
 //    inverted — silent instead of loud).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*', // tighten to your actual domain in production
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 }
 
-Deno.serve(async (req) => {
+// `Deno` is a global provided by the Deno runtime this function actually
+// executes in. The editor's default TypeScript service doesn't know about
+// Deno globals and flags them as "Cannot find name 'Deno'" even though the
+// code is correct — @ts-ignore silences just that, in the two places it's
+// used, rather than fighting editor config (same approach as create-user/).
+function denoEnv(key: string): string | undefined {
+  // @ts-ignore -- Deno global, see note above
+  return Deno.env.get(key)
+}
+
+// @ts-ignore -- Deno global, see note above
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const SUPABASE_URL = denoEnv('SUPABASE_URL')
+  const SUPABASE_ANON_KEY = denoEnv('SUPABASE_ANON_KEY')
+  const SUPABASE_SERVICE_ROLE_KEY = denoEnv('SUPABASE_SERVICE_ROLE_KEY')
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    return jsonResponse({ error: 'Server is missing required Supabase configuration' }, 500)
+  }
 
   try {
     // ── 1. Identify the caller and verify they're an admin ──
@@ -85,35 +100,65 @@ Deno.serve(async (req) => {
     // authUserId's auth.users UUID) is optional; when present it's used
     // in step 4 below to free up any registration QR code this person
     // had claimed.
-    const { authUserId, userId } = await req.json()
-    if (!authUserId) throw new Error('authUserId is required')
+    // email (optional) is used in step 3 to ALSO remove any auth.users row
+    // that still holds this address. Accounts whose public.users row never
+    // got an auth_user_id linked (older/self-registered ones that haven't
+    // hit the "link on first login" bridge) used to skip this function
+    // entirely, leaving an orphaned auth account behind — and an orphan
+    // still holding the email is exactly what stopped that address from
+    // getting a fresh verification email when someone registered with it
+    // again after being deleted.
+    const { authUserId, userId, email } = await req.json()
+    if (!authUserId && !email) throw new Error('authUserId or email is required')
 
     // An admin can never delete their own account through this path —
     // same self-protection principle as the client already applies to
     // role==='admin' rows in Maintenance (see UserManagementTab.jsx), just
     // enforced here too since this function is the one actually holding
     // the privileged key.
-    if (authUserId === caller.id) throw new Error('You cannot delete your own account')
+    if (authUserId && authUserId === caller.id) throw new Error('You cannot delete your own account')
 
     // ── 3. Delete the auth.users row with the service-role client ──
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    const { error } = await adminClient.auth.admin.deleteUser(authUserId)
-    // "User not found" here means auth.users already has no row for this
-    // ID — e.g. a demo/seed account created directly in public.users
-    // without ever going through Supabase Auth signup, or an auth
-    // account that was already removed some other way in the past. Either
-    // way, the actual GOAL of this step ("no live auth.users row for this
-    // ID") is already true, so treating it as a hard failure only ever
-    // blocked usersService.deleteUser() from ever reaching the
-    // public.users delete — the row became permanently undeletable
-    // through the app, even though there was nothing left to protect
-    // against orphaning. Any OTHER error (network, permissions, a real
-    // Auth service failure) still fails loudly as before.
-    const alreadyGone = error && /user not found/i.test(error.message || '')
-    if (error && !alreadyGone) throw error
+    if (authUserId) {
+      const { error } = await adminClient.auth.admin.deleteUser(authUserId)
+      // "User not found" here means auth.users already has no row for this
+      // ID — e.g. a demo/seed account created directly in public.users, or
+      // an auth account removed some other way earlier. The goal of this
+      // step ("no live auth.users row for this ID") is already true, so it
+      // isn't treated as a failure. Any OTHER error still fails loudly.
+      const alreadyGone = error && /user not found/i.test(error.message || '')
+      if (error && !alreadyGone) throw error
+    }
+
+    // Also remove any OTHER auth.users row still holding this email (see
+    // step 2's note on `email`). Guards: never the caller's own account,
+    // and never an auth account that another public.users row still
+    // points to.
+    if (email) {
+      const target = String(email).trim().toLowerCase()
+      const staleIds: string[] = []
+      for (let page = 1; page <= 20; page++) {
+        const { data, error: listError } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 })
+        if (listError) throw listError
+        const users = data?.users ?? []
+        for (const u of users) {
+          if ((u.email || '').toLowerCase() === target && u.id !== caller.id && u.id !== authUserId) staleIds.push(u.id)
+        }
+        if (users.length < 1000) break
+      }
+      for (const id of staleIds) {
+        let query = adminClient.from('users').select('user_id').eq('auth_user_id', id)
+        if (userId) query = query.neq('user_id', userId)
+        const { data: stillLinked } = await query.limit(1)
+        if (stillLinked && stillLinked.length > 0) continue
+        const { error: staleError } = await adminClient.auth.admin.deleteUser(id)
+        if (staleError && !/user not found/i.test(staleError.message || '')) throw staleError
+      }
+    }
 
     // ── 4. Permanently delete this person's registration QR code row, if
     //       they had one ──

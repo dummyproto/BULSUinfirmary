@@ -49,6 +49,10 @@ interface CreateUserRequestBody {
   role: UserRole
   mode?: CreateMode
   temporaryPassword?: string
+  // When true (mode: 'password' only), the account is created already
+  // verified and NO verification email is sent — the user can log in right
+  // away with the password set here. Used by Maintenance's CSV bulk import.
+  autoConfirm?: boolean
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -111,7 +115,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 2. Validate the request body ──
-    const { email, name, role, mode = 'password', temporaryPassword } =
+    const { email, name, role, mode = 'password', temporaryPassword, autoConfirm = false } =
       (await req.json()) as CreateUserRequestBody
     if (!email || !name || !role) throw new Error('email, name, and role are required')
     if (!['admin', 'staff', 'patient'].includes(role)) throw new Error('role must be admin, staff, or patient')
@@ -134,11 +138,17 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await adminClient.auth.admin.createUser({
         email,
         password: temporaryPassword,
-        email_confirm: false,
+        email_confirm: autoConfirm === true,
         user_metadata: { name, role },
       })
       if (error) throw error
       created = data
+
+      // autoConfirm: already verified above, so there is nothing to confirm
+      // and no email to send.
+      if (autoConfirm === true) {
+        return jsonResponse({ authUserId: created.user.id, mode, autoConfirmed: true })
+      }
 
       // admin.createUser() does NOT send any email by itself — it only
       // writes the row. .resend() is what actually asks Auth to send the

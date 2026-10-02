@@ -1,162 +1,344 @@
-// supabase/functions/send-push/index.ts
+// supabase/functions/send-verification-email/index.ts
 //
-// Sends a real Web Push notification to every device a target user (or
-// role) has subscribed on, via push_subscriptions (migration 031).
-// Called from notify()/notifyIfNew() in notificationsService.js right
-// after a row is inserted into `notifications` — this is what turns an
-// in-app notification into one that also reaches the device itself
-// (lock screen / notification tray), even if the app isn't open.
+// Auth "Send Email" Hook — replaces Supabase's built-in auth email sender
+// so the account-verification email can include a generated QR code.
 //
-// ── Before this works ──
-// The VAPID key pair was generated once for this project. Set the
-// private half as a secret (never the public half — that one belongs
-// in .env.local as VITE_VAPID_PUBLIC_KEY, since the browser needs it to
-// subscribe):
+// ── Why this exists ──
+// Registration (registerPatient() in src/services/usersService.js) already
+// requires email confirmation before finalizeSelfRegistration() writes the
+// public.users/patient_profiles rows — see that file's comments. That part
+// needed no changes. What Supabase's DEFAULT confirmation email can't do is
+// embed a per-user generated image (its templates are static HTML edited in
+// the Dashboard). This function takes over sending EVERY auth email
+// (signup, recovery, invite, magic link, email change) so it can generate
+// and embed a QR code of the confirmation/reset link.
 //
-//   supabase secrets set VAPID_PRIVATE_KEY=your-vapid-private-key
-//   supabase secrets set VAPID_PUBLIC_KEY=your-vapid-public-key
-//   supabase secrets set VAPID_SUBJECT=mailto:your-real-contact-email@example.com
+// ── Deploy ──
+//   supabase functions deploy send-verification-email --no-verify-jwt
 //
-// (VAPID_SUBJECT identifies who's sending, for push services' own abuse
-// contact purposes — must be a real mailto: or https: URL, not a
-// placeholder; some push services reject requests without one.)
+// (--no-verify-jwt because Supabase Auth calls this server-to-server with
+// its OWN signed webhook payload, not a user JWT — see verification below.)
 //
-// Also needs the same three secrets as the other Edge Functions in this
-// folder — SUPABASE_ANON_KEY verifies the caller is a genuine logged-in
-// user before anything else runs; SUPABASE_SERVICE_ROLE_KEY then looks
-// up subscriptions with elevated access (a caller can only see their
-// OWN push_subscriptions rows per RLS — migration 031 — but a
-// notification's targetUserId is very often someone other than
-// whoever triggered it, e.g. a patient's alert going to staff):
+// ── Required secrets ──
+//   supabase secrets set RESEND_API_KEY=your_resend_api_key
+//   supabase secrets set RESEND_FROM_EMAIL="BulSU Clinic <onboarding@resend.dev>"
+//   supabase secrets set SEND_EMAIL_HOOK_SECRET=v1,whsec_xxxxxxxxxxxx
 //
-//   supabase secrets set SUPABASE_URL=https://your-project-ref.supabase.co
-//   supabase secrets set SUPABASE_ANON_KEY=your-anon-key
-//   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+// (SEND_EMAIL_HOOK_SECRET is generated FOR you by Supabase the moment you
+// enable the hook below — copy it from there, don't invent one.)
 //
-// Deploy with:
-//   supabase functions deploy send-push
+// ── One-time Dashboard setup (can't be done from code) ──
+//   1. Deploy this function (command above) and copy its URL, e.g.
+//      https://<project-ref>.supabase.co/functions/v1/send-verification-email
+//   2. In the Supabase Dashboard: Authentication → Hooks → "Send Email hook"
+//      → Enable → paste that URL → Save.
+//   3. Copy the secret Supabase generates there and run the
+//      `supabase secrets set SEND_EMAIL_HOOK_SECRET=...` command above with it.
+//   4. Sign up for a free Resend account (https://resend.com), verify a
+//      sending domain (or use their onboarding@resend.dev for testing), and
+//      set RESEND_API_KEY / RESEND_FROM_EMAIL as above.
+//   5. Try registering a new test account — the confirmation email should
+//      now arrive with a QR code in it.
+// Until step 2 is done, Supabase keeps sending its own plain default email
+// (this function simply isn't called yet) — nothing breaks in the meantime.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import webpush from 'https://esm.sh/web-push@3.6.7'
+// @ts-ignore -- qrcode ships no type declarations the editor can find; Deno
+// resolves and runs it fine via the import map in ../deno.json.
+import QRCode from 'qrcode'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// `Deno` is a global provided by the Deno runtime this function actually
+// executes in (see deno.enablePaths in .vscode/settings.json). Some editors'
+// default JS/TS language service doesn't know about Deno globals and flags
+// them as "Cannot find name 'Deno'" even though the code is correct and
+// Deno's own checker has no issue with it — @ts-ignore silences just that,
+// in exactly one place, rather than fighting editor config.
+function denoEnv(key: string): string | undefined {
+  // @ts-ignore -- Deno global, see note above
+  return Deno.env.get(key)
 }
 
-function jsonResponse(body, status = 200) {
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+const SUPABASE_URL = denoEnv('SUPABASE_URL')
+const RESEND_API_KEY = denoEnv('RESEND_API_KEY')
+const RESEND_FROM_EMAIL = denoEnv('RESEND_FROM_EMAIL') || 'onboarding@resend.dev'
+const HOOK_SECRET = denoEnv('SEND_EMAIL_HOOK_SECRET') || ''
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
   })
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+// Manual Standard Webhooks signature verification — replaces the
+// `standardwebhooks` npm/esm.sh library, which repeatedly failed with a
+// "Base64Coder: incorrect characters for decoding" error in this Deno
+// Edge Runtime across three different secret-entry methods (typed,
+// quoted, and pasted via Dashboard) — the same failure every time despite
+// different secrets pointed strongly at a library/runtime incompatibility
+// rather than a copy-paste mistake. This does the exact same check the
+// library would, using only Deno's built-in Web Crypto (no external
+// dependency to go wrong).
+//
+// Per the Standard Webhooks spec (which Supabase Auth Hooks follow):
+//   secret format:     "v1,whsec_<base64-encoded-key>"
+//   signed content:    "<webhook-id>.<webhook-timestamp>.<raw-body>"
+//   signature header:  one or more space-separated "v1,<base64-signature>"
+//                       values — a match against ANY of them is valid.
+function secretToKeyBytes(secret: string): Uint8Array {
+  const withoutVersion = secret.startsWith('v1,') ? secret.slice(3) : secret
+  const base64Part = withoutVersion.startsWith('whsec_') ? withoutVersion.slice(6) : withoutVersion
+  return Uint8Array.from(atob(base64Part), (c) => c.charCodeAt(0))
+}
 
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')
-  const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
-  const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT')
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+interface EmailData {
+  token: string
+  token_hash: string
+  redirect_to: string
+  email_action_type: string
+}
+
+interface WebhookPayload {
+  user: { email: string; id?: string }
+  email_data: EmailData
+}
+
+async function verifyStandardWebhook(
+  payload: string,
+  headers: Record<string, string>,
+  secret: string,
+): Promise<WebhookPayload> {
+  const id = headers['webhook-id']
+  const timestamp = headers['webhook-timestamp']
+  const signatureHeader = headers['webhook-signature']
+  if (!id || !timestamp || !signatureHeader) {
+    throw new Error(`Missing required webhook headers (id=${!!id}, timestamp=${!!timestamp}, signature=${!!signatureHeader})`)
+  }
+
+  // Reject requests older than 5 minutes — standard replay-attack guard,
+  // matches the tolerance the official standardwebhooks library uses.
+  const timestampMs = Number(timestamp) * 1000
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000) {
+    throw new Error('Webhook timestamp is outside the allowed 5-minute tolerance')
+  }
+
+  const signedContent = `${id}.${timestamp}.${payload}`
+  const keyBytes = secretToKeyBytes(secret)
+  const cryptoKey = await crypto.subtle.importKey('raw', new Uint8Array(keyBytes), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(signedContent))
+  const expectedSignature = bytesToBase64(new Uint8Array(signatureBuffer))
+
+  // webhook-signature can list multiple "v1,<sig>" values space-separated
+  // (relevant if a hook is ever configured with more than one secret) —
+  // matching any one of them is a valid signature.
+  const providedSignatures = signatureHeader
+    .split(' ')
+    .map((part) => part.split(',')[1])
+    .filter(Boolean)
+
+  if (!providedSignatures.includes(expectedSignature)) {
+    throw new Error('No matching signature found')
+  }
+
+  return JSON.parse(payload) as WebhookPayload
+}
+
+interface EmailContent {
+  subject: string
+  heading: string
+  body: string
+  cta: string
+}
+
+// Per email_action_type copy — recovery is the odd one out: this app's
+// ForgotPasswordModal/ResetPasswordPage flow (src/context/AuthContext.jsx)
+// has the person TYPE IN the 6-digit `token`, not click a link, so that
+// code has to be shown prominently in plain text too — the QR is a
+// secondary, optional "or scan to open the reset page" convenience there,
+// not the primary path like it is for signup.
+function contentFor(actionType: string, { confirmUrl, token }: { confirmUrl: string; token: string }): EmailContent {
+  switch (actionType) {
+    case 'signup':
+      return {
+        subject: 'Verify your BulSU Clinic account',
+        heading: 'Confirm your email address',
+        body: `Thanks for registering with the BulSU Clinic Appointment & Patient System. Click the button below, or scan the QR code with your phone, to verify your email and activate your account. Your account will not be added to our records until this is confirmed.`,
+        cta: 'Verify Email',
+      }
+    case 'recovery':
+      return {
+        subject: 'Reset your BulSU Clinic password',
+        heading: 'Reset your password',
+        body: `We received a request to reset your password. Enter this code on the reset page: <strong style="font-size:22px;letter-spacing:4px;">${token}</strong><br/><br/>Or click the button below, or scan the QR code, to open the reset page directly. If you didn't request this, you can safely ignore this email.`,
+        cta: 'Reset Password',
+      }
+    case 'invite':
+      return {
+        subject: "You've been invited to BulSU Clinic",
+        heading: "You've been invited",
+        body: `Input your email and the password given to you by Admin/Staff. Follow the link below to accept.`,
+        cta: 'Accept Invite',
+      }
+    case 'email_change':
+      return {
+        subject: 'Confirm your new email address',
+        heading: 'Confirm your new email',
+        body: `Click the button below, or scan the QR code, to confirm this is your new email address for your BulSU Clinic account.`,
+        cta: 'Confirm New Email',
+      }
+    default:
+      return {
+        subject: 'Your BulSU Clinic sign-in link',
+        heading: 'Sign in',
+        body: `Click the button below, or scan the QR code, to sign in to BulSU Clinic.`,
+        cta: 'Sign In',
+      }
+  }
+}
+
+function buildEmailHtml({
+  heading,
+  body,
+  cta,
+  confirmUrl,
+}: {
+  heading: string
+  body: string
+  cta: string
+  confirmUrl: string
+}): string {
+  return `
+  <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+    <h2 style="margin: 0 0 16px; font-size: 20px;">${heading}</h2>
+    <p style="font-size: 14px; line-height: 1.6; margin: 0 0 24px;">${body}</p>
+    <div style="text-align: center; margin: 0 0 24px;">
+      <a href="${confirmUrl}" style="display:inline-block; background:#0f766e; color:#fff; text-decoration:none; font-weight:600; font-size:14px; padding:12px 28px; border-radius:8px;">${cta}</a>
+    </div>
+    <div style="text-align: center; margin: 0 0 24px;">
+      <img src="cid:qrcode" width="220" height="220" alt="QR code — scan to ${cta.toLowerCase()}" style="display:inline-block; border:8px solid #fff; box-shadow:0 0 0 1px #e5e7eb;" />
+      <p style="font-size: 12px; color:#6b7280; margin: 10px 0 0;">Scan with your phone's camera</p>
+    </div>
+    <p style="font-size: 11px; color: #9ca3af; word-break: break-all; margin: 0;">
+      Or paste this link into your browser: ${confirmUrl}
+    </p>
+  </div>`
+}
+
+// @ts-ignore -- Deno global, see note above
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (!RESEND_API_KEY) return jsonResponse({ error: { message: 'RESEND_API_KEY is not configured' } }, 500)
+
+  const payload = await req.text()
+  const headers = Object.fromEntries(req.headers) as Record<string, string>
+
+  let user: WebhookPayload['user']
+  let email_data: EmailData
+  try {
+    if (!HOOK_SECRET) {
+      throw new Error('SEND_EMAIL_HOOK_SECRET is empty/unset in this function\'s secrets')
+    }
+    // TEMPORARY DIAGNOSTIC — safe to log: reveals only the secret's
+    // length and first/last few characters (never the middle), plus
+    // which of the three required Standard Webhooks headers actually
+    // arrived. Remove this console.error once verification is confirmed
+    // working end-to-end.
+    console.error('DIAGNOSTIC', JSON.stringify({
+      secretLength: HOOK_SECRET.length,
+      secretPreview: `${HOOK_SECRET.slice(0, 10)}...${HOOK_SECRET.slice(-6)}`,
+      hasWebhookId: !!headers['webhook-id'],
+      hasWebhookTimestamp: !!headers['webhook-timestamp'],
+      hasWebhookSignature: !!headers['webhook-signature'],
+    }))
+    // Verifies this request genuinely came from Supabase Auth — without
+    // this, anyone who found this function's URL could make it blast
+    // arbitrary email through your Resend account.
+    const verified = await verifyStandardWebhook(payload, headers, HOOK_SECRET)
+    user = verified.user
+    email_data = verified.email_data
+  } catch (err) {
+    console.error('send-verification-email signature check failed:', errorMessage(err))
+    return jsonResponse({ error: { message: `Invalid webhook signature: ${errorMessage(err)}` } }, 401)
+  }
 
   try {
-    // Requires the caller to be a genuine logged-in user of this app —
-    // matching the same minimum bar notifications_insert already
-    // requires (TO authenticated, see migration 001). Deliberately does
-    // NOT restrict by role beyond that: the notifications table itself
-    // already trusts any authenticated user to notify anyone else (a
-    // patient notifying staff about a new request needs exactly that),
-    // so requiring more here would just break legitimate patient-
-    // triggered flows without actually raising the real security bar —
-    // this app's accepted trust model is already "any logged-in user,
-    // not literally anyone with the public anon key and no session at
-    // all," and that's the bar this restores.
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) throw new Error('Missing Authorization header')
+    const { token, token_hash, redirect_to, email_action_type } = email_data
 
-    const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
+    // Same confirmation-link shape Supabase's own default template uses —
+    // hits Supabase's own /auth/v1/verify endpoint, which validates the
+    // token_hash then redirects on to `redirect_to` (this app's
+    // emailRedirectTo: `${window.location.origin}/login`, set in
+    // usersService.js's registerPatient()/resendConfirmationEmail()).
+    const confirmUrl =
+      `${SUPABASE_URL}/auth/v1/verify?token=${encodeURIComponent(token_hash)}` +
+      `&type=${encodeURIComponent(email_action_type)}` +
+      `&redirect_to=${encodeURIComponent(redirect_to)}`
+
+    // Generate the QR code server-side, sent as a CID-embedded attachment
+    // (not a data: URI in <img src>) — several major email clients (Gmail
+    // among them) strip inline base64 images but do render CID-embedded
+    // attachment images correctly.
+    //
+    // Uses toDataURL (a plain string) rather than toBuffer — toBuffer
+    // relies on Node's Buffer semantics, which is a common source of
+    // silent failures in Supabase's Deno-based Edge Runtime. toDataURL
+    // avoids that entirely; we just strip the "data:image/png;base64,"
+    // prefix to get the same raw base64 payload Resend's attachment
+    // `content` field expects.
+    const qrDataUrl: string = await QRCode.toDataURL(confirmUrl, {
+      type: 'image/png',
+      width: 440,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#ffffff' },
     })
-    const {
-      data: { user: caller },
-      error: callerAuthError,
-    } = await callerClient.auth.getUser()
-    if (callerAuthError || !caller) throw new Error('Invalid or expired session')
+    const qrBase64 = qrDataUrl.split(',')[1]
 
-    const { targetUserId, targetRole, title, body, url, tag } = await req.json()
-    if (!title || !body) throw new Error('title and body are required')
-    if (!targetUserId && !targetRole) throw new Error('targetUserId or targetRole is required')
+    const { subject, heading, body, cta } = contentFor(email_action_type, { confirmUrl, token })
 
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      // Fails loudly rather than pretending to succeed — same principle
-      // as send-sms/index.ts's identical check.
-      throw new Error('Push is not configured yet — set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (see the comment at the top of this file) and redeploy.')
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM_EMAIL,
+        to: [user.email],
+        subject,
+        html: buildEmailHtml({ heading, body, cta, confirmUrl }),
+        attachments: [
+          {
+            filename: 'verification-qr.png',
+            content: qrBase64,
+            content_id: 'qrcode',
+          },
+        ],
+      }),
+    })
+
+    if (!res.ok) {
+      const errBody = await res.text()
+      throw new Error(`Resend API error (${res.status}): ${errBody}`)
     }
-
-    webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-
-    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-    // Mirrors notify()'s own targeting: a specific user, OR everyone
-    // currently holding a role (e.g. every staff account, for an
-    // emergency alert). Never both — same XOR the notifications table
-    // itself enforces via its own CHECK constraint.
-    let query = adminClient.from('push_subscriptions').select('*')
-    if (targetUserId) {
-      query = query.eq('user_id', targetUserId)
-    } else {
-      const { data: roleUsers, error: roleErr } = await adminClient.from('users').select('user_id').eq('role', targetRole)
-      if (roleErr) throw roleErr
-      const ids = (roleUsers || []).map((u) => u.user_id)
-      if (ids.length === 0) return jsonResponse({ sent: 0, failed: 0 })
-      query = query.in('user_id', ids)
-    }
-
-    const { data: subscriptions, error: subError } = await query
-    if (subError) throw subError
-    if (!subscriptions || subscriptions.length === 0) return jsonResponse({ sent: 0, failed: 0 })
-
-    const payload = JSON.stringify({ title, body, url: url || '/dashboard', tag: tag || undefined })
-
-    let sent = 0
-    let failed = 0
-    const staleEndpoints = []
-
-    // Sequential, not Promise.all — a burst of simultaneous requests to
-    // the same push service (many subscriptions on the same provider,
-    // e.g. several staff all on Chrome/FCM) risks tripping that
-    // provider's own rate limiting. This function already only runs
-    // once per notification, not on a hot path, so the small time cost
-    // of sequential sending isn't noticeable in practice.
-    for (const sub of subscriptions) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
-        )
-        sent++
-      } catch (err) {
-        failed++
-        // 404/410 from the push service means that specific
-        // subscription is permanently dead (browser data cleared,
-        // extension/app uninstalled, etc.) — not a transient failure,
-        // so the row is cleaned up rather than left to fail forever on
-        // every future notification.
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          staleEndpoints.push(sub.endpoint)
-        }
-      }
-    }
-
-    if (staleEndpoints.length > 0) {
-      await adminClient.from('push_subscriptions').delete().in('endpoint', staleEndpoints)
-    }
-
-    return jsonResponse({ sent, failed, staleRemoved: staleEndpoints.length })
   } catch (err) {
-    return jsonResponse({ error: err.message }, 400)
+    // Whatever went wrong (QR generation, Resend API, etc.), log it in
+    // full server-side (visible in Dashboard -> Edge Functions ->
+    // send-verification-email -> Logs) and return a proper JSON error
+    // response rather than letting an unexpected throw crash the
+    // function — Supabase Auth surfaces THIS response's content as the
+    // reason the signup/reset call itself failed for the end user.
+    console.error('send-verification-email failed:', errorMessage(err))
+    return jsonResponse({ error: { http_code: 500, message: errorMessage(err) } }, 500)
   }
+
+  return jsonResponse({})
 })

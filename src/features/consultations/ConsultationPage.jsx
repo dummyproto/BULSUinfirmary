@@ -23,7 +23,7 @@ import { enqueueOfflineAction } from '@services/offlineQueueService'
 import './consultationOfflineActions' // registers the offline runner — import kept for its side effect only
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
-import { PlusIcon, FolderIcon, PeopleIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
+import { PlusIcon, FolderIcon, ClipboardIcon, BarChartIcon } from '@components/ui/icons'
 
 const tabLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6 }
 
@@ -46,7 +46,12 @@ function groupDiagnoses(rows) {
 const TABS = [
   { key: 'new', label: <span style={tabLabelStyle}><PlusIcon width={14} height={14} /> New Consultation</span> },
   { key: 'records', label: <span style={tabLabelStyle}><FolderIcon width={14} height={14} /> Health Records</span> },
-  { key: 'unregistered', label: <span style={tabLabelStyle}><PeopleIcon width={14} height={14} /> Unregistered</span> },
+  // Hidden per request — uncomment to bring the "Unregistered" tab back.
+  // Its content block (search tab === 'unregistered' below) and search
+  // state were left as-is, so uncommenting this line is almost enough —
+  // you'll also need to add PeopleIcon back to the icon import above
+  // (removed since nothing else in this file used it once this was hidden).
+  // { key: 'unregistered', label: <span style={tabLabelStyle}><PeopleIcon width={14} height={14} /> Unregistered</span> },
   { key: 'cases', label: <span style={tabLabelStyle}><ClipboardIcon width={14} height={14} /> Case Listing</span> },
   { key: 'analytics', label: <span style={tabLabelStyle}><BarChartIcon width={14} height={14} /> Analytics</span> },
 ]

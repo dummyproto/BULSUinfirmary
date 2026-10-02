@@ -10,11 +10,13 @@ import { defaultShowMore } from '@lib/viewport'
 const CATEGORIES = ['All', 'Equipment', 'Medicine', 'Supply']
 const STATUSES = ['All', 'Archived', 'Available', 'Critical Stock', 'Damaged', 'Expired', 'Low Stock', 'Near Expiry', 'Needs Maintenance', 'Out of Stock']
 
-// Flattens sections into a render-ready row list: section headers, category
-// sub-headers (inserted whenever the category changes within a section),
-// and item rows — mirrors the `lastCategory` tracking loop in the legacy
-// renderItemsTab() but as a pure data transform instead of a DOM string
-// builder, so it doesn't need any mutable state during render.
+// Temporarily hidden per request — flip to `true` to bring the Items/
+// Batches toggle group (both the "Items" and "Batches" pill buttons)
+// back. Nothing about batch tracking itself was removed (BatchesBody,
+// onSubTabChange, etc. are untouched); with the toggle hidden, subTab
+// simply stays on 'items' since there's no way to switch it, so
+// re-enabling it is just this one flag.
+const SHOW_BATCHES_TOGGLE = false
 function buildRows(sections) {
   const rows = []
   sections.forEach((section) => {
@@ -68,7 +70,6 @@ export default function ItemsTab({
   filters,
   onFiltersChange,
   onAddItem,
-  onReleasePicker,
   onEdit,
   onRelease,
   onRemove,
@@ -187,14 +188,16 @@ export default function ItemsTab({
     {subTab === 'items' ? <InventoryIcon width={15} height={15} /> : <FolderIcon width={15} height={15} />}
     {subTab === 'items' ? 'Inventory Items' : 'Batch Tracking'}
   </h3>
-  <div className="inv-view-toggle" role="group" aria-label="Switch between Items and Batches">
-    <button type="button" className={`inv-view-toggle-btn${subTab === 'items' ? ' active' : ''}`} onClick={() => onSubTabChange('items')} title="Show items" aria-pressed={subTab === 'items'}>
-      <InventoryIcon width={13} height={13} /> Items
-    </button>
-    <button type="button" className={`inv-view-toggle-btn${subTab === 'batches' ? ' active' : ''}`} onClick={() => onSubTabChange('batches')} title="Show batches" aria-pressed={subTab === 'batches'}>
-      <FolderIcon width={13} height={13} /> Batches
-    </button>
-  </div>
+      {SHOW_BATCHES_TOGGLE && (
+    <div className="inv-view-toggle" role="group" aria-label="Switch between Items and Batches">
+      <button type="button" className={`inv-view-toggle-btn${subTab === 'items' ? ' active' : ''}`} onClick={() => onSubTabChange('items')} title="Show items" aria-pressed={subTab === 'items'}>
+        <InventoryIcon width={13} height={13} /> Items
+      </button>
+      <button type="button" className={`inv-view-toggle-btn${subTab === 'batches' ? ' active' : ''}`} onClick={() => onSubTabChange('batches')} title="Show batches" aria-pressed={subTab === 'batches'}>
+        <FolderIcon width={13} height={13} /> Batches
+      </button>
+    </div>
+  )}
   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginLeft: 'auto' }}>
     {subTab === 'items' ? (
       <>
@@ -254,12 +257,9 @@ export default function ItemsTab({
             <span>{showMore ? 'View Less' : 'View More'}</span>
           </button>
         )}
-        <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
+                <div className="inv-items-action-row" style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
           <button type="button" className="btn btn-sm btn-blue" onClick={onAddItem} title="Add one item or a batch of items" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <PlusIcon width={13} height={13} /> Add Item
-          </button>
-          <button type="button" className="btn btn-sm btn-orange" onClick={onReleasePicker} title="Release stock from a non-expired item" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <MinusIcon width={13} height={13} /> Release
           </button>
         </div>
       </>

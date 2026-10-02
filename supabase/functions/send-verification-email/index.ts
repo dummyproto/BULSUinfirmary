@@ -42,6 +42,8 @@
 // Until step 2 is done, Supabase keeps sending its own plain default email
 // (this function simply isn't called yet) — nothing breaks in the meantime.
 
+// @ts-ignore -- qrcode ships no type declarations the editor can find; Deno
+// resolves and runs it fine via the import map in ../deno.json.
 import QRCode from 'qrcode'
 
 // `Deno` is a global provided by the Deno runtime this function actually

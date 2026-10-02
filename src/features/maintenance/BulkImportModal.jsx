@@ -8,12 +8,11 @@ import { FileSpreadsheetIcon, DownloadIcon, CheckCircleIcon, XCircleIcon, MailIc
 // Matched case-insensitively (and with spaces/underscores collapsed) so a
 // slightly-renamed header in a re-saved CSV still lines up correctly.
 //
-// Password IS used: it becomes each row's initial login password (mode:
-// 'password' in MaintenancePage.jsx's handleBulkImportUsers). The account
-// is still created unconfirmed and gets a verification email regardless
-// — the CSV password just replaces "the new user picks their own via the
-// email link" with "here's their starting password, they can change it
-// later in Account Settings."
+// Password IS used: it becomes each row's login password (mode:
+// 'password' in MaintenancePage.jsx's handleBulkImportUsers). CSV-imported
+// accounts are created already verified (autoConfirm) — no verification
+// email is sent and they can log in right away; they can change the
+// password later in Account Settings.
 const COLUMNS = [
   { key: 'fullName', label: 'Full Name', required: true },
   { key: 'email', label: 'Email', required: true },
@@ -72,7 +71,7 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
   const [rows, setRows] = useState([]) // [{ rowNumber, ...fields, errors: [] }]
   const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
-  const [result, setResult] = useState(null) // { createdCount, failedRows }
+  const [result, setResult] = useState(null) // { createdCount, verifiedCount, emailSentCount, failedRows, emailFailedRows }
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const invalidCount = rows.length - validRows.length
@@ -169,12 +168,20 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="alert alert-info">
-          Bulk-import patient (student/personnel) accounts from a CSV or Excel file. Each row needs at least Full Name,
-          Email, User ID, and Password (their initial password — they can change it later in Account Settings).
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <MailIcon width={12} height={12} /> Each new account gets a verification email at the address in that row —
-            the account can't log in until it's confirmed.
+        {/* Two separate info containers, stacked. .alert is a flex row
+            (display:flex; gap:8px), so when both paragraphs lived inside ONE
+            .alert they were laid out as two side-by-side columns. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="alert alert-info" style={{ marginBottom: 0 }}>
+            Bulk-import patient (student/personnel) accounts from a CSV or Excel file. Each row needs at least Full Name,
+            Email, User ID, and Password (their initial password they can change it later in Account Settings).
+          </div>
+          <div className="alert alert-info" style={{ marginBottom: 0 }}>
+            <MailIcon width={12} height={12} style={{ flexShrink: 0 }} />
+            <span>
+              Imported accounts are verified automatically no verification email is sent, and each user can log in
+              right away.
+            </span>
           </div>
         </div>
 
@@ -187,9 +194,24 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
         </div>
 
         {result && (
-          <div className={`alert ${result.failedRows.length === 0 ? 'alert-success' : 'alert-warning'}`}>
-            <strong>{result.createdCount}</strong> account{result.createdCount === 1 ? '' : 's'} created — a verification
-            email was sent to each; they can't log in until it's confirmed.
+          <div className={`alert ${result.failedRows.length === 0 && result.emailFailedRows.length === 0 ? 'alert-success' : 'alert-warning'}`}>
+            <strong>{result.createdCount}</strong> account{result.createdCount === 1 ? '' : 's'} created
+            {result.verifiedCount > 0 && <> — <strong>{result.verifiedCount}</strong> verified automatically and ready to log in with their CSV password</>}
+            {result.emailSentCount > 0 && <>; <strong>{result.emailSentCount}</strong> verification email{result.emailSentCount === 1 ? '' : 's'} sent (they can't log in until it's confirmed)</>}.
+            {result.emailFailedRows.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {result.emailFailedRows.length} account{result.emailFailedRows.length === 1 ? ' was' : 's were'} created but the
+                verification email could not be sent. Those users can request a new one from the login screen
+                (&ldquo;Resend confirmation email&rdquo;):
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                  {result.emailFailedRows.map((f) => (
+                    <li key={f.rowNumber}>
+                      Row {f.rowNumber} ({f.email}): {f.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {result.failedRows.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 {result.failedRows.length} row{result.failedRows.length === 1 ? '' : 's'} failed:
@@ -232,7 +254,7 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
             )}
 
             <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <table className="compact-table">
+              <table className="compact-table import-table">
                 <thead>
                   <tr>
                     <th>Row</th>

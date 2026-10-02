@@ -616,6 +616,7 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
               toggleClassName="login-pw-toggle"
               id="l-pass"
               placeholder="••••••••"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value)

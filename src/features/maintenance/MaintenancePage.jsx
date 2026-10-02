@@ -10,7 +10,7 @@ import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import ChangePasswordModal from './ChangePasswordModal'
 import BulkImportModal from './BulkImportModal'
-import { listUsers, createUserProfile, provisionUser, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, resetUserPassword, togglePermission } from '@services/usersService'
+import { listUsers, createUserProfile, provisionUser, resendConfirmationEmail, resendVerificationEmailAsAdmin, listUnverifiedUserIds, updateUser, updateStaffProfile, updatePatientProfile, setActive, deleteUser, resetUserPassword, togglePermission } from '@services/usersService'
 import { addAuditLog } from '@services/auditLogsService'
 import { notify } from '@services/notificationsService'
 import { PRINT_PERMISSIONS } from './data/formOptions'
@@ -18,9 +18,17 @@ import { generateSchoolIdCode, generateStaffId } from '@lib/schoolId'
 import { PeopleIcon, ShieldIcon, GraduationCapIcon } from '@components/ui/icons'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
 
+// Temporarily hidden per request — flip to `true` to bring the "Active
+// Students/Personnel" tab button back. Nothing about the underlying
+// ActivePatientsTab was removed (its import, render block, and
+// handleToggleActive are all untouched); with the button hidden, there's
+// just no way to click into that tab, so re-enabling it is just this one
+// flag.
+const SHOW_ACTIVE_PATIENTS_TAB = false
+
 const TABS = [
   { key: 'users', label: 'User Management', Icon: PeopleIcon },
-  { key: 'active-patients', label: 'Active Students/Personnel', Icon: GraduationCapIcon },
+  ...(SHOW_ACTIVE_PATIENTS_TAB ? [{ key: 'active-patients', label: 'Active Students/Personnel', Icon: GraduationCapIcon }] : []),
   { key: 'perms', label: 'Staff Permissions', Icon: ShieldIcon },
 ]
 
@@ -36,16 +44,19 @@ export default function MaintenancePage() {
   const [search, setSearch] = useState('')
    const [addOpen, setAddOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [unverifiedIds, setUnverifiedIds] = useState([])
+  const [resendingId, setResendingId] = useState(null)
   const [editId, setEditId] = useState(null)
   const [pwUserId, setPwUserId] = useState(null)
   const [pwSaving, setPwSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    listUsers()
-      .then((userList) => {
+    Promise.all([listUsers(), listUnverifiedUserIds()])
+      .then(([userList, unverified]) => {
         if (cancelled) return
         setUsers(userList)
+        setUnverifiedIds(unverified)
       })
       .catch((err) => show(`Failed to load maintenance data: ${err.message}`, 'error'))
       .finally(() => {
@@ -58,7 +69,36 @@ export default function MaintenancePage() {
   }, [])
 
   async function refreshUsers() {
-    setUsers(await listUsers())
+    const [userList, unverified] = await Promise.all([listUsers(), listUnverifiedUserIds()])
+    setUsers(userList)
+    setUnverifiedIds(unverified)
+  }
+
+  // "Resend Verification" — always available on every row, verified or not,
+  // and always sends a new email (see resendVerificationEmailAsAdmin()).
+  async function handleResendVerification(userId) {
+    const user = users.find((u) => u.user_id === userId)
+    if (!user?.email) {
+      show('This account has no email address on file.', 'error')
+      return
+    }
+    setResendingId(userId)
+    try {
+      const result = await resendVerificationEmailAsAdmin(userId)
+      addAuditLog({ userId: currentUserId, action: 'RESEND_VERIFICATION', details: `Resent ${result.alreadyVerified ? 'sign-in link' : 'verification email'} to ${user.name} (ID: ${userId})` }).catch(() => {})
+      show(
+        result.alreadyVerified
+          ? `${user.name} is already verified — a new sign-in link was sent to ${user.email}.`
+          : `A new verification email was sent to ${user.email}.`,
+        'success'
+      )
+      // Keep the Unverified badges accurate after the send.
+      setUnverifiedIds(await listUnverifiedUserIds())
+    } catch (err) {
+      show(`Couldn't send the email: ${err.message}`, 'error')
+    } finally {
+      setResendingId(null)
+    }
   }
 
   // listUsers() joins users + staff_profiles + staff_permissions +
@@ -130,9 +170,22 @@ export default function MaintenancePage() {
     }
   }
 
-    async function handleBulkImportUsers(validRows, onProgress) {
+  // Accounts from CSV import are created already verified (autoConfirm) and
+  // get NO verification email — they can log in right away with the CSV
+  // password. The delay/retry settings below only matter in the fallback case
+  // where the deployed create-user function is an older version that ignores
+  // autoConfirm and still sends a verification email: Resend allows only ~2
+  // requests per second, so rows are spaced out and a failed email is retried.
+  const BULK_EMAIL_ROW_DELAY_MS = 1200
+  const BULK_RESEND_RETRY_DELAYS_MS = [3000, 6000]
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  async function handleBulkImportUsers(validRows, onProgress) {
     let createdCount = 0
+    let verifiedCount = 0
+    let emailSentCount = 0
     const failedRows = []
+    const emailFailedRows = []
 
     for (let i = 0; i < validRows.length; i++) {
       const row = validRows[i]
@@ -141,17 +194,39 @@ export default function MaintenancePage() {
       const username = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase()
       const userId = row.userId.replace(/[\s-]/g, '').toUpperCase()
 
-      let authUserId = null
+      let authUserId
+      let resendFailed
+      let autoConfirmed
       try {
-        // mode: 'password' — each row's own Password column becomes that
-        // patient's initial login password; the Edge Function still
-        // creates the account unconfirmed and fires off its verification
-        // email, so they can't log in until they confirm it. They can
-        // change this password later in Account Settings.
-        const result = await provisionUser({ email, name: fullName, role: 'patient', mode: 'password', temporaryPassword: row.password })
+        // mode: 'password' + autoConfirm — each row's own Password column
+        // becomes that patient's login password and the account is created
+        // already verified, so no email is needed.
+        const result = await provisionUser({ email, name: fullName, role: 'patient', mode: 'password', temporaryPassword: row.password, autoConfirm: true })
         authUserId = result.authUserId
-      } catch {
-        // Non-fatal — profile still gets created below.
+        resendFailed = result.resendFailed
+        autoConfirmed = result.autoConfirmed
+      } catch (err) {
+        // No login was created, so don't create a profile-only record
+        // either (it would show as "already registered" on a re-import
+        // yet could never log in). Report the row instead.
+        failedRows.push({ rowNumber: row.rowNumber, email, reason: `Login could not be created: ${err.message}` })
+        onProgress(i + 1, validRows.length)
+        continue
+      }
+
+      // Fallback only (older create-user deployed): a verification email was
+      // attempted — retry with backoff if it failed.
+      if (!autoConfirmed) {
+        for (const wait of BULK_RESEND_RETRY_DELAYS_MS) {
+          if (!resendFailed) break
+          await sleep(wait)
+          try {
+            await resendConfirmationEmail(email)
+            resendFailed = null
+          } catch (err) {
+            resendFailed = err.message
+          }
+        }
       }
 
       try {
@@ -171,25 +246,36 @@ export default function MaintenancePage() {
           guardianPhone: row.contactNumber || null,
         })
         createdCount++
+        if (autoConfirmed) verifiedCount++
+        else if (resendFailed) emailFailedRows.push({ rowNumber: row.rowNumber, email, reason: resendFailed })
+        else emailSentCount++
       } catch (err) {
         failedRows.push({ rowNumber: row.rowNumber, email, reason: err.message })
       }
 
       onProgress(i + 1, validRows.length)
+      if (!autoConfirmed && i < validRows.length - 1) await sleep(BULK_EMAIL_ROW_DELAY_MS)
     }
 
     await addAuditLog({
       userId: currentUserId,
       action: 'BULK_IMPORT_USERS',
-      details: `CSV bulk patient import — ${validRows.length} valid record(s) submitted, ${createdCount} created, ${failedRows.length} failed.`,
+      details: `CSV bulk patient import — ${validRows.length} valid record(s) submitted, ${createdCount} created (${verifiedCount} auto-verified), ${failedRows.length} failed.`,
     })
     await refreshUsers()
+    const needsAttention = failedRows.length > 0 || emailFailedRows.length > 0
     show(
-      `Bulk import complete — ${createdCount} of ${validRows.length} patient account(s) created. Each will receive a verification email at their CSV address and can't log in until they confirm it (their CSV password is their initial password).`,
-      failedRows.length === 0 ? 'success' : 'warning'
+      needsAttention
+        ? `Bulk import finished — ${createdCount} of ${validRows.length} account(s) created` +
+            (emailFailedRows.length ? `, ${emailFailedRows.length} still need a verification email` : '') +
+            (failedRows.length ? `, ${failedRows.length} row(s) failed` : '') +
+            '. See the import window for details.'
+        : `Bulk import complete — ${createdCount} of ${validRows.length} patient account(s) created` +
+            (verifiedCount ? ' and verified; they can log in now with their CSV password.' : ' (verification email sent to each).'),
+      needsAttention ? 'warning' : 'success'
     )
 
-    return { createdCount, failedRows }
+    return { createdCount, verifiedCount, emailSentCount, failedRows, emailFailedRows }
   }
 
   async function handleEditSave(updates) {
@@ -331,6 +417,9 @@ export default function MaintenancePage() {
           onToggleActive={handleToggleActive}
           onDelete={handleDelete}
           onChangePassword={setPwUserId}
+          unverifiedIds={unverifiedIds}
+          onResendVerification={handleResendVerification}
+          resendingId={resendingId}
         />
       )}
       {tab === 'active-patients' && <ActivePatientsTab users={users} onView={setEditId} onToggleActive={handleToggleActive} />}

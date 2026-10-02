@@ -28,9 +28,17 @@ function getCtx() {
 function unlockOnFirstInteraction() {
   if (unlocked) return
   unlocked = true
-  getCtx()
   window.removeEventListener('pointerdown', unlockOnFirstInteraction)
   window.removeEventListener('keydown', unlockOnFirstInteraction)
+  // `new AudioContext()` can take a noticeable moment the first time
+  // it's constructed, which — called directly inside this pointerdown
+  // handler — shows up as a "'pointerdown' handler took Nms" violation
+  // in devtools (harmless, but worth avoiding). A setTimeout(…, 0)
+  // queued from within the gesture's own handler still runs as part of
+  // the same user-activation window in every major browser, so audio
+  // unlock still works — it just no longer blocks the gesture's own
+  // event handling/paint.
+  setTimeout(getCtx, 0)
 }
 if (typeof window !== 'undefined') {
   window.addEventListener('pointerdown', unlockOnFirstInteraction)

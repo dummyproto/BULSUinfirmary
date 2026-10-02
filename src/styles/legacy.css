@@ -1124,6 +1124,24 @@ button.mobile-bottom-nav-item{border:none;background:none;font:inherit;cursor:po
    !important since it needs to beat both of those rules, which are
    each already more specific than a single class alone. */
 table.compact-table{min-width:0!important;width:auto!important}
+/* Bulk-import preview table (Add Users via CSV, BulkImportModal.jsx) —
+   .compact-table's width:auto!important above is right for the other
+   tables that share that class, but on THIS table (long emails/IDs,
+   narrow modal) it let every column's width collapse toward zero on
+   small screens, which is what forced the page's global
+   `overflow-wrap:anywhere` (td rule further down this file) to chop
+   words mid-syllable ("tailscaleboiz01@gma" / "il.com"), reading as
+   cramped. table-layout:fixed with explicit per-column widths instead
+   gives each column a stable minimum; this table already sits inside
+   a .table-wrap (overflow-x:auto), so a modal narrower than that
+   minimum now scrolls horizontally instead of crushing the text. */
+table.compact-table.import-table{width:100%!important;min-width:480px;table-layout:fixed}
+.import-table th:nth-child(1),.import-table td:nth-child(1){width:44px}
+.import-table th:nth-child(2),.import-table td:nth-child(2){width:19%}
+.import-table th:nth-child(3),.import-table td:nth-child(3){width:31%}
+.import-table th:nth-child(4),.import-table td:nth-child(4){width:17%}
+.import-table th,.import-table td{overflow-wrap:break-word;word-break:normal}
+.import-table td{padding:12px 14px;line-height:1.6}
 /* Standard table with collapsed borders */
 table{width:100%;border-collapse:collapse}
 /* Table headers: uppercase, muted color, background highlight */

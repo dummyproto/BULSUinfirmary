@@ -4,12 +4,31 @@ import SearchInput from '@components/ui/SearchInput'
 import Toggle from '@components/ui/Toggle'
 import { roleBadgeInfo } from './lib/userHelpers'
 import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
-import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, FileSpreadsheetIcon } from '@components/ui/icons'
+import { PeopleIcon, PlusIcon, LockIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, FileSpreadsheetIcon, MailIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
 
 const ROLE_ORDER = { admin: 0, staff: 1, patient: 2 }
 
-export default function UserManagementTab({ users, search, onSearchChange, onAddUser, onBulkImport, onEdit, onToggleActive, onDelete, onChangePassword }) {
+// Temporarily hidden per request — flip to `true` to bring the "Add Users
+// via CSV" button back. Nothing else about bulk import was removed
+// (BulkImportModal, MaintenancePage's bulkOpen state, etc. are untouched),
+// so re-enabling it is just this one flag.
+const SHOW_BULK_IMPORT_CSV = true
+
+// Temporarily hidden per request — flip to `true` to bring the "Resend
+// Verification" button back in each user row. Nothing else was removed
+// (handleResendVerification in MaintenancePage, the Edge Function, and
+// the "Unverified" badge are untouched), so re-enabling it is just this
+// one flag.
+const SHOW_RESEND_VERIFICATION = false
+
+// Temporarily hidden per request — flip to `true` to bring the "Password"
+// (change password) button back in each user row. Nothing else was removed
+// (ChangePasswordModal and handleChangePassword in MaintenancePage are
+// untouched), so re-enabling it is just this one flag.
+const SHOW_CHANGE_PASSWORD = false
+
+export default function UserManagementTab({ users, search, onSearchChange, onAddUser, onBulkImport, onEdit, onToggleActive, onDelete, onChangePassword, unverifiedIds = [], onResendVerification, resendingId = null }) {
   const [showMore, setShowMore] = useState(defaultShowMore)
   const q = search.toLowerCase()
   const filtered = search
@@ -37,9 +56,11 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
             {showMore ? <ChevronUpIcon width={13} height={13} /> : <ChevronDownIcon width={13} height={13} />}
             <span>{showMore ? 'View Less' : 'View More'}</span>
           </button>
-                    <button type="button" className="btn btn-xs btn-outline" onClick={onBulkImport} title="Add Users via CSV">
-            <FileSpreadsheetIcon width={13} height={13} /> Add Users via CSV
-          </button>
+          {SHOW_BULK_IMPORT_CSV && (
+            <button type="button" className="btn btn-xs btn-outline" onClick={onBulkImport} title="Add Users via CSV">
+              <FileSpreadsheetIcon width={13} height={13} /> Add Users via CSV
+            </button>
+          )}
           <button type="button" className="btn btn-xs btn-blue" onClick={onAddUser} title="Add User">
             <PlusIcon width={13} height={13} /> Add User
           </button>
@@ -87,6 +108,11 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Avatar user={usr} size={26} />
                       <strong>{usr.name}</strong>
+                      {unverifiedIds.includes(usr.user_id) && (
+                        <span className="badge badge-orange badge-no-dot" style={{ fontSize: 10 }} title="This account hasn't confirmed its email yet">
+                          Unverified
+                        </span>
+                      )}
                     </div>
                   </td>
                   {showMore && (
@@ -141,10 +167,25 @@ export default function UserManagementTab({ users, search, onSearchChange, onAdd
                         <EditIcon width={14} height={14} />
                         <span>Edit</span>
                       </button>
-                      <button type="button" className="btn btn-xs btn-outline inv-action-btn" onClick={() => onChangePassword(usr.user_id)} title={`Change password for ${usr.name}`} aria-label={`Change password for ${usr.name}`}>
-                        <LockIcon width={14} height={14} />
-                        <span>Password</span>
-                      </button>
+                      {SHOW_CHANGE_PASSWORD && (
+                        <button type="button" className="btn btn-xs btn-outline inv-action-btn" onClick={() => onChangePassword(usr.user_id)} title={`Change password for ${usr.name}`} aria-label={`Change password for ${usr.name}`}>
+                          <LockIcon width={14} height={14} />
+                          <span>Password</span>
+                        </button>
+                      )}
+                      {SHOW_RESEND_VERIFICATION && (
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-outline inv-action-btn"
+                          onClick={() => onResendVerification(usr.user_id)}
+                          disabled={resendingId === usr.user_id || !usr.email}
+                          title={usr.email ? `Send a new verification email to ${usr.email}` : 'No email address on file'}
+                          aria-label={`Resend verification email to ${usr.name}`}
+                        >
+                          <MailIcon width={14} height={14} />
+                          <span>{resendingId === usr.user_id ? 'Sending…' : 'Resend Verification'}</span>
+                        </button>
+                      )}
                       {usr.role !== 'admin' && (
                         <button type="button" className="btn btn-xs btn-red inv-action-btn" onClick={() => onDelete(usr.user_id)} title="Delete user" aria-label="Delete user">
                           <TrashIcon width={14} height={14} />
