@@ -75,26 +75,52 @@ export function AuthProvider({ children }) {
     const hadUrlToken = /access_token=/.test(window.location.hash)
     const urlTokenMatch = window.location.hash.match(/[?&]type=([^&]+)/)
     const isEmailConfirmationLink = hadUrlToken && urlTokenMatch?.[1] === 'signup'
+    // While true, the session Supabase auto-creates from the confirmation
+    // link is NOT pushed into app state (see onAuthStateChange below), so
+    // the person is never treated as logged in — not even for a moment.
+    let handlingConfirmation = isEmailConfirmationLink
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return
+
+      // Clicking the confirmation link in the signup email makes Supabase
+      // sign the person in automatically. We still need that session once,
+      // to create their records (loadProfile -> finalizeSelfRegistration)
+      // and log the verification — but then we sign it out right away and
+      // send them to the login page, so they must enter their credentials.
+      if (isEmailConfirmationLink && data.session?.user) {
+        const row = await loadProfile(data.session.user)
+        if (!mounted) return
+        if (row) {
+          await logAuthEvent({ userId: row.user_id, action: 'EMAIL_VERIFIED', details: `${row.email || 'Account'} confirmed via email link` })
+        }
+        try {
+          await supabase.auth.signOut({ scope: 'local' })
+        } catch (err) {
+          console.error('Sign-out after email confirmation failed:', err.message)
+        }
+        clearRegistrationDraft()
+        window.location.replace('/login?confirmed=1')
+        return
+      }
+
+      handlingConfirmation = false
       if (hadUrlToken && !data.session) {
         window.history.replaceState(null, '', window.location.pathname)
         show('This confirmation or reset link has expired or was already used. Please request a new one.', 'error')
       }
       setSession(data.session)
-      let row
-      if (data.session?.user) row = await loadProfile(data.session.user)
+      if (data.session?.user) await loadProfile(data.session.user)
       if (!mounted) return
-      if (isEmailConfirmationLink && row) {
-        logAuthEvent({ userId: row.user_id, action: 'EMAIL_VERIFIED', details: `${row.email || 'Account'} confirmed via email link` })
-      }
       setLoading(false)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Ignore the auto-created session from a signup confirmation link;
+      // the getSession() handler above signs it out and redirects to login.
+      if (handlingConfirmation && newSession) return
       setSession(newSession)
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordRecovery(true)

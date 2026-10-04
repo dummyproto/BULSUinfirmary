@@ -165,6 +165,7 @@ interface EmailContent {
 // code has to be shown prominently in plain text too — the QR is a
 // secondary, optional "or scan to open the reset page" convenience there,
 // not the primary path like it is for signup.
+// deno-lint-ignore no-unused-vars
 function contentFor(actionType: string, { confirmUrl, token }: { confirmUrl: string; token: string }): EmailContent {
   switch (actionType) {
     case 'signup':

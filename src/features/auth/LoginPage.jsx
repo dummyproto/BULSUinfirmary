@@ -227,7 +227,10 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
   async function handleBackToSignIn() {
     setConfirmingBackToLogin(true)
     try {
-      await signOut()
+      // The confirmation link's session is already signed out the moment
+      // it is detected (AuthContext.jsx), so usually there is nothing left
+      // to sign out here — only do it if a session somehow still exists.
+      if (isAuthenticated) await signOut()
     } finally {
       setEmail((prev) => prev || location.state?.registeredEmail || '')
       setJustConfirmedEmail(false)

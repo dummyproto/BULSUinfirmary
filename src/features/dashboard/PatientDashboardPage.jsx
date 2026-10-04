@@ -6,7 +6,7 @@ import { formatDate } from '@lib/format'
 import StatusBadge from '@components/ui/StatusBadge'
 import Spinner from '@components/ui/Spinner'
 import { listDocumentRequests } from '@services/documentRequestsService'
-import { listConsultations } from '@services/consultationsService'
+import { listConsultations, runFollowUpReminderCheck } from '@services/consultationsService'
 import { listEmergencyAlerts, getAlertById } from '@services/emergencyAlertsService'
 import { supabase } from '@services/supabaseClient'
 import { useRealtimeRefresh } from '@hooks/useRealtimeRefresh'
@@ -41,6 +41,11 @@ export default function PatientDashboardPage() {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+    // Best-effort, deliberately not awaited or chained into the
+    // Promise.all above — a failed reminder check must never block or
+    // fail the dashboard itself loading. pg_cron (migration 054) is the
+    // reliable daily fallback regardless of whether this succeeds.
+    runFollowUpReminderCheck().catch(() => {})
     return () => {
       cancelled = true
     }

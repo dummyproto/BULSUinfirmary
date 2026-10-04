@@ -40,14 +40,14 @@
 // emergencyAlertsService.js) stays the same regardless of which
 // provider actually carries the message.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*', // tighten to your actual domain in production
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -58,7 +58,7 @@ const IPROG_ENDPOINT = 'https://sms.iprogtech.com/api/v1/sms_messages'
 
 // Same normalization the prototype used — IPROG expects PH numbers as
 // 63XXXXXXXXXX (no leading +, no leading 0).
-function normalizePHPhone(num) {
+function normalizePHPhone(num?: string | null) {
   const cleaned = (num || '').replace(/[\s\-().]/g, '')
   if (/^09\d{9}$/.test(cleaned)) return '63' + cleaned.slice(1)
   if (/^\+639\d{9}$/.test(cleaned)) return cleaned.slice(1)
@@ -66,13 +66,17 @@ function normalizePHPhone(num) {
   return null
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
   const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
   const IPROG_API_TOKEN = Deno.env.get('IPROG_API_TOKEN')
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return jsonResponse({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_ANON_KEY.' }, 500)
+  }
 
   try {
     // ── 1. Identify the caller and verify they're staff or admin ──
@@ -143,6 +147,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ sent: true, providerMessageId: iprogData.message_id })
   } catch (err) {
-    return jsonResponse({ error: err.message }, 400)
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse({ error: message }, 400)
   }
 })

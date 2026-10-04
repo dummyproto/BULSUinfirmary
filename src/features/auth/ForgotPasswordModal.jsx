@@ -162,7 +162,7 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
   async function handleVerifyAndReset(e) {
     e.preventDefault()
     setError('')
-    if (!/^\d{4,10}$/.test(otp.trim())) return setError('Enter the code exactly as emailed to you.')
+    if (!/^\d{8}$/.test(otp.trim())) return setError('Enter the 8-digit code from your email.')
     const check = validatePassword(password)
     if (!check.ok) return setError(check.msg)
     if (password !== confirm) return setError('Passwords do not match.')
@@ -253,7 +253,7 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
           <p style={{ marginTop: 0, marginBottom: 18, fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.5 }}>
             <MailIcon width={13} height={13} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>
-              We sent a code to <strong>{email}</strong>. Check your inbox (and spam folder) — it expires shortly.
+              We sent an 8-digit code to <strong>{email}</strong>. Check your inbox (and spam folder) — it expires shortly.
             </span>
           </p>
           {error && (
@@ -269,9 +269,9 @@ const confirmValid = confirm ? confirm === password && passwordValid : null
               inputMode="numeric"
               className="form-input"
               placeholder="Enter the 8-digit code"
-              maxLength={10}
+              maxLength={8}
               value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
               required
               autoFocus
               style={{ letterSpacing: '.2em', textAlign: 'center', fontSize: 18 }}

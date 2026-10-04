@@ -133,7 +133,7 @@ async function verifyStandardWebhook(
 
   const signedContent = `${id}.${timestamp}.${payload}`
   const keyBytes = secretToKeyBytes(secret)
-  const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+ const cryptoKey = await crypto.subtle.importKey('raw', new Uint8Array(keyBytes), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(signedContent))
   const expectedSignature = bytesToBase64(new Uint8Array(signatureBuffer))
 
@@ -160,11 +160,13 @@ interface EmailContent {
 }
 
 // Per email_action_type copy — recovery is the odd one out: this app's
-// ForgotPasswordModal/ResetPasswordPage flow (src/context/AuthContext.jsx)
-// has the person TYPE IN the 6-digit `token`, not click a link, so that
-// code has to be shown prominently in plain text too — the QR is a
-// secondary, optional "or scan to open the reset page" convenience there,
-// not the primary path like it is for signup.
+// ForgotPasswordModal flow (src/context/AuthContext.jsx) has the person
+// TYPE IN the 8-digit `token` — there is no reset link at all. The recovery
+// email therefore contains only that code (see buildCodeEmailHtml below),
+// with no button and no QR. The code's length comes from Supabase's
+// Authentication -> Providers -> Email -> "Email OTP Length" setting, which
+// must be set to 8.
+// deno-lint-ignore no-unused-vars
 function contentFor(actionType: string, { confirmUrl, token }: { confirmUrl: string; token: string }): EmailContent {
   switch (actionType) {
     case 'signup':
@@ -233,6 +235,19 @@ function buildEmailHtml({
   </div>`
 }
 
+// Recovery email: just the code, big and copyable. No button, no QR, no link.
+function buildCodeEmailHtml({ heading, body, code }: { heading: string; body: string; code: string }): string {
+  return `
+  <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+    <h2 style="margin: 0 0 16px; font-size: 20px;">${heading}</h2>
+    <p style="font-size: 14px; line-height: 1.6; margin: 0 0 24px;">${body}</p>
+    <div style="text-align: center; margin: 0 0 24px;">
+      <div style="display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:16px 28px; font-size:32px; font-weight:700; letter-spacing:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;">${code}</div>
+    </div>
+    <p style="font-size: 12px; color: #6b7280; margin: 0;">Never share this code with anyone.</p>
+  </div>`
+}
+
 // @ts-ignore -- Deno global, see note above
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
@@ -272,6 +287,32 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { token, token_hash, redirect_to, email_action_type } = email_data
+
+    // ── Password reset: send the 8-digit code only ──
+    if (email_action_type === 'recovery') {
+      if (!/^\d{8}$/.test(token || '')) {
+        // Supabase generated a code that isn't 8 digits, so the reset page
+        // (which requires exactly 8) would reject it. Fix: Dashboard ->
+        // Authentication -> Providers -> Email -> Email OTP Length = 8.
+        console.warn(`recovery code is ${(token || '').length} digits, expected 8 — set "Email OTP Length" to 8 in Supabase Auth settings`)
+      }
+      const recovery = contentFor('recovery', { confirmUrl: '', token })
+      const recoveryRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: RESEND_FROM_EMAIL,
+          to: [user.email],
+          subject: recovery.subject,
+          html: buildCodeEmailHtml({ heading: recovery.heading, body: recovery.body, code: token }),
+        }),
+      })
+      if (!recoveryRes.ok) {
+        const errBody = await recoveryRes.text()
+        throw new Error(`Resend API error (${recoveryRes.status}): ${errBody}`)
+      }
+      return jsonResponse({})
+    }
 
     // Same confirmation-link shape Supabase's own default template uses —
     // hits Supabase's own /auth/v1/verify endpoint, which validates the

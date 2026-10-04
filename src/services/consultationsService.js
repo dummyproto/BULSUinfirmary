@@ -126,3 +126,17 @@ export async function createConsultation({
 
   return full
 }
+
+/**
+ * Checks every patient's follow_up_date and pushes a notification
+ * ("near or exact date") to whoever's follow-up is due within the next
+ * few days — see run_followup_reminder_check() (migration 054) for the
+ * actual logic and dedup behavior. Also runs daily via pg_cron
+ * regardless of whether anyone calls this; this is the "check right now
+ * too" on-demand trigger, same relationship runExpirationCheck() in
+ * medicineService.js has to its own daily cron job.
+ */
+export async function runFollowUpReminderCheck() {
+  const { error } = await supabase.rpc('run_followup_reminder_check')
+  if (error) throw error
+}
