@@ -362,8 +362,10 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
   async function handleReviewClick() {
     setErr('')
     const email = form.email.trim().toLowerCase()
-        if (!email) return setErr('Email address is required.')
+    if (!email) return setErr('Email address is required.')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setErr('Please enter a valid email address.')
+    // Registration is limited to Gmail addresses only.
+    if (!/^[^@\s]+@gmail\.com$/.test(email)) return setErr('Only Gmail addresses are allowed (example: yourname@gmail.com).')
 
     // Stop right here if this email already has an account — same idea as
     // checkStudentNumberRegistered on Step 1: fail before the (slower)
@@ -933,12 +935,12 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   <input
                     type="email"
                     className="reg-input"
-                    placeholder="Enter your email address"
+                    placeholder="yourname@gmail.com"
                     value={form.email}
                     onChange={(e) => setField('email')(e.target.value)}
                   />
                   <span className="reg-hint-text">
-                  Use a real, active email address — we'll send a confirmation link and QR code here, and you must verify it before your account is activated. Your account will not be created if you enter an email you can't access.
+                  Only Gmail addresses (@gmail.com) are accepted. Use a real, active email address — we'll send a confirmation link and QR code here, and you must verify it before your account is activated. Your account will not be created if you enter an email you can't access.
                 </span>
                 </div>
                 <div className="reg-field" style={{ marginBottom: 14 }}>

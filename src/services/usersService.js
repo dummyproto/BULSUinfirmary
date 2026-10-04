@@ -187,6 +187,12 @@ export async function checkStudentNumberRegistered(studentNumber) {
  *   path. Written to `patient_profiles.profile_incomplete`.
  */
 export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, guardianName, guardianRelation, guardianPhone, guardianAddress, qrCode, profileIncomplete }) {
+  // Registration is limited to Gmail addresses only (also checked in
+  // RegisterModal.jsx before this is ever called).
+  if (!/^[^@\s]+@gmail\.com$/i.test(String(email || '').trim())) {
+    throw new Error('Only Gmail addresses (@gmail.com) are allowed.')
+  }
+
   // If this address belonged to an account that was deleted from the app
   // but whose Supabase Auth login was left behind, signUp() below would
   // treat it as "already registered" and quietly send NO verification
