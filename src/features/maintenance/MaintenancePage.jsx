@@ -74,6 +74,21 @@ export default function MaintenancePage() {
     setUnverifiedIds(unverified)
   }
 
+  // Speed: the audit-log insert, the notification and the follow-up list
+  // refresh used to be awaited one after another BEFORE the modal closed or the
+  // toast appeared, so every click waited for 3-4 network round trips. None of
+  // them decide whether the admin's action itself worked, so they now run in the
+  // background (failures are still logged to the console).
+  function logAction(entry) {
+    addAuditLog(entry).catch((err) => console.error('[AUDIT_LOG_FAILED]', entry.action, err?.message || err))
+  }
+  function notifyQuietly(payload) {
+    notify(payload).catch(() => {})
+  }
+  function refreshUsersInBackground() {
+    refreshUsers().catch((err) => console.warn('[MAINTENANCE_REFRESH_FAILED]', err?.message || err))
+  }
+
   // "Resend Verification" — always available on every row, verified or not,
   // and always sends a new email (see resendVerificationEmailAsAdmin()).
   async function handleResendVerification(userId) {
@@ -154,8 +169,8 @@ export default function MaintenancePage() {
         schoolIdBarcode: generateSchoolIdCode(),
         staffIdNumber: record.role !== 'patient' ? generateStaffId() : null,
       })
-      await addAuditLog({ userId: currentUserId, action: 'ADD_USER', details: `Added user: ${record.name} (${record.role})` })
-      await refreshUsers()
+      logAction({ userId: currentUserId, action: 'ADD_USER', details: `Added user: ${record.name} (${record.role})` })
+      refreshUsersInBackground()
       setAddOpen(false)
       show(
         authUserId
@@ -178,14 +193,18 @@ export default function MaintenancePage() {
   // requests per second, so rows are spaced out and a failed email is retried.
   const BULK_EMAIL_ROW_DELAY_MS = 1200
   const BULK_RESEND_RETRY_DELAYS_MS = [3000, 6000]
+  const BULK_INVITE_EMAIL_ROW_DELAY_MS = 600
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-  async function handleBulkImportUsers(validRows, onProgress) {
+  async function handleBulkImportUsers(validRows, onProgress, options = {}) {
+    const sendInviteEmail = options.sendInviteEmail === true
     let createdCount = 0
     let verifiedCount = 0
     let emailSentCount = 0
+    let inviteEmailSentCount = 0
     const failedRows = []
     const emailFailedRows = []
+    const inviteEmailFailedRows = []
 
     for (let i = 0; i < validRows.length; i++) {
       const row = validRows[i]
@@ -197,14 +216,20 @@ export default function MaintenancePage() {
       let authUserId
       let resendFailed
       let autoConfirmed
+      let inviteEmailSent
+      let inviteEmailFailed
       try {
         // mode: 'password' + autoConfirm — each row's own Password column
         // becomes that patient's login password and the account is created
         // already verified, so no email is needed.
-        const result = await provisionUser({ email, name: fullName, role: 'patient', mode: 'password', temporaryPassword: row.password, autoConfirm: true })
+        // sendInviteEmail (optional checkbox in the import window) also emails
+        // the user their email + password with a note to change it after login.
+        const result = await provisionUser({ email, name: fullName, role: 'patient', mode: 'password', temporaryPassword: row.password, autoConfirm: true, sendInviteEmail })
         authUserId = result.authUserId
         resendFailed = result.resendFailed
         autoConfirmed = result.autoConfirmed
+        inviteEmailSent = result.inviteEmailSent
+        inviteEmailFailed = result.inviteEmailFailed
       } catch (err) {
         // No login was created, so don't create a profile-only record
         // either (it would show as "already registered" on a re-import
@@ -246,8 +271,13 @@ export default function MaintenancePage() {
           guardianPhone: row.contactNumber || null,
         })
         createdCount++
-        if (autoConfirmed) verifiedCount++
-        else if (resendFailed) emailFailedRows.push({ rowNumber: row.rowNumber, email, reason: resendFailed })
+        if (autoConfirmed) {
+          verifiedCount++
+          if (sendInviteEmail) {
+            if (inviteEmailSent) inviteEmailSentCount++
+            else inviteEmailFailedRows.push({ rowNumber: row.rowNumber, email, reason: inviteEmailFailed || 'Invitation email was not sent (redeploy the create-user function).' })
+          }
+        } else if (resendFailed) emailFailedRows.push({ rowNumber: row.rowNumber, email, reason: resendFailed })
         else emailSentCount++
       } catch (err) {
         failedRows.push({ rowNumber: row.rowNumber, email, reason: err.message })
@@ -255,19 +285,23 @@ export default function MaintenancePage() {
 
       onProgress(i + 1, validRows.length)
       if (!autoConfirmed && i < validRows.length - 1) await sleep(BULK_EMAIL_ROW_DELAY_MS)
+      // Resend allows ~2 requests/second — space out the invitation emails too.
+      else if (sendInviteEmail && i < validRows.length - 1) await sleep(BULK_INVITE_EMAIL_ROW_DELAY_MS)
     }
 
-    await addAuditLog({
+    logAction({
       userId: currentUserId,
       action: 'BULK_IMPORT_USERS',
-      details: `CSV bulk patient import — ${validRows.length} valid record(s) submitted, ${createdCount} created (${verifiedCount} auto-verified), ${failedRows.length} failed.`,
+      details: `CSV bulk patient import — ${validRows.length} valid record(s) submitted, ${createdCount} created (${verifiedCount} auto-verified), ${failedRows.length} failed.` +
+        (sendInviteEmail ? ` Invitation emails: ${inviteEmailSentCount} sent, ${inviteEmailFailedRows.length} failed.` : ''),
     })
-    await refreshUsers()
-    const needsAttention = failedRows.length > 0 || emailFailedRows.length > 0
+    refreshUsersInBackground()
+    const needsAttention = failedRows.length > 0 || emailFailedRows.length > 0 || inviteEmailFailedRows.length > 0
     show(
       needsAttention
         ? `Bulk import finished — ${createdCount} of ${validRows.length} account(s) created` +
             (emailFailedRows.length ? `, ${emailFailedRows.length} still need a verification email` : '') +
+            (inviteEmailFailedRows.length ? `, ${inviteEmailFailedRows.length} invitation email(s) failed` : '') +
             (failedRows.length ? `, ${failedRows.length} row(s) failed` : '') +
             '. See the import window for details.'
         : `Bulk import complete — ${createdCount} of ${validRows.length} patient account(s) created` +
@@ -275,7 +309,7 @@ export default function MaintenancePage() {
       needsAttention ? 'warning' : 'success'
     )
 
-    return { createdCount, verifiedCount, emailSentCount, failedRows, emailFailedRows }
+    return { createdCount, verifiedCount, emailSentCount, inviteEmailSentCount, failedRows, emailFailedRows, inviteEmailFailedRows }
   }
 
   async function handleEditSave(updates) {
@@ -284,14 +318,16 @@ export default function MaintenancePage() {
       // Regenerated on every save, not just when requested — the QR
       // code is meant to change whenever an admin edits this user,
       // invalidating any previously printed/shared code for them.
-      await updateUser(user.user_id, { name: updates.name, email: updates.email, phone: updates.phone, school_id_barcode: generateSchoolIdCode() })
-      if (user.role === 'patient') {
-        await updatePatientProfile(user.user_id, { surname: updates.surname, given_name: updates.givenName, student_number: updates.student_number, course: updates.course, year_level: updates.year_level })
-      } else {
-        await updateStaffProfile(user.user_id, { department: updates.department, position: updates.position })
-      }
-      await addAuditLog({ userId: currentUserId, action: 'EDIT_USER', details: `Updated user: ${updates.name} (ID: ${user.user_id})` })
-      await refreshUsers()
+      // The users row and the profile row are different tables, so both
+      // updates run at the same time instead of one after the other.
+      await Promise.all([
+        updateUser(user.user_id, { name: updates.name, email: updates.email, phone: updates.phone, school_id_barcode: generateSchoolIdCode() }),
+        user.role === 'patient'
+          ? updatePatientProfile(user.user_id, { surname: updates.surname, given_name: updates.givenName, student_number: updates.student_number, course: updates.course, year_level: updates.year_level })
+          : updateStaffProfile(user.user_id, { department: updates.department, position: updates.position }),
+      ])
+      logAction({ userId: currentUserId, action: 'EDIT_USER', details: `Updated user: ${updates.name} (ID: ${user.user_id})` })
+      refreshUsersInBackground()
       setEditId(null)
       show('User updated successfully', 'success')
     } catch (err) {
@@ -304,22 +340,18 @@ export default function MaintenancePage() {
     if (user.role === 'admin') return show('System Administrator account cannot be deactivated', 'error')
     try {
       await setActive(id, !current)
-      await addAuditLog({ userId: currentUserId, action: !current ? 'ACTIVATE_USER' : 'DEACTIVATE_USER', details: `${user.name} (ID: ${id})` })
-      await refreshUsers()
+      // Flip the switch on screen right away; realtime reconciles with the DB.
+      setUsers((prev) => prev.map((u) => (u.user_id === id ? { ...u, active: !current } : u)))
       show(`User ${!current ? 'activated' : 'deactivated'}`, !current ? 'success' : 'warning')
-      try {
-        await notify({
-          targetUserId: id,
-          message: !current ? 'Your account has been reactivated. You can now log in again.' : 'Your account has been deactivated by an administrator.',
-          type: !current ? 'success' : 'warning',
-          module: '/dashboard',
-        })
-      } catch {
-        // Non-critical — most useful on reactivation (the user can act on
-        // it); a deactivated user's own session may already be ending, so
-        // this is best-effort either way, not the reason the status
-        // change itself would fail.
-      }
+      logAction({ userId: currentUserId, action: !current ? 'ACTIVATE_USER' : 'DEACTIVATE_USER', details: `${user.name} (ID: ${id})` })
+      // Best-effort — most useful on reactivation (the user can act on it); a
+      // deactivated user's own session may already be ending.
+      notifyQuietly({
+        targetUserId: id,
+        message: !current ? 'Your account has been reactivated. You can now log in again.' : 'Your account has been deactivated by an administrator.',
+        type: !current ? 'success' : 'warning',
+        module: '/dashboard',
+      })
     } catch (err) {
       show(`Failed to update user status: ${err.message}`, 'error')
     }
@@ -332,9 +364,9 @@ export default function MaintenancePage() {
     if (!(await confirm(`Delete user "${user.name}"?\nThis action cannot be undone.`))) return
     try {
       await deleteUser(id)
-      await addAuditLog({ userId: currentUserId, action: 'DELETE_USER', details: `Deleted user: ${user.name} (ID: ${id})` })
-      await refreshUsers()
+      setUsers((prev) => prev.filter((u) => u.user_id !== id))
       show(`${user.name} deleted`, 'success')
+      logAction({ userId: currentUserId, action: 'DELETE_USER', details: `Deleted user: ${user.name} (ID: ${id})` })
     } catch (err) {
       show(`Failed to delete user: ${err.message}`, 'error')
     }
@@ -346,19 +378,16 @@ export default function MaintenancePage() {
     setPwSaving(true)
     try {
       await resetUserPassword(user.user_id, newPassword)
-      await addAuditLog({ userId: currentUserId, action: 'RESET_PASSWORD', details: `Reset password for user: ${user.name} (ID: ${user.user_id})` })
       show(`Password updated for ${user.name}`, 'success')
       setPwUserId(null)
-      try {
-        await notify({
-          targetUserId: user.user_id,
-          message: 'Your password was reset by an administrator. If this wasn\u2019t expected, contact the clinic immediately.',
-          type: 'warning',
-          module: '/profile',
-        })
-      } catch {
-        // Non-critical — the password reset itself already succeeded.
-      }
+      logAction({ userId: currentUserId, action: 'RESET_PASSWORD', details: `Reset password for user: ${user.name} (ID: ${user.user_id})` })
+      // Best-effort — the password reset itself already succeeded.
+      notifyQuietly({
+        targetUserId: user.user_id,
+        message: 'Your password was reset by an administrator. If this wasn\u2019t expected, contact the clinic immediately.',
+        type: 'warning',
+        module: '/profile',
+      })
     } catch (err) {
       show(`Failed to update password: ${err.message}`, 'error')
     } finally {
@@ -369,27 +398,26 @@ export default function MaintenancePage() {
   async function handleTogglePerm(userId, key) {
     const user = users.find((u) => u.user_id === userId)
     const next = !user?.permissions?.[key]
+    // Optimistic: the switch moves instantly instead of after 3-4 round trips.
+    // If the save fails, the catch below reloads the real value.
+    setUsers((prev) => prev.map((u) => (u.user_id === userId ? { ...u, permissions: { ...u.permissions, [key]: next } } : u)))
     try {
       await togglePermission(userId, key, next)
-      await addAuditLog({ userId: currentUserId, action: 'UPDATE_PERMISSION', details: `${key} set to ${next} for ${user?.name} (ID: ${userId})` })
-      await refreshUsers()
+      logAction({ userId: currentUserId, action: 'UPDATE_PERMISSION', details: `${key} set to ${next} for ${user?.name} (ID: ${userId})` })
       show('Permission updated', 'success')
       // The affected staff member previously had no way to find out their
       // access changed except by noticing something suddenly works or
       // doesn't and having no idea why — the audit log records it, but
       // staff don't have a reason to go looking there proactively.
       const permLabel = PRINT_PERMISSIONS.find(([k]) => k === key)?.[1] || key
-      try {
-        await notify({
-          targetUserId: userId,
-          message: `Your permission for "${permLabel}" was ${next ? 'granted' : 'revoked'} by an administrator.`,
-          type: next ? 'success' : 'warning',
-          module: '/profile',
-        })
-      } catch {
-        // Non-critical — the permission change itself already succeeded.
-      }
+      notifyQuietly({
+        targetUserId: userId,
+        message: `Your permission for "${permLabel}" was ${next ? 'granted' : 'revoked'} by an administrator.`,
+        type: next ? 'success' : 'warning',
+        module: '/profile',
+      })
     } catch (err) {
+      refreshUsersInBackground() // put the switch back to what the database really has
       show(`Failed to update permission: ${err.message}`, 'error')
     }
   }

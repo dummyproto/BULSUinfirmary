@@ -12,7 +12,9 @@ import { FileSpreadsheetIcon, DownloadIcon, CheckCircleIcon, XCircleIcon, MailIc
 // 'password' in MaintenancePage.jsx's handleBulkImportUsers). CSV-imported
 // accounts are created already verified (autoConfirm) — no verification
 // email is sent and they can log in right away; they can change the
-// password later in Account Settings.
+// password later in Account Settings. Optionally (checkbox in the import
+// window) each user is also emailed their email + password, with a note to
+// change the password after logging in.
 const COLUMNS = [
   { key: 'fullName', label: 'Full Name', required: true },
   { key: 'email', label: 'Email', required: true },
@@ -70,8 +72,9 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState([]) // [{ rowNumber, ...fields, errors: [] }]
   const [importing, setImporting] = useState(false)
+  const [sendInviteEmail, setSendInviteEmail] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
-  const [result, setResult] = useState(null) // { createdCount, verifiedCount, emailSentCount, failedRows, emailFailedRows }
+  const [result, setResult] = useState(null) // { createdCount, verifiedCount, emailSentCount, inviteEmailSentCount, failedRows, emailFailedRows, inviteEmailFailedRows }
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const invalidCount = rows.length - validRows.length
@@ -80,6 +83,7 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
     setFileName('')
     setRows([])
     setImporting(false)
+    setSendInviteEmail(false)
     setProgress({ done: 0, total: 0 })
     setResult(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -137,7 +141,7 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
     setImporting(true)
     setProgress({ done: 0, total: validRows.length })
     try {
-      const res = await onImport(validRows, (done, total) => setProgress({ done, total }))
+      const res = await onImport(validRows, (done, total) => setProgress({ done, total }), { sendInviteEmail })
       setResult(res)
       setRows([])
     } catch (err) {
@@ -180,7 +184,7 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
             <MailIcon width={12} height={12} style={{ flexShrink: 0 }} />
             <span>
               Imported accounts are verified automatically no verification email is sent, and each user can log in
-              right away.
+              right away. Tick the box below if you also want to email each user their login details.
             </span>
           </div>
         </div>
@@ -193,11 +197,39 @@ export default function BulkImportModal({ isOpen, existingUsers, onClose, onImpo
           {fileName && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{fileName}</span>}
         </div>
 
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, cursor: importing ? 'default' : 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={sendInviteEmail}
+            onChange={(e) => setSendInviteEmail(e.target.checked)}
+            disabled={importing}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            Also send each user an invitation email with their <strong>email and password</strong> to log in. The email
+            includes a note to change their password after they receive it.
+          </span>
+        </label>
+
         {result && (
-          <div className={`alert ${result.failedRows.length === 0 && result.emailFailedRows.length === 0 ? 'alert-success' : 'alert-warning'}`}>
+          <div className={`alert ${result.failedRows.length === 0 && result.emailFailedRows.length === 0 && !(result.inviteEmailFailedRows?.length > 0) ? 'alert-success' : 'alert-warning'}`}>
             <strong>{result.createdCount}</strong> account{result.createdCount === 1 ? '' : 's'} created
             {result.verifiedCount > 0 && <> — <strong>{result.verifiedCount}</strong> verified automatically and ready to log in with their CSV password</>}
-            {result.emailSentCount > 0 && <>; <strong>{result.emailSentCount}</strong> verification email{result.emailSentCount === 1 ? '' : 's'} sent (they can't log in until it's confirmed)</>}.
+            {result.emailSentCount > 0 && <>; <strong>{result.emailSentCount}</strong> verification email{result.emailSentCount === 1 ? '' : 's'} sent (they can't log in until it's confirmed)</>}
+            {result.inviteEmailSentCount > 0 && <>; <strong>{result.inviteEmailSentCount}</strong> invitation email{result.inviteEmailSentCount === 1 ? '' : 's'} sent with login details</>}.
+            {result.inviteEmailFailedRows?.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {result.inviteEmailFailedRows.length} account{result.inviteEmailFailedRows.length === 1 ? ' was' : 's were'} created but the
+                invitation email could not be sent. Please give these users their email and password another way:
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                  {result.inviteEmailFailedRows.map((f) => (
+                    <li key={f.rowNumber}>
+                      Row {f.rowNumber} ({f.email}): {f.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {result.emailFailedRows.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 {result.emailFailedRows.length} account{result.emailFailedRows.length === 1 ? ' was' : 's were'} created but the

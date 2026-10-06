@@ -33,14 +33,24 @@ import { isPersonnelNumber } from '@features/profile/lib/profileHelpers'
  * the account is created unconfirmed and can't log in until its
  * verification email is confirmed — 'password' does not skip that step.
  */
-export async function provisionUser({ email, name, role, mode = 'password', temporaryPassword, autoConfirm = false }) {
+export async function provisionUser({ email, name, role, mode = 'password', temporaryPassword, autoConfirm = false, sendInviteEmail = false }) {
   // invokeEdgeFunction() (see edgeFunctions.js) reads the function's own
   // { error } response body and, separately, tells a network-level failure
   // apart from a real server rejection — a raw supabase.functions.invoke()
   // call collapses both into the same generic "Edge Function returned a
   // non-2xx status code", which is what was showing up as an unexplained
   // 400 in the console with no usable reason surfaced to the admin.
-  const data = await invokeEdgeFunction('create-user', { email, name, role, mode, temporaryPassword, autoConfirm })
+  const data = await invokeEdgeFunction('create-user', {
+    email,
+    name,
+    role,
+    mode,
+    temporaryPassword,
+    autoConfirm,
+    sendInviteEmail,
+    // Where the "Log In" button in the invitation email points.
+    loginUrl: `${getAppUrl()}/login`,
+  })
   // resendFailed is only ever set by mode: 'password' — the account was
   // still created (authUserId is real), just without its verification
   // email actually going out. Returned as an object (not just the UUID)
@@ -49,7 +59,17 @@ export async function provisionUser({ email, name, role, mode = 'password', temp
   // actually created the account already verified — an older deployed
   // version ignores autoConfirm, so callers must check this rather than
   // assume.
-  return { authUserId: data.authUserId, resendFailed: data.resendFailed || null, autoConfirmed: data.autoConfirmed === true }
+  // inviteEmailSent / inviteEmailFailed only come back when sendInviteEmail
+  // was requested AND the updated create-user function is deployed — an older
+  // deployed version ignores the flag, so callers must check inviteEmailSent
+  // rather than assume the email went out.
+  return {
+    authUserId: data.authUserId,
+    resendFailed: data.resendFailed || null,
+    autoConfirmed: data.autoConfirmed === true,
+    inviteEmailSent: data.inviteEmailSent === true,
+    inviteEmailFailed: data.inviteEmailFailed || null,
+  }
 }
 
 /**

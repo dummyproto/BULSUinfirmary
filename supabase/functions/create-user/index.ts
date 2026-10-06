@@ -53,6 +53,12 @@ interface CreateUserRequestBody {
   // verified and NO verification email is sent — the user can log in right
   // away with the password set here. Used by Maintenance's CSV bulk import.
   autoConfirm?: boolean
+  // When true (together with autoConfirm), also emails the new user their
+  // login email + the password set here, with a note to change it after
+  // logging in. Used by Maintenance's CSV bulk import.
+  sendInviteEmail?: boolean
+  // Link the "Log In" button in that email points to (the app's /login).
+  loginUrl?: string
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -75,6 +81,74 @@ function errorMessage(err: unknown): string {
 function denoEnv(key: string): string | undefined {
   // @ts-ignore -- Deno global, see note above
   return Deno.env.get(key)
+}
+
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// Emails the new user their login details through Resend (same RESEND_API_KEY /
+// RESEND_FROM_EMAIL secrets that send-verification-email already uses).
+// Returns null on success, or an error message string on failure — a failed
+// email must NOT undo the account that was just created.
+async function sendInviteCredentialsEmail({
+  to,
+  name,
+  password,
+  loginUrl,
+}: {
+  to: string
+  name: string
+  password: string
+  loginUrl: string
+}): Promise<string | null> {
+  const apiKey = denoEnv('RESEND_API_KEY')
+  const from = denoEnv('RESEND_FROM_EMAIL') || 'onboarding@resend.dev'
+  if (!apiKey) return 'RESEND_API_KEY is not configured'
+
+  const safeName = escapeHtml(name)
+  const safeEmail = escapeHtml(to)
+  const safePassword = escapeHtml(password)
+  const safeUrl = escapeHtml(loginUrl)
+
+  const html = `
+  <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+    <h2 style="margin: 0 0 16px; font-size: 20px;">You've been invited to BulSU Clinic</h2>
+    <p style="font-size: 14px; line-height: 1.6; margin: 0 0 16px;">Hello ${safeName}, an account has been created for you in the BulSU Clinic Appointment &amp; Patient System. Use the details below to log in:</p>
+    <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:16px 20px; margin: 0 0 20px; font-size:14px; line-height:1.8;">
+      <div><strong>Email:</strong> ${safeEmail}</div>
+      <div><strong>Password:</strong> <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;">${safePassword}</span></div>
+    </div>
+    <div style="text-align: center; margin: 0 0 20px;">
+      <a href="${safeUrl}" style="display:inline-block; background:#0f766e; color:#fff; text-decoration:none; font-weight:600; font-size:14px; padding:12px 28px; border-radius:8px;">Log In</a>
+    </div>
+    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin: 0 0 16px; font-size:13px; line-height:1.6; color:#92400e;">
+      <strong>Note:</strong> Please change your password after you receive this email and log in (Account Settings). Do not share this password with anyone.
+    </div>
+    <p style="font-size: 11px; color: #9ca3af; word-break: break-all; margin: 0;">Or paste this link into your browser: ${safeUrl}</p>
+  </div>`
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: "You've been invited to BulSU Clinic",
+        html,
+      }),
+    })
+    if (!res.ok) return `Resend API error (${res.status}): ${await res.text()}`
+    return null
+  } catch (err) {
+    return errorMessage(err)
+  }
 }
 
 // @ts-ignore -- Deno global, see note above
@@ -115,7 +189,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 2. Validate the request body ──
-    const { email, name, role, mode = 'password', temporaryPassword, autoConfirm = false } =
+    const { email, name, role, mode = 'password', temporaryPassword, autoConfirm = false, sendInviteEmail = false, loginUrl = '' } =
       (await req.json()) as CreateUserRequestBody
     if (!email || !name || !role) throw new Error('email, name, and role are required')
     if (!['admin', 'staff', 'patient'].includes(role)) throw new Error('role must be admin, staff, or patient')
@@ -147,6 +221,23 @@ Deno.serve(async (req: Request) => {
       // autoConfirm: already verified above, so there is nothing to confirm
       // and no email to send.
       if (autoConfirm === true) {
+        // Optional: email the user their login details. Non-fatal on failure —
+        // the account already exists, so the failure is reported back instead.
+        if (sendInviteEmail === true) {
+          const inviteEmailError = await sendInviteCredentialsEmail({
+            to: email,
+            name,
+            password: temporaryPassword as string,
+            loginUrl,
+          })
+          return jsonResponse({
+            authUserId: created.user.id,
+            mode,
+            autoConfirmed: true,
+            inviteEmailSent: inviteEmailError === null,
+            inviteEmailFailed: inviteEmailError,
+          })
+        }
         return jsonResponse({ authUserId: created.user.id, mode, autoConfirmed: true })
       }
 
