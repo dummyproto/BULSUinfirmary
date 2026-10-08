@@ -31,10 +31,17 @@ export function AuthProvider({ children }) {
           row = await getUserByEmail(authUser.email)
           if (row) row = await linkAuthUserIfNeeded(row, authUser.id)
         }
-        if (!row && authUser.user_metadata?.role === 'patient') {
+                if (!row && authUser.user_metadata?.role === 'patient') {
           try {
             row = await finalizeSelfRegistration(authUser)
           } catch (regErr) {
+            // DIAGNOSTIC: shows which constraint or policy actually failed
+            console.error('finalizeSelfRegistration failed:', {
+              code: regErr.code,
+              message: regErr.message,
+              details: regErr.details,
+              hint: regErr.hint,
+            })
             const isRaceWithAnotherTab = (regErr.code === '23505' || regErr.code === '42501') && authUser.email
             if (isRaceWithAnotherTab) {
               row = await getUserByEmail(authUser.email)
