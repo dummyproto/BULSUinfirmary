@@ -229,3 +229,19 @@ export const MEDICINE_CATEGORIES = [
   'Vitamin / Supplement',
   'Other',
 ]
+
+// Unit-of-measure choices for the Add Item form, per top-level category —
+// medicines are counted in tablets/vials/etc., which make no sense for a
+// BP monitor or a box of gauze, so each category gets its own list.
+export const MEDICINE_UNITS = ['Tablets', 'Capsules', 'Bottles', 'Vials', 'Ampules', 'Sachets', 'Tubes', 'Boxes', 'Packs', 'Other']
+export const SUPPLY_UNITS = ['Pieces', 'Boxes', 'Packs', 'Rolls', 'Pairs', 'Sets', 'Bottles', 'Bags', 'Other']
+export const EQUIPMENT_UNITS = ['Units', 'Pieces', 'Sets', 'Pairs', 'Other']
+// Shown before a category is picked (same options the form always had).
+export const ALL_UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
+
+export function getUnitOptions(category) {
+  if (category === 'Medicine') return MEDICINE_UNITS
+  if (category === 'Supply') return SUPPLY_UNITS
+  if (category === 'Equipment') return EQUIPMENT_UNITS
+  return ALL_UNITS
+}

@@ -3,10 +3,8 @@ import Modal from '@components/ui/Modal'
 import Toggle from '@components/ui/Toggle'
 import SearchableSelect from '@components/ui/SearchableSelect'
 import ItemPhotoUpload from './ItemPhotoUpload'
-import { findInventoryItemsByName, itemIdentity, MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
+import { findInventoryItemsByName, itemIdentity, MEDICINE_CATEGORIES, getUnitOptions } from './lib/inventoryHelpers'
 import { PlusIcon, SaveIcon, XIcon, EditIcon, TrashIcon, AlertTriangleIcon } from '@components/ui/icons'
-
-const UNITS = ['Tablets', 'Capsules', 'Bottles', 'Boxes', 'Vials', 'Ampules', 'Rolls', 'Pieces', 'Packs', 'Sachets', 'Units', 'Other']
 
 const EMPTY_FORM = {
   name: '',
@@ -163,7 +161,16 @@ function cancelDuplicatePrompt() {
           </div>
           <div className="form-group">
             <label>CATEGORY *</label>
-            <select className="form-select" value={form.category} onChange={(e) => setField('category')(e.target.value)}>
+            <select
+              className="form-select"
+              value={form.category}
+              // Each category has its own unit list — keep the chosen unit
+              // only if it also exists in the new category's list.
+              onChange={(e) => {
+                const category = e.target.value
+                setForm((f) => ({ ...f, category, unit: getUnitOptions(category).includes(f.unit) ? f.unit : '' }))
+              }}
+            >
               <option value="" disabled>
                 -- Select Category --
               </option>
@@ -178,7 +185,7 @@ function cancelDuplicatePrompt() {
               <option value="" disabled>
                 -- Select Unit --
               </option>
-              {UNITS.map((u) => (
+              {getUnitOptions(form.category).map((u) => (
                 <option value={u} key={u}>
                   {u}
                 </option>

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:pin": "supabase functions deploy verify-pin --project-ref qobpigbzwwzpbcafilkz",
+    "check:pin": "node scripts/check-pin-function.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",

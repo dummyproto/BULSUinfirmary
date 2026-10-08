@@ -2,21 +2,24 @@ import { useState } from 'react'
 import Modal from '@components/ui/Modal'
 import { CheckCircleIcon } from '@components/ui/icons'
 
-export default function RestoreEquipmentModal({ isOpen, item, onClose, onSubmit, onError }) {
-  const [restoreQty, setRestoreQty] = useState(item ? String(item.quantity) : '')
+export default function RestoreEquipmentModal({ isOpen, item, maxQty, onClose, onSubmit, onError }) {
+  // maxQty = units actually sitting in batches that need maintenance
+  // (can be less than item.quantity if other batches are healthy).
+  const limit = maxQty ?? (item ? item.quantity : 0)
+  const [restoreQty, setRestoreQty] = useState(limit ? String(limit) : '')
   const [expiry, setExpiry] = useState('')
   const [notes, setNotes] = useState('')
 
   if (!isOpen || !item) return null
 
-  const remaining = item.quantity - Math.min(Math.max(parseInt(restoreQty, 10) || 0, 0), item.quantity)
+  const remaining = limit - Math.min(Math.max(parseInt(restoreQty, 10) || 0, 0), limit)
   const today = new Date().toISOString().slice(0, 10)
 
   function handleSubmit() {
     if (!expiry) return onError('Next maintenance date is required')
     if (expiry <= today) return onError('Maintenance date must be a future date')
     const qty = parseInt(restoreQty, 10)
-    if (!qty || qty < 1 || qty > item.quantity) return onError(`Enter a quantity between 1 and ${item.quantity}`)
+    if (!qty || qty < 1 || qty > limit) return onError(`Enter a quantity between 1 and ${limit}`)
     onSubmit({ restoreQty: qty, expiry, notes: notes.trim() || 'Maintenance completed — restored to active inventory' })
   }
 
@@ -47,13 +50,13 @@ export default function RestoreEquipmentModal({ isOpen, item, onClose, onSubmit,
             className="form-input"
             type="number"
             min="1"
-            max={item.quantity}
+            max={limit}
             value={restoreQty}
             onChange={(e) => setRestoreQty(e.target.value.replace(/[^0-9]/g, ''))}
             style={{ width: 110, fontSize: 16, fontWeight: 700, textAlign: 'center' }}
           />
           <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-            of <strong>{item.quantity}</strong> {item.unit}
+            of <strong>{limit}</strong> {item.unit}
           </span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>

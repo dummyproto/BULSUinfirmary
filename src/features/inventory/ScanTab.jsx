@@ -503,9 +503,6 @@ export default function ScanTab({ scanHistory, inventory, onProcessRaw, canDelet
           <li><CheckIcon width={13} height={13} /> Hold camera steady</li>
           <li><CheckIcon width={13} height={13} /> QR code or barcode will be scanned automatically</li>
         </ul>
-        <button type="button" className="qr-upload-link" onClick={() => togglePanel('upload')}>
-          <ImageIcon width={13} height={13} /> Upload an image instead
-        </button>
       </div>
 
       {/* Center — camera viewport */}

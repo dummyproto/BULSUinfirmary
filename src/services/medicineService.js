@@ -111,18 +111,15 @@ export async function getSupplierBatchCount(id) {
   return count || 0
 }
 
-// Blocks deletion of a supplier that's still referenced by any batch —
-// checked here first for a clear, specific error message; the database
-// itself also refuses via ON DELETE RESTRICT (migration 010) as a second,
-// independent guarantee that holds even for direct API/SQL access that
-// bypasses this application-level check.
+// Permanently deletes a supplier, even one still used by batches — all in
+// one database transaction (migration 055's delete_supplier_permanently):
+// its receiving records are deleted, its batches are KEPT but un-linked
+// (supplier becomes empty), then the supplier itself is deleted. Batches
+// are not deleted because stock and dispensing history depend on them.
 export async function deleteSupplier(id) {
-  const inUse = await getSupplierBatchCount(id)
-  if (inUse > 0) {
-    throw new Error(`This supplier is linked to ${inUse} batch${inUse === 1 ? '' : 'es'} and can't be deleted. Remove or reassign those batches first.`)
-  }
-  const { error } = await supabase.from('suppliers').delete().eq('supplier_id', id)
+  const { data, error } = await supabase.rpc('delete_supplier_permanently', { p_supplier_id: id })
   if (error) throw error
+  return data
 }
 
 // ── MEDICINE BATCHES ──

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import StatusBadge from '@components/ui/StatusBadge'
 import SearchInput from '@components/ui/SearchInput'
 import { formatDate } from '@lib/format'
-import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil, MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
+import { getInventoryStatus, sortInventoryByCategory, inventoryCategorySummary, itemKey, daysUntil, isPastISODate, MEDICINE_CATEGORIES } from './lib/inventoryHelpers'
 import { BatchesBody } from './BatchesTab'
 import { InventoryIcon, FolderIcon, PlusIcon, MinusIcon, TagIcon, DownloadIcon, WrenchIcon, CheckCircleIcon, TrashIcon, EditIcon, ClipboardIcon, XCircleIcon, ChevronUpIcon, ChevronDownIcon, GridIcon, ListIcon, PillIcon, InfoIcon } from '@components/ui/icons'
 import { defaultShowMore } from '@lib/viewport'
@@ -17,6 +17,21 @@ const STATUSES = ['All', 'Archived', 'Available', 'Critical Stock', 'Damaged', '
 // simply stays on 'items' since there's no way to switch it, so
 // re-enabling it is just this one flag.
 const SHOW_BATCHES_TOGGLE = false
+// Section placement is decided by the item's actual expiry / maintenance
+// condition — NOT by its stock status. getInventoryStatus() reports
+// "Out of Stock", "Archived" or "Damaged" for zero-quantity items even
+// when their date is long past, which used to drop those items into the
+// "Non-Expired Items" section and mix them in with usable stock.
+//   • Equipment past its maintenance date (or manually flagged) → Maintenance
+//   • Any other item past its expiration date → Expired
+//   • Everything else → Non-Expired (usable)
+function isMaintenanceItem(i) {
+  return i.category === 'Equipment' && (!!i.needs_maintenance || isPastISODate(i.expiration_date))
+}
+function isExpiredItem(i) {
+  return i.category !== 'Equipment' && isPastISODate(i.expiration_date)
+}
+
 function buildRows(sections) {
   const rows = []
   sections.forEach((section) => {
@@ -161,9 +176,9 @@ export default function ItemsTab({
   }
 
   const sorted = sortInventoryByCategory(filtered)
-  const nonExpired = sorted.filter((i) => getInventoryStatus(i) !== 'Expired' && getInventoryStatus(i) !== 'Needs Maintenance')
-  const expired = sorted.filter((i) => getInventoryStatus(i) === 'Expired' && i.category !== 'Equipment')
-  const maintenance = sorted.filter((i) => getInventoryStatus(i) === 'Needs Maintenance')
+  const maintenance = sorted.filter((i) => isMaintenanceItem(i))
+  const expired = sorted.filter((i) => isExpiredItem(i))
+  const nonExpired = sorted.filter((i) => !isMaintenanceItem(i) && !isExpiredItem(i))
 
   const sections = [
     { label: 'Non-Expired Items', note: `${nonExpired.length} usable item${nonExpired.length !== 1 ? 's' : ''}`, items: nonExpired, type: 'usable' },
@@ -368,7 +383,7 @@ function ItemCardList({ rows, filtered, filtersActive, clearFilters, showMore, o
           {rows.map((row, index) => {
             if (row.kind === 'section') {
               return (
-                <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: index === 0 ? 0 : 14, marginBottom: 10 }}>
+                <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: index === 0 ? 0 : row.section.type === 'usable' ? 14 : 32, marginBottom: 10 }}>
                   <div style={{ padding: '10px 14px' }}>
                     <span>{row.section.label}</span>
                     <small style={{ marginLeft: 8 }}>{row.section.note}</small>
@@ -401,7 +416,7 @@ function ItemCardList({ rows, filtered, filtersActive, clearFilters, showMore, o
           })}
           <div className="inv-list-footer-note">
             <InfoIcon width={14} height={14} />
-            Items are grouped by category. Only non-expired and usable items are shown.
+            Items are grouped by category.
           </div>
         </div>
       )}
@@ -614,7 +629,7 @@ function ItemGrid({ rows, filtered, filtersActive, clearFilters, onEdit, onRelea
       {groups.map((row) => {
         if (row.kind === 'section') {
           return (
-            <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: 14, marginBottom: 10 }}>
+            <div key={row.key} className={`inv-expiry-row ${row.section.type}`} style={{ borderRadius: 8, marginTop: row.section.type === 'usable' ? 14 : 32, marginBottom: 10 }}>
               <div style={{ padding: '10px 14px' }}>
                 <span>{row.section.label}</span>
                 <small style={{ marginLeft: 8 }}>{row.section.note}</small>

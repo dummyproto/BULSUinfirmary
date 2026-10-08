@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
-import { disableAccountAfterLockout, checkAccountActive, getRoleByEmail, checkEmailHasPin, resendConfirmationEmail } from '@services/usersService'
+import { reportFailedLogin, checkAccountActive, getRoleByEmail, checkEmailHasPin, resendConfirmationEmail } from '@services/usersService'
 import { setRememberMe as persistRememberMeChoice, getRememberMe } from '@services/supabaseClient'
 import { logAuthEvent } from '@services/auditLogsService'
 import PasswordInput from '@components/ui/PasswordInput'
@@ -72,7 +72,7 @@ const DEV_QUICK_LOGINS = import.meta.env.DEV
 //     Tier 2 with a fresh count.
 //   Tier 2 ('tier2') — up to TIER2_ATTEMPTS (10) MORE wrong passwords
 //     after the countdown. On the 10th, the account itself is disabled
-//     (server-side, via disableAccountAfterLockout) and can't sign in
+//     (server-side, via report_failed_login) and can't sign in
 //     again until an admin re-enables it in Maintenance -> User
 //     Management (the existing Activate/Deactivate toggle).
 const TIER1_ATTEMPTS = 5
@@ -94,6 +94,71 @@ function setAttempts(email, data) {
 }
 function clearAttempts(email) {
   localStorage.removeItem(attemptsKey(email))
+}
+
+// PIN quick-login lockout (QR-scan flow). The server (verify-pin Edge
+// Function) is the real enforcer: 5 wrong PINs = 60s lock, 15 wrong PINs
+// in total = account disabled until an admin re-enables it. This only
+// remembers the server's lock per email in localStorage, so the
+// "Locked — Ns" countdown survives a page refresh or re-scanning the same
+// ID instead of showing an unlocked PIN pad again (same idea as the
+// password form's loginAttempts record above).
+function pinLockKey(email) {
+  return `pinLockUntil:${email.trim().toLowerCase()}`
+}
+function getPinLock(email) {
+  try {
+    const until = Number(localStorage.getItem(pinLockKey(email))) || 0
+    if (until > Date.now()) return until
+    localStorage.removeItem(pinLockKey(email))
+  } catch {
+    // localStorage unavailable — treat as not locked (server still enforces)
+  }
+  return 0
+}
+function setPinLock(email, until) {
+  try {
+    localStorage.setItem(pinLockKey(email), String(until))
+  } catch {
+    // ignore — see above
+  }
+}
+function clearPinLock(email) {
+  try {
+    localStorage.removeItem(pinLockKey(email))
+  } catch {
+    // ignore — see above
+  }
+}
+
+// PIN attempt counter — the same two tiers as the password form, kept in a
+// separate record so PIN mistakes and password mistakes never mix:
+//   Tier 1 — up to TIER1_ATTEMPTS (5) wrong PINs, then a LOCKOUT_MS (60s) lock.
+//   Tier 2 — TIER2_ATTEMPTS (10) MORE wrong PINs after that lock; the 10th
+//            disables the account (until an admin re-enables it).
+function pinAttemptsKey(email) {
+  return `pinAttempts:${email.trim().toLowerCase()}`
+}
+function getPinAttempts(email) {
+  try {
+    return JSON.parse(localStorage.getItem(pinAttemptsKey(email))) || { phase: 'tier1', count: 0 }
+  } catch {
+    return { phase: 'tier1', count: 0 }
+  }
+}
+function setPinAttempts(email, data) {
+  try {
+    localStorage.setItem(pinAttemptsKey(email), JSON.stringify(data))
+  } catch {
+    // ignore — see above
+  }
+}
+function clearPinAttempts(email) {
+  try {
+    localStorage.removeItem(pinAttemptsKey(email))
+  } catch {
+    // ignore — see above
+  }
 }
 
 // Lazy — jsQR is a sizable library that most visitors (anyone signing in
@@ -160,6 +225,10 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
   const [emgSuccess, setEmgSuccess] = useState(null)
   const [lockUntil, setLockUntil] = useState(0)
   const [secondsLeft, setSecondsLeft] = useState(0)
+  // Separate from the password lockout above: a PIN lockout must not block the
+  // password form (and vice versa). The server enforces it; this is the countdown.
+  const [pinLockUntil, setPinLockUntil] = useState(0)
+  const [pinSecondsLeft, setPinSecondsLeft] = useState(0)
 
   useEffect(() => {
     if (!lockUntil) return
@@ -172,6 +241,18 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [lockUntil])
+
+  useEffect(() => {
+    if (!pinLockUntil) return
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((pinLockUntil - Date.now()) / 1000))
+      setPinSecondsLeft(remaining)
+      if (remaining <= 0) setPinLockUntil(0)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [pinLockUntil])
 
   // Clears the router state that carried registeredEmail/registeredMessage
   // (already read directly into email/info's useState initializers above)
@@ -258,6 +339,9 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     setEmail(foundEmail)
     setPin('')
     setError('')
+    // A different ID may have just been scanned — never carry the previous
+    // account's PIN countdown over to it.
+    setPinLockUntil(0)
     // Was previously a bare try/catch that silently swallowed ANY
     // failure here and fell back to password mode with zero trace —
     // meaning a real, reproducible bug in this check (a network blip
@@ -285,6 +369,13 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     }
     if (pinEnabled) {
       setInfo(`Identified account for ${foundEmail} — enter your 4-digit PIN to continue.`)
+      // Still inside a lockout from earlier (refresh / re-scan)? Resume the
+      // countdown right away instead of letting them type into the pad.
+      const storedLock = getPinLock(foundEmail)
+      if (storedLock) {
+        setPinLockUntil(storedLock)
+        setError(`Too many failed attempts. Try again in ${Math.ceil((storedLock - Date.now()) / 1000)}s.`)
+      }
       setMode('pin')
     } else {
       setInfo(`Identified account for ${foundEmail} — enter your password to continue.`)
@@ -295,6 +386,14 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     async function handlePinSubmit(e) {
     e.preventDefault()
     setError('')
+    // In-memory countdown first, then the saved copy (covers a refresh or
+    // re-scan) — whichever ends later wins.
+    const activeLock = Math.max(pinLockUntil, getPinLock(email))
+    if (activeLock && Date.now() < activeLock) {
+      setPinLockUntil(activeLock)
+      setError(`Too many failed attempts. Try again in ${Math.ceil((activeLock - Date.now()) / 1000)}s.`)
+      return
+    }
     if (!/^[0-9]{4}$/.test(pin)) {
       setError('Enter your 4-digit PIN.')
       return
@@ -306,12 +405,80 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
     setPinSubmitting(true)
     try {
       await signInWithPin(email, pin)
+      // Correct PIN — start fresh: drop the saved lock and the attempt count.
+      clearPinLock(email)
+      clearPinAttempts(email)
+      setPinLockUntil(0)
     } catch (err) {
       if (err instanceof TypeError && /fetch/i.test(err.message || '')) {
         setError('No internet connection. Please try again later.')
-      } else {
-        setError(err.message || 'Incorrect PIN.')
+      } else if (err.disabled) {
+        // Server says the account is disabled (15 wrong PINs, or an admin did it).
+        clearPinLock(email)
+        clearPinAttempts(email)
+        setPinLockUntil(0)
         setPin('')
+        setError(err.message || 'Your account is disabled — contact admin.')
+      } else if (err.retryAfter > 0) {
+        // Server-side lock (Tier 1 finished, or still locked): show the
+        // countdown, remember it, and move the counter into Tier 2.
+        const until = Date.now() + err.retryAfter * 1000
+        setPin('')
+        setPinLockUntil(until)
+        setPinLock(email, until)
+        if (getPinAttempts(email).phase !== 'tier2') setPinAttempts(email, { phase: 'tier2', count: 0 })
+        setError(err.message || `Too many failed attempts. Try again in ${err.retryAfter}s.`)
+      } else if (/^incorrect pin/i.test(err.message || '')) {
+        // A genuinely wrong PIN — count it. Anything else (a server/database
+        // error) is NOT counted, so a backend problem can't lock real users out.
+        setPin('')
+        let role
+        try {
+          role = await getRoleByEmail(email)
+        } catch {
+          role = undefined
+        }
+        if (role === 'admin') {
+          // Admin accounts are exempt from the lockout/disable escalation,
+          // same as the password form (the server still rate-limits them).
+          setError(err.message || 'Incorrect PIN.')
+        } else {
+          const record = getPinAttempts(email)
+          const phase = record.phase === 'tier2' ? 'tier2' : 'tier1'
+          const nextCount = (record.count || 0) + 1
+
+          // Same server-side counter the password form feeds: the database
+          // disables the account itself at 15 (5 + 10) total failures.
+          reportFailedLogin(email).catch(() => {})
+
+          if (phase === 'tier1') {
+            if (nextCount >= TIER1_ATTEMPTS) {
+              // 5th wrong PIN — lock the pad for 60s, then start Tier 2.
+              const until = Date.now() + LOCKOUT_MS
+              setPinAttempts(email, { phase: 'tier2', count: 0 })
+              setPinLock(email, until)
+              setPinLockUntil(until)
+              setError(`Too many failed attempts. Try again in ${Math.ceil(LOCKOUT_MS / 1000)}s.`)
+            } else {
+              setPinAttempts(email, { phase: 'tier1', count: nextCount })
+              setError(`Incorrect PIN. ${TIER1_ATTEMPTS - nextCount} attempt(s) left before temporary lockout.`)
+            }
+          } else if (nextCount >= TIER2_ATTEMPTS) {
+            // 10th wrong PIN in Tier 2 — the account is disabled.
+            logAuthEvent({ userId: null, action: 'DEACTIVATE_USER', details: `${email} — account automatically disabled after ${TIER1_ATTEMPTS + TIER2_ATTEMPTS} failed PIN attempts`, actorRole: role })
+            clearPinAttempts(email)
+            clearPinLock(email)
+            setPinLockUntil(0)
+            setError('Incorrect PIN. Your account is disabled — contact admin.')
+          } else {
+            setPinAttempts(email, { phase: 'tier2', count: nextCount })
+            setError(`Incorrect PIN. ${TIER2_ATTEMPTS - nextCount} attempt(s) left before your account is disabled.`)
+          }
+        }
+      } else {
+        // Not a wrong-PIN answer: show it as-is and don't count it.
+        setPin('')
+        setError(err.message || 'Could not verify PIN.')
       }
     } finally {
       setPinSubmitting(false)
@@ -452,6 +619,10 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
         // exactly this pre-auth case.
         logAuthEvent({ userId: null, action: 'LOGIN_FAILED', details: `${email} — incorrect password (attempt ${nextCount}, ${phase})`, actorRole: role })
 
+        // Server-side counter: the database disables the account itself at its own
+        // threshold (15 = 5 + 10), so clearing localStorage no longer resets it.
+        reportFailedLogin(email).catch(() => {})
+
         if (phase === 'tier1') {
           if (nextCount >= TIER1_ATTEMPTS) {
             // 5th wrong attempt — lock input for 60s, then move into
@@ -471,7 +642,7 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
             // fails (offline, etc.), still show the disabled message and
             // stop counting rather than looping forever.
             try {
-              await disableAccountAfterLockout(email)
+              // The account is disabled by the database (report_failed_login), not by this client call.
               // Reuses the same DEACTIVATE_USER action code
               // MaintenancePage.jsx writes for an admin-toggled
               // deactivation — this is functionally the same event
@@ -510,6 +681,7 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
   }
 
   const isLocked = lockUntil > 0
+  const pinLocked = pinLockUntil > 0
 
   return (
     <>
@@ -666,8 +838,8 @@ const [rememberMe, setRememberMe] = useState(getRememberMe)
               required
             />
           </div>
-          <button type="submit" className="login-btn" disabled={pinSubmitting || pin.length !== 4}>
-            {pinSubmitting ? 'Verifying…' : 'Continue →'}
+          <button type="submit" className="login-btn" disabled={pinSubmitting || pinLocked || pin.length !== 4}>
+            {pinSubmitting ? 'Verifying…' : pinLocked ? `Locked — ${pinSecondsLeft}s` : 'Continue →'}
           </button>
           <button
             type="button"

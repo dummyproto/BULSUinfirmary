@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@services/supabaseClient'
-import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive } from '@services/usersService'
+import { getUserByEmail, getUserByAuthId, linkAuthUserIfNeeded, finalizeSelfRegistration, checkAccountActive, resetOwnFailedLogin } from '@services/usersService'
 import { logAuthEvent } from '@services/auditLogsService'
 import { useToast } from '@context/ToastContext'
 import { getAppUrl } from '@lib/appUrl'
@@ -163,6 +163,9 @@ export function AuthProvider({ children }) {
       throw new Error('ACCOUNT_DISABLED')
     }
 
+    // Correct password and active account: clear the server-side failed-login counter (best-effort).
+    resetOwnFailedLogin().catch(() => {})
+
     const row = await loadProfile(data.user)
     await logAuthEvent({ userId: row?.user_id, action: 'LOGIN_SUCCESS', details: `${email} signed in` })
 
@@ -174,11 +177,30 @@ export function AuthProvider({ children }) {
       const { data, error } = await supabase.functions.invoke('verify-pin', { body: { email, pin } })
       if (error) {
         let message = 'Could not verify PIN'
+        let retryAfter = 0
+        let disabled = false
+        let disabledNow = false
         try {
           const body = await error.context?.json()
-          if (body?.error) message = body.error
+          if (body?.error) message = typeof body.error === 'string' ? body.error : body.error.message || JSON.stringify(body.error)
+          retryAfter = Number(body?.retry_after_seconds) || 0
+          disabled = body?.disabled === true
+          disabledNow = body?.disabled_now === true
         } catch {
           // Response wasn't JSON, or context was unavailable
+        }
+        // The previously deployed verify-pin returned the literal text
+        // "[object Object]" whenever the database errored. Show something
+        // readable instead (and it won't count as a wrong PIN).
+        if (message === '[object Object]') {
+          // Only the OLD deployed verify-pin can return this. Redeploying the
+          // current supabase/functions/verify-pin/index.ts fixes it.
+          console.error('[PIN login] The deployed verify-pin Edge Function is outdated. Redeploy it: supabase functions deploy verify-pin')
+          message = 'PIN sign-in is unavailable: the verify-pin server function is outdated and must be redeployed. Please use your password for now.'
+        } else if (!/^(incorrect pin|too many|your account is disabled|please wait)/i.test(message)) {
+          // Any other server-side problem: keep the real reason visible in the
+          // console so it can be diagnosed (it is not counted as a wrong PIN).
+          console.error('[PIN login] verify-pin error:', message)
         }
         let attemptedRole
         try {
@@ -187,7 +209,14 @@ export function AuthProvider({ children }) {
           attemptedRole = undefined
         }
         logAuthEvent({ userId: null, action: 'LOGIN_FAILED', details: `${email} — PIN sign-in: ${message}`, actorRole: attemptedRole })
-        throw new Error(message)
+        if (disabledNow) {
+          // Same audit code as an admin-toggled deactivation and the password lockout.
+          logAuthEvent({ userId: null, action: 'DEACTIVATE_USER', details: `${email} — account automatically disabled after 15 failed PIN attempts`, actorRole: attemptedRole })
+        }
+        const pinError = new Error(message)
+        pinError.retryAfter = retryAfter // seconds, > 0 while locked out
+        pinError.disabled = disabled
+        throw pinError
       }
       if (!data?.token_hash) throw new Error('Could not complete sign-in')
 

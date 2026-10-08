@@ -71,8 +71,8 @@ import {
   getMedicineBatchById,
   runExpirationCheck,
 } from '@services/medicineService'
-import { listSuppliesAsInventoryItems, listSupplyBatches, updateSupply, deactivateSupply } from '@services/supplyService'
-import { listEquipmentAsInventoryItems, listEquipmentBatches, updateEquipment, deactivateEquipment } from '@services/equipmentService'
+import { listSuppliesAsInventoryItems, listSupplyBatches, createSupply, createSupplyBatch, updateSupply, deactivateSupply } from '@services/supplyService'
+import { listEquipmentAsInventoryItems, listEquipmentBatches, createEquipment, createEquipmentBatch, updateEquipmentBatch, updateEquipment, deactivateEquipment } from '@services/equipmentService'
 import { clearInventoryNotifications } from '@services/inventoryNotificationsService'
 import { listUsers } from '@services/usersService'
 import { notify } from '@services/notificationsService'
@@ -430,9 +430,85 @@ export default function InventoryPage() {
           continue
         }
 
-        // Supply / Equipment — unchanged legacy path, except the supplier
-        // NAME (still a plain VARCHAR on this table) now comes from the
-        // resolved dropdown selection instead of free-typed text.
+        // Supply / Equipment — these now live in their own normalized
+        // tables (supplies/supply_batches, equipment/equipment_batches).
+        // The page only DISPLAYS items from those tables (legacy
+        // `inventory` rows for these categories are filtered out), so
+        // saving into the legacy `inventory` table made new items
+        // vanish. Write to the normalized tables instead, same pattern
+        // Medicine uses: item row + a batch row holding the stock.
+        if (f.category === 'Supply' || f.category === 'Equipment') {
+          const isSupply = f.category === 'Supply'
+          const createItem = isSupply ? createSupply : createEquipment
+          const createBatch = isSupply ? createSupplyBatch : createEquipmentBatch
+          const idKey = isSupply ? 'supply_id' : 'equipment_id'
+          const logKey = isSupply ? 'supplyId' : 'equipmentId'
+          const source = isSupply ? 'supply' : 'equipment'
+          let itemId
+          let previousQty = 0
+          let isMerge = false
+
+          if (match && match._source === source) {
+            // Existing Supply/Equipment — a new delivery is a new batch.
+            itemId = match._id
+            previousQty = match.quantity || 0
+            isMerge = true
+          } else {
+            const nameCol = isSupply ? 'supply_name' : 'equipment_name'
+            const createdItem = await createItem({
+              [nameCol]: f.name,
+              unit: f.unit,
+              min_stock: f.minStock || 0,
+              active: true,
+              image_url: f.photoUrl || null,
+            })
+            itemId = createdItem[idKey]
+            // Keep `working` current so a second staged entry for the
+            // same item in this save merges instead of duplicating.
+            working = [
+              ...working,
+              {
+                name: f.name,
+                category: f.category,
+                unit: f.unit,
+                supplier: supplierRow?.supplier_name || null,
+                quantity: 0,
+                inventory_id: null,
+                _source: source,
+                _id: itemId,
+              },
+            ]
+          }
+
+          if (f.quantity > 0 || !isMerge) {
+            await createBatch({
+              [idKey]: itemId,
+              batch_number: f.batchNo || `${isSupply ? 'SUP' : 'EQP'}-${Date.now()}`,
+              supplier_id: supplierRow?.supplier_id || null,
+              received_date: f.received || new Date().toISOString().slice(0, 10),
+              expiration_date: f.expiry || null,
+              quantity: f.quantity || 0,
+              status: 'Active',
+            })
+          }
+          if (f.quantity > 0) {
+            await addInventoryLog({
+              [logKey]: itemId,
+              actionType: isMerge ? 'Received' : 'Replenish',
+              quantityChange: f.quantity,
+              previousQuantity: previousQty,
+              newQuantity: previousQty + f.quantity,
+              staffId: currentUserId,
+              notes: isMerge ? `Merged into existing ${source} (Add Item)` : 'Initial stock',
+            })
+          }
+          if (isMerge) consolidated++
+          else added++
+          continue
+        }
+
+        // Any other legacy category (not Medicine/Supply/Equipment) —
+        // unchanged legacy `inventory` path.
         if (match) {
           const updated = await mergeQuantityIntoItem(
             match,
@@ -881,18 +957,101 @@ export default function InventoryPage() {
   // tracked as inventory — they're recorded in the log's notes/quantity
   // delta for audit purposes, rather than living on as a second row.
   const restoringItem = inventory.find((i) => itemKey(i) === restoreItemId) || null
-  async function handleRestoreSubmit() {
-    // Both `quantity` and `expiration_date` are confirmed NOT to be real
-    // columns on `equipment` (direct Postgres errors, not a guess) — the
-    // same underlying issue as handleReplenish's Equipment/Supply branch
-    // above. This handler's whole premise (set quantity to the number of
-    // units actually returned to active stock) can't work as a direct
-    // column write when quantity isn't stored on the row at all — it's
-    // almost certainly computed from equipment_batches, so a real fix
-    // needs to write there instead. Failing clearly here rather than
-    // attempting the doomed PATCH.
-    show('Restoring Equipment from maintenance isn\'t supported yet — this needs to go through the Batches tab instead.', 'error')
-    setRestoreItemId(null)
+
+  // Equipment stock lives in equipment_batches (the equipment row itself
+  // has no quantity/expiration_date columns). A batch "needs
+  // maintenance" when its manual flag is on OR its maintenance date has
+  // passed — the same rule equipment_inventory_view uses. Restoring
+  // writes to THOSE batches.
+  function getMaintenanceBatches(item) {
+    if (!item || item._source !== 'equipment') return []
+    const today = new Date().toISOString().slice(0, 10)
+    return batches
+      .filter(
+        (b) =>
+          b._source === 'equipment' &&
+          b.equipment_id === item._id &&
+          b.status === 'Active' &&
+          b.quantity > 0 &&
+          (b.needs_maintenance || (b.expiration_date && b.expiration_date < today))
+      )
+      .sort((x, y) => String(x.received_date || x.created_at).localeCompare(String(y.received_date || y.created_at)))
+  }
+  const restoreMaxQty = getMaintenanceBatches(restoringItem).reduce((sum, b) => sum + b.quantity, 0)
+
+  async function handleRestoreSubmit({ restoreQty, expiry, notes }) {
+    const item = restoringItem
+    if (!item) return
+    try {
+      const targets = getMaintenanceBatches(item)
+      const totalNeeding = targets.reduce((sum, b) => sum + b.quantity, 0)
+      if (targets.length === 0) {
+        show('No batches of this equipment need maintenance right now.', 'error')
+        setRestoreItemId(null)
+        return
+      }
+      if (restoreQty < 1 || restoreQty > totalNeeding) {
+        show(`Enter a quantity between 1 and ${totalNeeding}`, 'error')
+        return
+      }
+
+      let remainingToRestore = restoreQty
+      for (const b of targets) {
+        if (remainingToRestore >= b.quantity) {
+          // Whole batch returns to active stock with the new date.
+          await updateEquipmentBatch(b.equipment_batch_id, { needs_maintenance: false, expiration_date: expiry, status: 'Active' })
+          remainingToRestore -= b.quantity
+        } else if (remainingToRestore > 0) {
+          // Partial: split the batch — restored units stay Active, the
+          // held-back remainder moves to a separate On Hold batch so it
+          // is no longer counted in tracked stock but is still on record.
+          const heldQty = b.quantity - remainingToRestore
+          await updateEquipmentBatch(b.equipment_batch_id, { quantity: remainingToRestore, needs_maintenance: false, expiration_date: expiry, status: 'Active' })
+          await createEquipmentBatch({
+            equipment_id: b.equipment_id,
+            batch_number: b.batch_number,
+            supplier_id: b.supplier_id || null,
+            received_date: b.received_date || null,
+            expiration_date: b.expiration_date || null,
+            quantity: heldQty,
+            needs_maintenance: true,
+            status: 'On Hold',
+          })
+          remainingToRestore = 0
+        } else {
+          // Nothing left to restore from this batch — hold it back.
+          await updateEquipmentBatch(b.equipment_batch_id, { status: 'On Hold' })
+        }
+      }
+
+      const held = totalNeeding - restoreQty
+      await addInventoryLog({
+        equipmentId: item._id,
+        actionType: 'Maintained',
+        quantityChange: 0,
+        previousQuantity: item.quantity,
+        newQuantity: item.quantity - held,
+        staffId: currentUserId,
+        notes: `${notes} (restored ${restoreQty} of ${totalNeeding}; next maintenance ${expiry})`,
+      })
+      if (held > 0) {
+        await addInventoryLog({
+          equipmentId: item._id,
+          actionType: 'Maintenance Hold',
+          quantityChange: -held,
+          previousQuantity: item.quantity,
+          newQuantity: item.quantity - held,
+          staffId: currentUserId,
+          notes: `${held} unit(s) held back after maintenance`,
+        })
+      }
+
+      await Promise.all([refreshInventory(), refreshBatches(), refreshLogs()])
+      show(`${item.name} restored — ${restoreQty} ${item.unit} back in active inventory${held > 0 ? `, ${held} held back` : ''}`, 'success')
+      setRestoreItemId(null)
+    } catch (err) {
+      show(`Failed to restore equipment: ${err.message}`, 'error')
+    }
   }
 
     // ── SCAN ──
@@ -1333,13 +1492,20 @@ export default function InventoryPage() {
   }
 
   async function handleDeleteSupplier(supplier) {
-    if (!(await confirm(`Delete supplier "${supplier.supplier_name}"?`))) return
+    const linked = batches.filter((b) => ['medicine', 'supply', 'equipment'].includes(b._source) && b.supplier_id === supplier.supplier_id).length
+    const ok = await confirm(
+      `Permanently delete supplier "${supplier.supplier_name}"?\n\n` +
+        `⚠ This permanently removes the supplier and all of its records, including its receiving records. This cannot be undone.` +
+        (linked > 0 ? `\n\n${linked} batch${linked === 1 ? '' : 'es'} from this supplier will stay in inventory but will no longer show a supplier.` : ''),
+      { title: 'Delete Supplier Permanently', confirmLabel: 'Delete Permanently' }
+    )
+    if (!ok) return
     try {
       await deleteSupplier(supplier.supplier_id)
-      await refreshSuppliers()
-      show(`${supplier.supplier_name} deleted`, 'success')
+      await Promise.all([refreshSuppliers(), refreshBatches(), refreshInventory()])
+      show(`${supplier.supplier_name} was permanently deleted`, 'success')
     } catch (err) {
-      show(err.message, 'error')
+      show(`Failed to delete supplier: ${err.message}`, 'error')
     }
   }
 
@@ -1637,7 +1803,7 @@ export default function InventoryPage() {
 
       <ReleasePickerModal isOpen={releasePickerOpen} inventory={inventory} onClose={() => setReleasePickerOpen(false)} onSubmit={handleReleasePickerSubmit} onError={(msg) => show(msg, 'error')} />
 
-      <RestoreEquipmentModal key={restoreItemId ?? 'restore-item-closed'} isOpen={restoreItemId !== null} item={restoringItem} onClose={() => setRestoreItemId(null)} onSubmit={handleRestoreSubmit} onError={(msg) => show(msg, 'error')} />
+      <RestoreEquipmentModal key={restoreItemId ?? 'restore-item-closed'} isOpen={restoreItemId !== null} item={restoringItem} maxQty={restoreMaxQty} onClose={() => setRestoreItemId(null)} onSubmit={handleRestoreSubmit} onError={(msg) => show(msg, 'error')} />
 
             <ScanVerifyModal
         key={scanVerify?.rawData ?? 'scan-verify-closed'}

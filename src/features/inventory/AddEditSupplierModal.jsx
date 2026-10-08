@@ -4,12 +4,24 @@ import { PlusIcon, EditIcon } from '@components/ui/icons'
 
 const EMPTY = { supplierName: '', contactPerson: '', phone: '', email: '', address: '', remarks: '' }
 
+// Phone numbers are digits only, max 11 (e.g. 09171234567), same limit the
+// registration form uses. Existing saved values that contain spaces,
+// dashes or a +63 prefix are cleaned up when the edit form opens, so
+// they don't fail validation on save.
+const PHONE_MAX = 11
+const PHONE_MIN = 7 // shortest accepted — allows landlines
+function cleanPhone(value) {
+  let digits = String(value || '').replace(/\D/g, '')
+  if (digits.startsWith('63') && digits.length === 12) digits = `0${digits.slice(2)}`
+  return digits.slice(0, PHONE_MAX)
+}
+
 function toForm(supplier) {
   if (!supplier) return EMPTY
   return {
     supplierName: supplier.supplier_name || '',
     contactPerson: supplier.contact_person || '',
-    phone: supplier.phone || '',
+    phone: cleanPhone(supplier.phone),
     email: supplier.email || '',
     address: supplier.address || '',
     remarks: supplier.remarks || '',
@@ -25,6 +37,7 @@ export default function AddEditSupplierModal({ isOpen, supplier, onClose, onSubm
 
   function handleSubmit() {
     if (!form.supplierName.trim()) return onError('Supplier name is required')
+    if (form.phone && form.phone.length < PHONE_MIN) return onError(`Phone number must be ${PHONE_MIN}–${PHONE_MAX} digits`)
     if (form.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return onError('Enter a valid email address')
     onSubmit({
       supplier_name: form.supplierName.trim(),
@@ -64,7 +77,15 @@ export default function AddEditSupplierModal({ isOpen, supplier, onClose, onSubm
         </div>
         <div className="form-group">
           <label>PHONE</label>
-          <input className="form-input" placeholder="Optional" value={form.phone} onChange={(e) => setField('phone')(e.target.value)} />
+          <input
+            className="form-input"
+            type="tel"
+            inputMode="numeric"
+            maxLength={PHONE_MAX}
+            placeholder="e.g., 09171234567"
+            value={form.phone}
+            onChange={(e) => setField('phone')(cleanPhone(e.target.value))}
+          />
         </div>
         <div className="form-group">
           <label>EMAIL</label>

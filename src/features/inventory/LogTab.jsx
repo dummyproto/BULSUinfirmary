@@ -123,13 +123,12 @@ export default function LogTab({ logs, staff, search, onSearchChange, canDelete,
                   <th>Notes</th>
                 </>
               )}
-              {canDelete && !selectionMode && <th style={{ textAlign: 'right' }}>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={(showMore ? 8 : 4) + (selectionMode || canDelete ? 1 : 0)} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                <td colSpan={(showMore ? 8 : 4) + (selectionMode ? 1 : 0)} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                   No log entries
                 </td>
               </tr>
@@ -179,13 +178,6 @@ export default function LogTab({ logs, staff, search, onSearchChange, canDelete,
                     </td>
                     <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{l.notes || '—'}</td>
                   </>
-                )}
-                {canDelete && !selectionMode && (
-                  <td style={{ textAlign: 'right' }}>
-                    <button type="button" className="btn btn-xs btn-outline btn-red" onClick={() => onDelete([l.inventory_log_id])} title="Delete this entry">
-                      <TrashIcon width={12} height={12} />
-                    </button>
-                  </td>
                 )}
               </tr>
             ))}

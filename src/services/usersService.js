@@ -102,24 +102,32 @@ export async function lookupEmailBySchoolId(code) {
 }
 
 /**
- * Login lockout escalation (Phase R) — called by LoginPage once a given
- * email has reached its 10th Tier-2 failed attempt (5 attempts -> 60s
- * cooldown, then 10 fresh attempts -> disable). Runs as `anon`
- * (pre-login, no session yet), so it goes through the SECURITY DEFINER
- * `disable_account_after_lockout` RPC (migration 024) rather than a
- * direct UPDATE — `users_update` RLS (migration 001) only allows
- * `authenticated`. Same trust model as lookupEmailBySchoolId above: a
- * practical deterrent, not a hardened server-side brute-force guard.
+ * Login lockout (server side) — called by LoginPage after EVERY wrong
+ * password. The database counts the failures per account and disables the
+ * account itself at 15 (5 + 10, matching the UI tiers). Admin accounts are
+ * never disabled this way. Runs as `anon` (pre-login). Returns nothing, so
+ * it cannot be used to find out whether an email is registered.
+ * Replaces disable_account_after_lockout, which let anyone disable any
+ * account with a single call (see migration 20261008000010).
  */
-export async function disableAccountAfterLockout(email) {
-  const { error } = await supabase.rpc('disable_account_after_lockout', { p_email: email })
+export async function reportFailedLogin(email) {
+  const { error } = await supabase.rpc('report_failed_login', { p_email: email })
+  if (error) throw error
+}
+
+/**
+ * Called by AuthContext.signIn() after a SUCCESSFUL sign-in. Only resets the
+ * signed-in user's own failed-login counter.
+ */
+export async function resetOwnFailedLogin() {
+  const { error } = await supabase.rpc('reset_own_failed_login')
   if (error) throw error
 }
 
 /**
  * Login lockout escalation (Phase R) — checked by AuthContext.signIn()
  * immediately after a CORRECT password, so a disabled account (whether
- * disabled by disableAccountAfterLockout above, or by an admin's
+ * disabled by report_failed_login (server-side lockout) above, or by an admin's
  * Activate/Deactivate toggle in Maintenance -> User Management) still
  * can't complete sign-in. Supabase Auth's own signInWithPassword has no
  * concept of `public.users.is_active` on its own. Also called upfront by

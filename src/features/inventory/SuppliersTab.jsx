@@ -15,7 +15,7 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
       )
     : suppliers
 
-  const usageCount = (supplierId) => batches.filter((b) => b._source === 'medicine' && b.supplier_id === supplierId).length
+  const usageCount = (supplierId) => batches.filter((b) => ['medicine', 'supply', 'equipment'].includes(b._source) && b.supplier_id === supplierId).length
 
   return (
     <div className="card">
@@ -115,10 +115,8 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
                             type="button"
                             className="btn btn-sm btn-red inv-action-btn"
                             onClick={() => onDelete(s)}
-                            disabled={count > 0}
-                            title={count > 0 ? `Can't delete — used by ${count} batch${count === 1 ? '' : 'es'}` : 'Delete supplier'}
-                            aria-label={count > 0 ? `Can't delete — used by ${count} batch${count === 1 ? '' : 'es'}` : 'Delete supplier'}
-                            style={{ opacity: count > 0 ? 0.5 : 1 }}
+                            title={count > 0 ? `Delete supplier permanently (${count} batch${count === 1 ? '' : 'es'} will be un-linked)` : 'Delete supplier permanently'}
+                            aria-label="Delete supplier permanently"
                           >
                             <TrashIcon width={14} height={14} />
                             <span>Delete</span>
@@ -133,9 +131,7 @@ export default function SuppliersTab({ suppliers, batches, search, onSearchChang
           </table>
         </div>
       )}
-      <div style={{ padding: '12px 18px', fontSize: 12, color: 'var(--text-3)' }}>
-        Suppliers linked to one or more batches can't be deleted — reassign or archive those batches first.
-      </div>
+     
     </div>
   )
 }

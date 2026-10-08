@@ -5,6 +5,32 @@ import { DOC_TYPES } from './data/docTypes'
 
 const EMPTY_FORM = { docType: '', customDocType: '', purpose: '', dateNeeded: '' }
 
+// Processing takes 2–3 days, so the calendar only allows dates at least
+// this many days from today (today and tomorrow are greyed out). Change
+// this one number to adjust the lead time.
+const MIN_LEAD_DAYS = 2
+
+// Local-time YYYY-MM-DD (toISOString() would shift the date for
+// Philippine time, since it converts to UTC first).
+function toLocalISODate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function getEarliestDate() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + MIN_LEAD_DAYS)
+  return toLocalISODate(d)
+}
+
+function formatLongDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
 // When editing, the saved doc_type might not match one of the preset
 // DOC_TYPES options (it could've been typed in as "Other" originally) —
 // this falls back to "Other" + the raw value in customDocType so the form
@@ -30,6 +56,7 @@ export default function NewRequestModal({
   submitLabel = 'Submit Request',
 }) {
   const [form, setForm] = useState(() => buildInitialForm(initialData))
+  const earliestDate = getEarliestDate()
 
   const setField = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
 
@@ -44,6 +71,14 @@ export default function NewRequestModal({
     today.setHours(0, 0, 0, 0)
     if (selected < today) {
       return onError('Date needed cannot be in the past. Please select a valid future date.')
+    }
+
+    // Requests take 2–3 days to process, so a date sooner than the lead
+    // time can't be met. When editing, a date the person didn't change is
+    // left alone so they can still fix the purpose or document type.
+    const dateUnchanged = !!initialData && form.dateNeeded === initialData.dateNeeded
+    if (!dateUnchanged && form.dateNeeded < earliestDate) {
+      return onError(`Documents take 2–3 days to process. Please choose ${formatLongDate(earliestDate)} or later.`)
     }
 
     // Sends the actual typed-in name for "Other", not the literal word
@@ -116,9 +151,11 @@ export default function NewRequestModal({
             name="dateNeeded"
             className="form-input"
             type="date"
+            min={earliestDate}
             value={form.dateNeeded}
             onChange={setField('dateNeeded')}
           />
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Earliest available date: {formatLongDate(earliestDate)}</div>
         </div>
       </div>
       <div className="alert alert-info" style={{ marginTop: 12 }}>

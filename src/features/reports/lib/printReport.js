@@ -1,12 +1,29 @@
 // Ported verbatim from the legacy Print.execute() — opens a real popup
 // window, writes formatted print HTML into it, and triggers window.print().
 // No print library needed; this is just string building + the browser API.
-export function openPrintWindow(title, headers, rows, subtitle, ts) {
+// Everything written into the print window goes through this. Report cells
+// contain user-controlled text (names, diagnoses, notes); unescaped, a value
+// like <img onerror=...> would run script in the app's own origin.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+export function openPrintWindow(rawTitle, rawHeaders, rawRows, rawSubtitle, rawTs) {
+  const title = escapeHtml(rawTitle)
+  const headers = rawHeaders.map(escapeHtml)
+  const rows = rawRows.map((r) => r.map((cell) => escapeHtml(cell || '—')))
+  const subtitle = rawSubtitle ? escapeHtml(rawSubtitle) : ''
+  const ts = escapeHtml(rawTs)
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return false // popup blocked
 
   const thHTML = headers.map((h) => `<th>${h}</th>`).join('')
-  const tbHTML = rows.map((r) => `<tr>${r.map((c) => `<td>${c || '—'}</td>`).join('')}</tr>`).join('')
+  const tbHTML = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')
   const html = `<!DOCTYPE html><html style="color-scheme:light"><head><meta name="color-scheme" content="light"><title>${title}</title>
     <style>
       html,body{color-scheme:light!important}
