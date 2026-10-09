@@ -6,7 +6,6 @@ import { validatePassword } from '@features/maintenance/lib/userHelpers'
 import { registerPatient, checkStudentNumberRegistered, checkEmailRegistered } from '@services/usersService'
 import { invokeEdgeFunction } from '@services/edgeFunctions'
 import { notify } from '@services/notificationsService'
-import { supabase } from '@services/supabaseClient'
 import PasswordInput from '@components/ui/PasswordInput'
 import { AlertTriangleIcon, MailIcon, CreditCardIcon } from '@components/ui/icons'
 import { capitalizeWords } from '@lib/format'
@@ -18,6 +17,11 @@ import { formatUserNumber } from '@lib/format'
 // jsQR is a sizable library most people opening the register modal (the
 // "fill in manually" path, still the default) never need.
 const RegisterQrScan = lazy(() => import('./RegisterQrScan'))
+
+// Registration-time quick-login PIN is hidden for now (people set it in
+// Account Settings instead). Set to true to bring back the PIN fields and
+// the review-screen row — the save logic in usersService.js is unchanged.
+const SHOW_REGISTRATION_PIN = false
 
 /**
  * Best-effort match of a scanned QR value against a fixed dropdown option
@@ -428,7 +432,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
     // Step 1 shows the normal editable fields instead of the camera, but
     // prefilledFromQr keeps remembering that this registration actually
     // started from a QR scan all the way through Step 3.
-    if (form.prefilledFromQr && (pin || confirmPin)) {
+    if (SHOW_REGISTRATION_PIN && form.prefilledFromQr && (pin || confirmPin)) {
       if (!/^[0-9]{4}$/.test(pin)) return setErr('Quick-login PIN must be exactly 4 digits, or leave both PIN fields blank to skip it.')
       if (pin !== confirmPin) return setErr('PINs do not match.')
     }
@@ -463,6 +467,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
         guardianAddress: form.guardianAddress.trim(),
         qrCode: form.qrCode || undefined,
         profileIncomplete: form.profileIncomplete,
+        quickPin: SHOW_REGISTRATION_PIN && form.prefilledFromQr && pin ? pin : undefined,
       })
       try {
         await notify({
@@ -477,35 +482,6 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
       const message = needsEmailConfirmation
         ? "Almost done! We've sent a confirmation link to your email — your account is created but not active yet. Click that link to activate it, then come back and sign in."
         : 'Account created successfully! You can now sign in with your email and password.'
-
-      // Best-effort quick-login PIN setup — only attempted for QR-scan
-      // registrants who actually filled in a PIN (see the Step 3 form and
-      // the validation above doRegister()). Registration itself has
-      // already fully succeeded by this point regardless of what happens
-      // here, so any failure below is swallowed rather than surfaced —
-      // worst case, they just set the PIN later in Account Settings
-      // instead, exactly like the fallback message already says.
-      //
-      // set_own_pin() is scoped to the CALLING session's own account
-      // (auth.uid()), and there's no session yet this early in
-      // registration — signInWithPassword() with the credentials just
-      // chosen establishes one just long enough to call it, then signs
-      // back out immediately so the rest of this flow (redirect to the
-      // login screen) behaves exactly as it did before this feature
-      // existed. Skipped entirely when email confirmation is required —
-      // signing in would just fail anyway until that's done.
-      if (form.prefilledFromQr && pin && !needsEmailConfirmation) {
-        try {
-          const { error: pinSignInError } = await supabase.auth.signInWithPassword({ email, password: form.password })
-          if (!pinSignInError) {
-            await supabase.rpc('set_own_pin', { p_pin: pin })
-          }
-        } catch {
-          // Swallowed — see comment above.
-        } finally {
-          await supabase.auth.signOut().catch(() => {})
-        }
-      }
 
       resetForm()
       if (onRegistered) {
@@ -999,7 +975,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                   )}
                 </div>
 
-                {form.prefilledFromQr && (
+                {SHOW_REGISTRATION_PIN && form.prefilledFromQr && (
                   <div className="reg-field" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                     <div className="alert alert-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
                       Since you're signing up with QR scan, you can set a 4-digit PIN now for instant sign-in next
@@ -1020,7 +996,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     <span className="reg-hint-text">Leave blank to skip — you can always set this up later in Account Settings.</span>
                   </div>
                 )}
-                {form.prefilledFromQr && pin && (
+                {SHOW_REGISTRATION_PIN && form.prefilledFromQr && pin && (
                   <div className="reg-field" style={{ marginTop: 14 }}>
                     <label>Confirm PIN</label>
                     <input
@@ -1064,7 +1040,7 @@ export default function RegisterModal({ isOpen, onClose, onRegistered }) {
                     ['Guardian Address', form.guardianAddress || '—'],
                     ['Email Address', form.email.trim()],
                     ['Username', form.username.trim()],
-                    ...(form.prefilledFromQr ? [['Quick-Login PIN', pin ? 'Will be set up' : 'Skipped — set up later in Account Settings']] : []),
+                    ...(SHOW_REGISTRATION_PIN && form.prefilledFromQr ? [['Quick-Login PIN', pin ? 'Will be set up' : 'Skipped — set up later in Account Settings']] : []),
                   ].map(([label, value]) => (
                     <div
                       key={label}

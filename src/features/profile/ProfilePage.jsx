@@ -22,7 +22,6 @@ import {
   PhoneIcon,
   MapPinIcon,
   GraduationCapIcon,
-  LockIcon,
   KeyIcon,
   ShieldIcon,
   CheckCircleIcon,
@@ -624,7 +623,7 @@ export default function ProfilePage() {
                 </div>
                 <div style={{ padding: 16 }}>
                   <div className="alert" style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, marginBottom: 14, padding: '8px 12px', borderRadius: 6 }}>
-                    <LockIcon width={12} height={12} style={{ verticalAlign: -1, marginRight: 5 }} />These details are managed by the system and cannot be changed here.
+                    
                   </div>
                   <DetailRow label="Username" value={user.username} />
                   <DetailRow label="User / ID Number" value={role === 'patient' ? user.userId : authProfile?.user_id ? `STAFF-${String(authProfile.user_id).padStart(4, '0')}` : '—'} />

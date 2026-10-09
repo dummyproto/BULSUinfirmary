@@ -214,7 +214,7 @@ export async function checkStudentNumberRegistered(studentNumber) {
  * - `profileIncomplete`: set when the person used Step 2's "Skip for now"
  *   path. Written to `patient_profiles.profile_incomplete`.
  */
-export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, guardianName, guardianRelation, guardianPhone, guardianAddress, qrCode, profileIncomplete }) {
+export async function registerPatient({ email, password, username, name, surname, givenName, phone, studentNumber, course, yearLevel, guardianName, guardianRelation, guardianPhone, guardianAddress, qrCode, profileIncomplete, quickPin }) {
   // Registration is limited to Gmail addresses only (also checked in
   // RegisterModal.jsx before this is ever called).
   if (!/^[^@\s]+@gmail\.com$/i.test(String(email || '').trim())) {
@@ -278,6 +278,8 @@ export async function registerPatient({ email, password, username, name, surname
         guardian_address: guardianAddress || null,
         qr_code: qrCode || null,
         profile_incomplete: !!profileIncomplete,
+        // Temporary: read and removed by finalizeSelfRegistration()
+        quick_pin: quickPin || null,
       },
     },
   })
@@ -445,6 +447,23 @@ export async function finalizeSelfRegistration(authUser) {
       // itself, but it's what turns "the QR code isn't saving, for some
       // reason" into an actual, checkable error message.
       console.error('claim_registration_qr failed — registration_qr_codes was not written for this scan:', err.message)
+    }
+  }
+
+  // Quick-login PIN chosen at registration (QR-scan registrants only).
+  // Saved here, not in RegisterModal, because this is the first moment a
+  // session AND a users row both exist — also true when email
+  // confirmation is required. Then the temporary copy is removed from
+  // the auth metadata. Non-critical: on failure the person can set the
+  // PIN later in Account Settings.
+  if (m.quick_pin && /^[0-9]{4}$/.test(String(m.quick_pin))) {
+    try {
+      const { error: pinError } = await supabase.rpc('set_own_pin', { p_pin: String(m.quick_pin) })
+      if (pinError) throw pinError
+      const { error: clearError } = await supabase.auth.updateUser({ data: { quick_pin: null } })
+      if (clearError) throw clearError
+    } catch (err) {
+      console.error('Quick-login PIN setup failed — set it later in Account Settings:', err.message)
     }
   }
 
